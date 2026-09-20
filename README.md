@@ -3,10 +3,11 @@
 PDFFast v2 is a clean, behavior-preserving migration of the validated
 PDFFast PDF-to-Markdown pipeline.
 
-The project is currently in **Phase 0**. This phase contains migration and
-regression infrastructure only; the production parser has not yet been
-migrated. See [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) for the
-approved architecture, boundaries, and acceptance criteria.
+The project is currently in **Phase 1**. Phase 0 migration infrastructure is
+complete, and Phase 1A has migrated the behavior-locked Stage 1–3 native path:
+page profiling, template detection, and section alignment. See
+[`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) for the approved
+architecture, boundaries, and acceptance criteria.
 
 The future production entry point will be:
 
@@ -14,11 +15,11 @@ The future production entry point will be:
 uv run python scripts/run_pipeline.py <PDF>
 ```
 
-That command is intentionally not implemented in Phase 0. No PDF samples,
-model files, provider environments, or generated outputs are included in the
-repository.
+That command remains intentionally unavailable until the complete production
+path is migrated. No PDF samples, model files, provider environments, or
+generated outputs are included in the repository.
 
-## Phase 0 tests
+## Tests
 
 Run the dependency-free migration contracts and synthetic regression fixtures:
 
@@ -42,3 +43,15 @@ test is never presented as a successful provider or end-to-end run.
 The committed fixtures in `tests/fixtures/artifacts/` are synthetic and do not
 contain content from the real benchmark PDFs.
 
+Run the Phase 1A Stage 1–3 parity test against an explicit local reference and
+sample PDF:
+
+```bash
+PDFFAST_REFERENCE_ROOT=/Users/admin/Workspace/pdffast \
+PDFFAST_SAMPLE_PDF=/absolute/path/to/sample.pdf \
+  uv run pytest tests/regression/test_phase1a_pipeline_parity.py -v
+```
+
+The test runs both implementations and requires byte-identical
+`page_profile.json`, `page_snapshot.jsonl`, `template_analysis.json`, and
+`section_alignment.json` artifacts.
