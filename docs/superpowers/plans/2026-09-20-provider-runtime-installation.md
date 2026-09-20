@@ -44,11 +44,11 @@
 **Interfaces:**
 - Produces: validated `paddleocr_v5_mobile` and `paddleocr_vl_16` using existing PaddleX cache only.
 
-- [ ] Confirm required model directories already exist under `/Users/admin/.paddlex`.
-- [ ] Install exactly `paddleocr==3.6.0`, `paddlepaddle==3.2.1`, and `paddlex==3.6.1`.
-- [ ] For each Provider run import, Registry resolve, preflight, cache-only single-task execution, and canonical normalization.
-- [ ] If a required model is absent, record lookup evidence and stop that Provider without downloading.
-- [ ] Run required test suites, update the validation matrix, and commit before Task 3.
+- [x] Confirm required model directories already exist under `/Users/admin/.paddlex`.
+- [x] Install exactly `paddleocr==3.6.0`, `paddlepaddle==3.2.1`, and `paddlex==3.6.1`.
+- [x] For each Provider run import, Registry resolve, preflight, cache-only single-task execution, and canonical normalization.
+- [x] If a required model is absent, record lookup evidence and stop that Provider without downloading.
+- [x] Run required test suites, update the validation matrix, and commit before Task 3.
 
 ### Task 3: MinerU worker environment
 

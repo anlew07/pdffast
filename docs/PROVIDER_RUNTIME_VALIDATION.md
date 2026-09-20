@@ -13,8 +13,8 @@ Python：3.12.13
 | Provider | Python environment | Package version | Import | Preflight | Existing cache reused | Download occurred | Single-task execution | Canonical normalization | Worker cleanup |
 |---|---|---|---|---|---|---|---|---|---|
 | `rapidocr_ch_light` | `/Users/admin/Workspace/pdffast-v2/.venv` | `rapidocr 3.9.2`; `onnxruntime 1.30.0` | PASS | PASS | N/A — weights are wheel package data | NO | PASS | PASS | PASS — in-process `close()` |
-| `paddleocr_v5_mobile` | `/Users/admin/Workspace/pdffast-v2/.venv` | Pending Step 2 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | N/A |
-| `paddleocr_vl_16` | `/Users/admin/Workspace/pdffast-v2/.venv` | Pending Step 2 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | N/A |
+| `paddleocr_v5_mobile` | `/Users/admin/Workspace/pdffast-v2/.venv` | `paddleocr 3.6.0`; `paddlepaddle 3.2.1`; `paddlex 3.6.1` | PASS | PASS | YES — PaddleX | NO | PASS | PASS | PASS — in-process `close()` |
+| `paddleocr_vl_16` | `/Users/admin/Workspace/pdffast-v2/.venv` | `paddleocr 3.6.0`; `paddlepaddle 3.2.1`; `paddlex[ocr] 3.6.1` | PASS | PASS | YES — PaddleX | NO | PASS | PASS | PASS — in-process `close()` |
 | `mineru_local` | `/Users/admin/Workspace/pdffast-v2/.venv-mineru` | Pending Step 3 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 | `marker_local` | `/Users/admin/Workspace/pdffast-v2/.venv-marker` | Pending Step 4 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 | `docling_local` | `/Users/admin/Workspace/pdffast-v2/.venv-docling` | Pending Step 5 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
@@ -88,3 +88,97 @@ Frozen route config SHA-256 remains:
 ```text
 0d999777e130de54ff25248c02cf39ae37e9fe7c5ef9231650aa3304008772d3
 ```
+
+## Step 2 — PaddleOCR mobile and PaddleOCR-VL
+
+### Cache discovery before installation
+
+All production-required directories existed before Provider initialization:
+
+```text
+/Users/admin/.paddlex/official_models/PP-OCRv5_mobile_det
+  4.8 MB, 21 files, directory mtime 2026-09-11T19:28:06+0800
+/Users/admin/.paddlex/official_models/PP-OCRv5_mobile_rec
+  16 MB, 21 files, directory mtime 2026-09-11T19:28:11+0800
+/Users/admin/.paddlex/official_models/PP-DocLayoutV3
+  directory mtime 2026-09-11T18:43:27+0800
+/Users/admin/.paddlex/official_models/PaddleOCR-VL-1.6
+  1.8 GB, 63 files, directory mtime 2026-09-11T18:45:57+0800
+```
+
+The same mtimes were observed after both smokes. PaddleX logged `Model files already
+exist. Using cached files` for every selected model.
+
+### Installation
+
+```text
+uv pip install --python /Users/admin/Workspace/pdffast-v2/.venv/bin/python \
+  paddleocr==3.6.0 paddlepaddle==3.2.1 paddlex==3.6.1
+```
+
+The first PaddleOCR-VL initialization reported that the official OCR optional
+dependency set was absent and explicitly required `paddlex[ocr]` at the installed
+PaddleX version. The exact-version extra was then installed:
+
+```text
+uv pip install --python /Users/admin/Workspace/pdffast-v2/.venv/bin/python \
+  'paddlex[ocr]==3.6.1'
+```
+
+This installed Python runtime dependencies only. It did not download a model or
+change the frozen Paddle package versions.
+
+### Offline/cache-only settings
+
+Both smokes used:
+
+```text
+PADDLE_PDX_CACHE_HOME=/Users/admin/.paddlex
+PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+HF_HOME=/Users/admin/.cache/huggingface
+HF_HUB_OFFLINE=1
+```
+
+### `paddleocr_v5_mobile` smoke
+
+Read-only input was the same `p0001_p0001_r002.png` used for Step 1.
+
+```text
+Registry resolve: PASS
+Preflight: PASS (paddleocr=3.6.0 PaddleOCR=ok)
+Cache: PP-OCRv5_mobile_det + PP-OCRv5_mobile_rec reused
+Raw status: SUCCESS
+Raw OCR line count: 1
+Raw text length: 12
+Canonical status: SUCCESS
+Canonical text availability: AVAILABLE
+Canonical text length: 12
+Provider close: PASS
+```
+
+### `paddleocr_vl_16` smoke
+
+```text
+Registry resolve: PASS
+Preflight: PASS (paddleocr=3.6.0 PaddleOCRVL=ok)
+Cache: PP-DocLayoutV3 + PaddleOCR-VL-1.6 reused
+Model backend: native Paddle dynamic graph, CPU
+Raw status: SUCCESS
+Raw Markdown length: 14
+Canonical status: SUCCESS
+Canonical text availability: AVAILABLE
+Canonical text length: 12
+Canonical reading blocks availability: AVAILABLE
+Provider close: PASS
+```
+
+### Step 2 regression gate
+
+```text
+Provider + Registry + fake executor focused suite: 22 passed, 3 skipped
+Full default suite: 58 passed, 28 skipped
+Reference-bound full suite: 83 passed, 3 skipped
+```
+
+The three remaining reference-bound skips are only the not-yet-installed Docling,
+Marker, and MinerU optional Provider preflight cases.
