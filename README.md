@@ -4,7 +4,9 @@ PDFFast v2 is a clean, behavior-preserving migration of the validated
 PDFFast PDF-to-Markdown pipeline.
 
 The project is currently in **Phase 1**. Phase 0 migration infrastructure is
-complete, and Phase 1 has migrated the behavior-locked Stage 1–6 native path:
+complete, Phase 1 has migrated the behavior-locked Stage 1–6 native path, and
+Phase 2 is in progress with Stage 7 evidence accounting and Stage 8 quality
+gating migrated. The native path includes
 page profiling, template detection, section alignment, page structure, and
 table recovery, followed by final native text-flow normalization. See
 [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) for the approved
