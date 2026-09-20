@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.1",
+  "purpose": "Stage9 provider benchmark registry. Benchmark first; production binding is decided later from measured latency/quality/stability.",
+  "providers": {
+    "paddleocr_v5_mobile": {
+      "enabled": true,
+      "kind": "paddleocr_text",
+      "ocr_version": "PP-OCRv5",
+      "lang": "ch",
+      "device": null,
+      "use_doc_orientation_classify": false,
+      "use_doc_unwarping": false,
+      "use_textline_orientation": false,
+      "text_detection_model_name": "PP-OCRv5_mobile_det",
+      "text_recognition_model_name": "PP-OCRv5_mobile_rec",
+      "init_options": {},
+      "predict_options": {}
+    },
+    "pp_structure_v3_light": {
+      "enabled": true,
+      "kind": "pp_structure_v3",
+      "device": null,
+      "engine": null,
+      "lang": null,
+      "init_options": {
+        "text_detection_model_name": "PP-OCRv5_mobile_det",
+        "text_recognition_model_name": "PP-OCRv5_mobile_rec",
+        "use_doc_orientation_classify": false,
+        "use_doc_unwarping": false,
+        "use_textline_orientation": false,
+        "use_seal_recognition": false,
+        "use_formula_recognition": false,
+        "use_chart_recognition": false,
+        "use_table_recognition": true
+      },
+      "predict_options": {}
+    },
+    "paddleocr_vl_16": {
+      "enabled": true,
+      "kind": "paddleocr_vl",
+      "pipeline_version": "v1.6",
+      "device": null,
+      "engine": null,
+      "vl_rec_backend": null,
+      "vl_rec_server_url": null,
+      "vl_rec_api_model_name": null,
+      "vl_rec_api_key_env": "PADDLEOCR_VL_API_KEY",
+      "init_options": {},
+      "predict_options": {}
+    },
+    "rapidocr_ch_light": {
+      "enabled": true,
+      "kind": "rapidocr",
+      "params": {
+        "Rec.lang_type": "ch"
+      },
+      "predict_options": {
+        "use_det": true,
+        "use_cls": false,
+        "use_rec": true
+      }
+    },
+    "docling_local": {
+      "enabled": true,
+      "kind": "docling_worker",
+      "python_executable": ".venv-docling/bin/python",
+      "preflight_timeout_seconds": 60,
+      "worker_init_timeout_seconds": 180,
+      "predict_timeout_seconds": 300,
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "mineru_local": {
+      "enabled": false,
+      "kind": "mineru_worker",
+      "python_executable": ".venv-mineru/bin/python",
+      "backend": "pipeline",
+      "output_format": "markdown",
+      "preflight_timeout_seconds": 60,
+      "worker_init_timeout_seconds": 300,
+      "predict_timeout_seconds": 600,
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "marker_local": {
+      "enabled": false,
+      "kind": "marker_worker",
+      "python_executable": ".venv-marker/bin/python",
+      "mode": "fast",
+      "output_format": "markdown",
+      "force_ocr": true,
+      "preflight_timeout_seconds": 60,
+      "worker_init_timeout_seconds": 300,
+      "predict_timeout_seconds": 600,
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}

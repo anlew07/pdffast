@@ -1,0 +1,1062 @@
+{
+  "schema_version": "1.0",
+  "stage": 9,
+  "substage": "9.6.2",
+  "name": "route_candidate_selection",
+  "version": "0.1.0",
+  "benchmark_set_id": "case_006_dev_v011",
+  "source": {
+    "stage": "9.6.1",
+    "version": "0.1.0"
+  },
+  "principles": {
+    "candidate_sets_only": true,
+    "no_single_best_provider": true,
+    "no_weighted_score": true,
+    "pareto_epsilon": 0,
+    "capability_availability_is_not_quality": true,
+    "deferred_checks_remain_gaps": true
+  },
+  "providers": [
+    "rapidocr_ch_light",
+    "mineru_local",
+    "marker_local",
+    "docling_local",
+    "pp_structure_v3_light",
+    "paddleocr_v5_mobile",
+    "tesseract_chi_sim",
+    "paddleocr_vl_16"
+  ],
+  "routes": {
+    "PAGE_DOCUMENT_OCR": {
+      "route": "PAGE_DOCUMENT_OCR",
+      "sample_count": 8,
+      "task_ids": [
+        "s9_0059_page_fallback_72b055c260ca",
+        "s9_0060_page_fallback_aebd76de4ce5",
+        "s9_0066_page_fallback_7fd06c196caf",
+        "s9_0073_page_fallback_2722d2d4c70e",
+        "s9_0080_page_fallback_b7af35e2ea94",
+        "s9_0087_page_fallback_1e26a6579020",
+        "s9_0088_page_fallback_90825801983a",
+        "s9_0094_page_fallback_e1c1c28465e8"
+      ],
+      "evaluation_profiles": {
+        "page_bilingual_paper": 1,
+        "page_certificate_key_fields": 1,
+        "page_complex_form": 1,
+        "page_contract_stamp_handwriting": 2,
+        "page_scanned_prose": 1,
+        "page_thesis_cover": 1,
+        "page_two_column_paper": 1
+      },
+      "executable_check_families": {
+        "PRESENT": 8,
+        "STRUCTURE_RELATION": 5,
+        "TEXT_NED": 8
+      },
+      "deferred_check_families": {
+        "ORDER": 3,
+        "READING_ORDER_EDIT": 3,
+        "TABLE": 2,
+        "TEDS": 1
+      },
+      "frontiers": {
+        "quality_only": {
+          "axes": [
+            {
+              "name": "text_macro_similarity",
+              "path": "quality.text_fidelity.macro_mean_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "text_micro_similarity",
+              "path": "quality.text_fidelity.micro_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "critical_fact_recall",
+              "path": "quality.critical_facts.item_recall",
+              "direction": "max"
+            }
+          ],
+          "frontier": [
+            "paddleocr_vl_16"
+          ],
+          "dominated_by": {
+            "rapidocr_ch_light": [
+              "paddleocr_vl_16"
+            ],
+            "mineru_local": [
+              "paddleocr_vl_16"
+            ],
+            "marker_local": [
+              "mineru_local",
+              "pp_structure_v3_light",
+              "paddleocr_vl_16"
+            ],
+            "docling_local": [
+              "mineru_local",
+              "pp_structure_v3_light",
+              "paddleocr_vl_16"
+            ],
+            "pp_structure_v3_light": [
+              "mineru_local",
+              "paddleocr_vl_16"
+            ],
+            "paddleocr_v5_mobile": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "paddleocr_vl_16"
+            ],
+            "tesseract_chi_sim": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "marker_local",
+              "docling_local",
+              "pp_structure_v3_light",
+              "paddleocr_v5_mobile",
+              "paddleocr_vl_16"
+            ],
+            "paddleocr_vl_16": []
+          }
+        },
+        "latency_only": {
+          "axes": [
+            {
+              "name": "latency_mean_seconds",
+              "path": "runtime.mean_seconds",
+              "direction": "min"
+            },
+            {
+              "name": "latency_p95_seconds",
+              "path": "runtime.p95_seconds",
+              "direction": "min"
+            }
+          ],
+          "frontier": [
+            "rapidocr_ch_light"
+          ],
+          "dominated_by": {
+            "rapidocr_ch_light": [],
+            "mineru_local": [
+              "rapidocr_ch_light",
+              "tesseract_chi_sim"
+            ],
+            "marker_local": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "docling_local",
+              "pp_structure_v3_light",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ],
+            "docling_local": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "tesseract_chi_sim"
+            ],
+            "pp_structure_v3_light": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "docling_local",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ],
+            "paddleocr_v5_mobile": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "tesseract_chi_sim"
+            ],
+            "tesseract_chi_sim": [
+              "rapidocr_ch_light"
+            ],
+            "paddleocr_vl_16": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "marker_local",
+              "docling_local",
+              "pp_structure_v3_light",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ]
+          }
+        },
+        "quality_latency": {
+          "axes": [
+            {
+              "name": "text_macro_similarity",
+              "path": "quality.text_fidelity.macro_mean_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "text_micro_similarity",
+              "path": "quality.text_fidelity.micro_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "critical_fact_recall",
+              "path": "quality.critical_facts.item_recall",
+              "direction": "max"
+            },
+            {
+              "name": "latency_mean_seconds",
+              "path": "runtime.mean_seconds",
+              "direction": "min"
+            },
+            {
+              "name": "latency_p95_seconds",
+              "path": "runtime.p95_seconds",
+              "direction": "min"
+            }
+          ],
+          "frontier": [
+            "rapidocr_ch_light",
+            "mineru_local",
+            "paddleocr_vl_16"
+          ],
+          "dominated_by": {
+            "rapidocr_ch_light": [],
+            "mineru_local": [],
+            "marker_local": [
+              "mineru_local",
+              "pp_structure_v3_light"
+            ],
+            "docling_local": [
+              "mineru_local"
+            ],
+            "pp_structure_v3_light": [
+              "mineru_local"
+            ],
+            "paddleocr_v5_mobile": [
+              "rapidocr_ch_light",
+              "mineru_local"
+            ],
+            "tesseract_chi_sim": [
+              "rapidocr_ch_light"
+            ],
+            "paddleocr_vl_16": []
+          }
+        }
+      },
+      "capability_emitters": {
+        "text": {
+          "sample_count": 8,
+          "available_task_counts": {
+            "rapidocr_ch_light": 8,
+            "mineru_local": 8,
+            "marker_local": 8,
+            "docling_local": 8,
+            "pp_structure_v3_light": 8,
+            "paddleocr_v5_mobile": 8,
+            "tesseract_chi_sim": 8,
+            "paddleocr_vl_16": 8
+          },
+          "any_emitters": [
+            "rapidocr_ch_light",
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_v5_mobile",
+            "tesseract_chi_sim",
+            "paddleocr_vl_16"
+          ],
+          "full_emitters": [
+            "rapidocr_ch_light",
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_v5_mobile",
+            "tesseract_chi_sim",
+            "paddleocr_vl_16"
+          ],
+          "no_emitter_gap": false
+        },
+        "tables": {
+          "sample_count": 8,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 1,
+            "marker_local": 0,
+            "docling_local": 0,
+            "pp_structure_v3_light": 2,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 1
+          },
+          "any_emitters": [
+            "mineru_local",
+            "pp_structure_v3_light",
+            "paddleocr_vl_16"
+          ],
+          "full_emitters": [],
+          "no_emitter_gap": false
+        },
+        "formulas": {
+          "sample_count": 8,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 0,
+            "marker_local": 1,
+            "docling_local": 0,
+            "pp_structure_v3_light": 0,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 3
+          },
+          "any_emitters": [
+            "marker_local",
+            "paddleocr_vl_16"
+          ],
+          "full_emitters": [],
+          "no_emitter_gap": false
+        },
+        "reading_blocks": {
+          "sample_count": 8,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 8,
+            "marker_local": 8,
+            "docling_local": 8,
+            "pp_structure_v3_light": 8,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 8
+          },
+          "any_emitters": [
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_vl_16"
+          ],
+          "full_emitters": [
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_vl_16"
+          ],
+          "no_emitter_gap": false
+        },
+        "relations": {
+          "sample_count": 8,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 0,
+            "marker_local": 0,
+            "docling_local": 0,
+            "pp_structure_v3_light": 0,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 0
+          },
+          "any_emitters": [],
+          "full_emitters": [],
+          "no_emitter_gap": true
+        }
+      },
+      "gaps": [
+        {
+          "code": "EXPLICIT_RELATION_OUTPUT_GAP",
+          "severity": "CAPABILITY_GAP",
+          "detail": "This route contains executable STRUCTURE_RELATION checks, but no provider emits canonical relations on any sample."
+        },
+        {
+          "code": "TABLE_QUALITY_NOT_VERIFIED",
+          "severity": "EVALUATION_GAP",
+          "detail": "Table-related checks remain deferred because frozen GT does not provide canonical table structure. Table availability must not be interpreted as table correctness."
+        },
+        {
+          "code": "READING_ORDER_QUALITY_NOT_VERIFIED",
+          "severity": "EVALUATION_GAP",
+          "detail": "Reading-order edit evaluation remains deferred because the frozen GT does not provide a canonical reading-block sequence."
+        },
+        {
+          "code": "ORDER_NOT_MACHINE_BINDABLE",
+          "severity": "EVALUATION_GAP",
+          "detail": "ORDER checks remain deferred where GT endpoints are semantic labels rather than machine-bindable literal/canonical anchors."
+        }
+      ]
+    },
+    "REGION_MULTIMODAL_PARSE": {
+      "route": "REGION_MULTIMODAL_PARSE",
+      "sample_count": 8,
+      "task_ids": [
+        "s9_0001_region_fallback_9a73f2aff22a",
+        "s9_0017_region_fallback_374f7ba064a9",
+        "s9_0028_region_fallback_1b81220c518b",
+        "s9_0031_region_fallback_65bfb4af8bf2",
+        "s9_0031_region_fallback_a4c8e8958983",
+        "s9_0034_region_fallback_a777a5141c37",
+        "s9_0037_region_fallback_c9fd31f73374",
+        "s9_0045_region_fallback_752e89a56386"
+      ],
+      "evaluation_profiles": {
+        "region_barcode_identifier": 1,
+        "region_chart_with_labels": 1,
+        "region_hierarchical_mindmap": 1,
+        "region_multimodal_diagram": 1,
+        "region_network_architecture_diagram": 1,
+        "region_nontext_landmark_figure": 1,
+        "region_nontext_photo_grid": 1,
+        "region_system_architecture_tree": 1
+      },
+      "executable_check_families": {
+        "NON_TEXT_HALLUCINATION": 2,
+        "PRESENT": 3,
+        "STRUCTURE_RELATION": 5,
+        "TEXT_NED": 5
+      },
+      "deferred_check_families": {
+        "ORDER": 1
+      },
+      "frontiers": {
+        "quality_only": {
+          "axes": [
+            {
+              "name": "text_macro_similarity",
+              "path": "quality.text_fidelity.macro_mean_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "text_micro_similarity",
+              "path": "quality.text_fidelity.micro_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "critical_fact_recall",
+              "path": "quality.critical_facts.item_recall",
+              "direction": "max"
+            }
+          ],
+          "frontier": [
+            "rapidocr_ch_light",
+            "marker_local",
+            "paddleocr_v5_mobile"
+          ],
+          "dominated_by": {
+            "rapidocr_ch_light": [],
+            "mineru_local": [
+              "rapidocr_ch_light",
+              "marker_local",
+              "docling_local",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim",
+              "paddleocr_vl_16"
+            ],
+            "marker_local": [],
+            "docling_local": [
+              "rapidocr_ch_light",
+              "marker_local",
+              "paddleocr_v5_mobile"
+            ],
+            "pp_structure_v3_light": [
+              "rapidocr_ch_light",
+              "marker_local",
+              "docling_local",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim",
+              "paddleocr_vl_16"
+            ],
+            "paddleocr_v5_mobile": [],
+            "tesseract_chi_sim": [
+              "rapidocr_ch_light",
+              "marker_local",
+              "paddleocr_v5_mobile"
+            ],
+            "paddleocr_vl_16": [
+              "rapidocr_ch_light",
+              "marker_local",
+              "docling_local",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ]
+          }
+        },
+        "latency_only": {
+          "axes": [
+            {
+              "name": "latency_mean_seconds",
+              "path": "runtime.mean_seconds",
+              "direction": "min"
+            },
+            {
+              "name": "latency_p95_seconds",
+              "path": "runtime.p95_seconds",
+              "direction": "min"
+            }
+          ],
+          "frontier": [
+            "rapidocr_ch_light",
+            "mineru_local"
+          ],
+          "dominated_by": {
+            "rapidocr_ch_light": [],
+            "mineru_local": [],
+            "marker_local": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "docling_local",
+              "pp_structure_v3_light",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim",
+              "paddleocr_vl_16"
+            ],
+            "docling_local": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "tesseract_chi_sim"
+            ],
+            "pp_structure_v3_light": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "docling_local",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ],
+            "paddleocr_v5_mobile": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "docling_local",
+              "tesseract_chi_sim"
+            ],
+            "tesseract_chi_sim": [
+              "rapidocr_ch_light"
+            ],
+            "paddleocr_vl_16": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "docling_local",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ]
+          }
+        },
+        "quality_latency": {
+          "axes": [
+            {
+              "name": "text_macro_similarity",
+              "path": "quality.text_fidelity.macro_mean_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "text_micro_similarity",
+              "path": "quality.text_fidelity.micro_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "critical_fact_recall",
+              "path": "quality.critical_facts.item_recall",
+              "direction": "max"
+            },
+            {
+              "name": "latency_mean_seconds",
+              "path": "runtime.mean_seconds",
+              "direction": "min"
+            },
+            {
+              "name": "latency_p95_seconds",
+              "path": "runtime.p95_seconds",
+              "direction": "min"
+            }
+          ],
+          "frontier": [
+            "rapidocr_ch_light",
+            "mineru_local",
+            "marker_local",
+            "paddleocr_v5_mobile"
+          ],
+          "dominated_by": {
+            "rapidocr_ch_light": [],
+            "mineru_local": [],
+            "marker_local": [],
+            "docling_local": [
+              "rapidocr_ch_light"
+            ],
+            "pp_structure_v3_light": [
+              "rapidocr_ch_light",
+              "docling_local",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ],
+            "paddleocr_v5_mobile": [],
+            "tesseract_chi_sim": [
+              "rapidocr_ch_light"
+            ],
+            "paddleocr_vl_16": [
+              "rapidocr_ch_light",
+              "docling_local",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ]
+          }
+        }
+      },
+      "capability_emitters": {
+        "text": {
+          "sample_count": 8,
+          "available_task_counts": {
+            "rapidocr_ch_light": 8,
+            "mineru_local": 8,
+            "marker_local": 8,
+            "docling_local": 8,
+            "pp_structure_v3_light": 8,
+            "paddleocr_v5_mobile": 8,
+            "tesseract_chi_sim": 8,
+            "paddleocr_vl_16": 8
+          },
+          "any_emitters": [
+            "rapidocr_ch_light",
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_v5_mobile",
+            "tesseract_chi_sim",
+            "paddleocr_vl_16"
+          ],
+          "full_emitters": [
+            "rapidocr_ch_light",
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_v5_mobile",
+            "tesseract_chi_sim",
+            "paddleocr_vl_16"
+          ],
+          "no_emitter_gap": false
+        },
+        "tables": {
+          "sample_count": 8,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 0,
+            "marker_local": 0,
+            "docling_local": 0,
+            "pp_structure_v3_light": 0,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 0
+          },
+          "any_emitters": [],
+          "full_emitters": [],
+          "no_emitter_gap": true
+        },
+        "formulas": {
+          "sample_count": 8,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 0,
+            "marker_local": 0,
+            "docling_local": 0,
+            "pp_structure_v3_light": 0,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 0
+          },
+          "any_emitters": [],
+          "full_emitters": [],
+          "no_emitter_gap": true
+        },
+        "reading_blocks": {
+          "sample_count": 8,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 8,
+            "marker_local": 8,
+            "docling_local": 7,
+            "pp_structure_v3_light": 8,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 8
+          },
+          "any_emitters": [
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_vl_16"
+          ],
+          "full_emitters": [
+            "mineru_local",
+            "marker_local",
+            "pp_structure_v3_light",
+            "paddleocr_vl_16"
+          ],
+          "no_emitter_gap": false
+        },
+        "relations": {
+          "sample_count": 8,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 0,
+            "marker_local": 0,
+            "docling_local": 0,
+            "pp_structure_v3_light": 0,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 0
+          },
+          "any_emitters": [],
+          "full_emitters": [],
+          "no_emitter_gap": true
+        }
+      },
+      "gaps": [
+        {
+          "code": "EXPLICIT_RELATION_OUTPUT_GAP",
+          "severity": "CAPABILITY_GAP",
+          "detail": "This route contains executable STRUCTURE_RELATION checks, but no provider emits canonical relations on any sample."
+        },
+        {
+          "code": "ORDER_NOT_MACHINE_BINDABLE",
+          "severity": "EVALUATION_GAP",
+          "detail": "ORDER checks remain deferred where GT endpoints are semantic labels rather than machine-bindable literal/canonical anchors."
+        }
+      ]
+    },
+    "INLINE_CONTEXT_PARSE": {
+      "route": "INLINE_CONTEXT_PARSE",
+      "sample_count": 4,
+      "task_ids": [
+        "s9_0035_inline_context_fallback_5e2b230a3f36",
+        "s9_0035_inline_context_fallback_6c862cacae60",
+        "s9_0036_inline_context_fallback_0d46131d8d6e",
+        "s9_0036_inline_context_fallback_c6ea0f780c9e"
+      ],
+      "evaluation_profiles": {
+        "inline_complex_formula_context": 1,
+        "inline_math_notation": 1,
+        "inline_subscript_math": 1,
+        "inline_text_math_tokens": 1
+      },
+      "executable_check_families": {
+        "PRESENT": 4,
+        "STRUCTURE_RELATION": 1,
+        "TEXT_NED": 4
+      },
+      "deferred_check_families": {
+        "FORMULA_CDM": 1,
+        "MATH": 1
+      },
+      "frontiers": {
+        "quality_only": {
+          "axes": [
+            {
+              "name": "text_macro_similarity",
+              "path": "quality.text_fidelity.macro_mean_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "text_micro_similarity",
+              "path": "quality.text_fidelity.micro_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "literal_presence_recall",
+              "path": "quality.literal_presence.item_recall",
+              "direction": "max"
+            }
+          ],
+          "frontier": [
+            "marker_local",
+            "paddleocr_v5_mobile"
+          ],
+          "dominated_by": {
+            "rapidocr_ch_light": [
+              "paddleocr_v5_mobile"
+            ],
+            "mineru_local": [
+              "rapidocr_ch_light",
+              "docling_local",
+              "pp_structure_v3_light",
+              "paddleocr_v5_mobile"
+            ],
+            "marker_local": [],
+            "docling_local": [
+              "rapidocr_ch_light",
+              "paddleocr_v5_mobile"
+            ],
+            "pp_structure_v3_light": [
+              "rapidocr_ch_light",
+              "paddleocr_v5_mobile"
+            ],
+            "paddleocr_v5_mobile": [],
+            "tesseract_chi_sim": [
+              "rapidocr_ch_light",
+              "marker_local",
+              "docling_local",
+              "pp_structure_v3_light",
+              "paddleocr_v5_mobile",
+              "paddleocr_vl_16"
+            ],
+            "paddleocr_vl_16": [
+              "rapidocr_ch_light",
+              "marker_local",
+              "docling_local",
+              "pp_structure_v3_light",
+              "paddleocr_v5_mobile"
+            ]
+          }
+        },
+        "latency_only": {
+          "axes": [
+            {
+              "name": "latency_mean_seconds",
+              "path": "runtime.mean_seconds",
+              "direction": "min"
+            },
+            {
+              "name": "latency_p95_seconds",
+              "path": "runtime.p95_seconds",
+              "direction": "min"
+            }
+          ],
+          "frontier": [
+            "rapidocr_ch_light"
+          ],
+          "dominated_by": {
+            "rapidocr_ch_light": [],
+            "mineru_local": [
+              "rapidocr_ch_light",
+              "docling_local",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ],
+            "marker_local": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "docling_local",
+              "pp_structure_v3_light",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ],
+            "docling_local": [
+              "rapidocr_ch_light",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ],
+            "pp_structure_v3_light": [
+              "rapidocr_ch_light",
+              "docling_local",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ],
+            "paddleocr_v5_mobile": [
+              "rapidocr_ch_light",
+              "tesseract_chi_sim"
+            ],
+            "tesseract_chi_sim": [
+              "rapidocr_ch_light"
+            ],
+            "paddleocr_vl_16": [
+              "rapidocr_ch_light",
+              "mineru_local",
+              "marker_local",
+              "docling_local",
+              "pp_structure_v3_light",
+              "paddleocr_v5_mobile",
+              "tesseract_chi_sim"
+            ]
+          }
+        },
+        "quality_latency": {
+          "axes": [
+            {
+              "name": "text_macro_similarity",
+              "path": "quality.text_fidelity.macro_mean_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "text_micro_similarity",
+              "path": "quality.text_fidelity.micro_similarity",
+              "direction": "max"
+            },
+            {
+              "name": "literal_presence_recall",
+              "path": "quality.literal_presence.item_recall",
+              "direction": "max"
+            },
+            {
+              "name": "latency_mean_seconds",
+              "path": "runtime.mean_seconds",
+              "direction": "min"
+            },
+            {
+              "name": "latency_p95_seconds",
+              "path": "runtime.p95_seconds",
+              "direction": "min"
+            }
+          ],
+          "frontier": [
+            "rapidocr_ch_light",
+            "marker_local",
+            "paddleocr_v5_mobile"
+          ],
+          "dominated_by": {
+            "rapidocr_ch_light": [],
+            "mineru_local": [
+              "rapidocr_ch_light",
+              "docling_local",
+              "paddleocr_v5_mobile"
+            ],
+            "marker_local": [],
+            "docling_local": [
+              "rapidocr_ch_light",
+              "paddleocr_v5_mobile"
+            ],
+            "pp_structure_v3_light": [
+              "rapidocr_ch_light",
+              "paddleocr_v5_mobile"
+            ],
+            "paddleocr_v5_mobile": [],
+            "tesseract_chi_sim": [
+              "rapidocr_ch_light"
+            ],
+            "paddleocr_vl_16": [
+              "rapidocr_ch_light",
+              "marker_local",
+              "docling_local",
+              "pp_structure_v3_light",
+              "paddleocr_v5_mobile"
+            ]
+          }
+        }
+      },
+      "capability_emitters": {
+        "text": {
+          "sample_count": 4,
+          "available_task_counts": {
+            "rapidocr_ch_light": 4,
+            "mineru_local": 4,
+            "marker_local": 4,
+            "docling_local": 4,
+            "pp_structure_v3_light": 4,
+            "paddleocr_v5_mobile": 4,
+            "tesseract_chi_sim": 4,
+            "paddleocr_vl_16": 4
+          },
+          "any_emitters": [
+            "rapidocr_ch_light",
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_v5_mobile",
+            "tesseract_chi_sim",
+            "paddleocr_vl_16"
+          ],
+          "full_emitters": [
+            "rapidocr_ch_light",
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_v5_mobile",
+            "tesseract_chi_sim",
+            "paddleocr_vl_16"
+          ],
+          "no_emitter_gap": false
+        },
+        "tables": {
+          "sample_count": 4,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 0,
+            "marker_local": 0,
+            "docling_local": 0,
+            "pp_structure_v3_light": 0,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 0
+          },
+          "any_emitters": [],
+          "full_emitters": [],
+          "no_emitter_gap": true
+        },
+        "formulas": {
+          "sample_count": 4,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 1,
+            "marker_local": 4,
+            "docling_local": 0,
+            "pp_structure_v3_light": 0,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 3
+          },
+          "any_emitters": [
+            "mineru_local",
+            "marker_local",
+            "paddleocr_vl_16"
+          ],
+          "full_emitters": [
+            "marker_local"
+          ],
+          "no_emitter_gap": false
+        },
+        "reading_blocks": {
+          "sample_count": 4,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 4,
+            "marker_local": 4,
+            "docling_local": 4,
+            "pp_structure_v3_light": 4,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 4
+          },
+          "any_emitters": [
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_vl_16"
+          ],
+          "full_emitters": [
+            "mineru_local",
+            "marker_local",
+            "docling_local",
+            "pp_structure_v3_light",
+            "paddleocr_vl_16"
+          ],
+          "no_emitter_gap": false
+        },
+        "relations": {
+          "sample_count": 4,
+          "available_task_counts": {
+            "rapidocr_ch_light": 0,
+            "mineru_local": 0,
+            "marker_local": 0,
+            "docling_local": 0,
+            "pp_structure_v3_light": 0,
+            "paddleocr_v5_mobile": 0,
+            "tesseract_chi_sim": 0,
+            "paddleocr_vl_16": 0
+          },
+          "any_emitters": [],
+          "full_emitters": [],
+          "no_emitter_gap": true
+        }
+      },
+      "gaps": [
+        {
+          "code": "EXPLICIT_RELATION_OUTPUT_GAP",
+          "severity": "CAPABILITY_GAP",
+          "detail": "This route contains executable STRUCTURE_RELATION checks, but no provider emits canonical relations on any sample."
+        },
+        {
+          "code": "FORMULA_QUALITY_NOT_VERIFIED",
+          "severity": "EVALUATION_GAP",
+          "detail": "Formula-related checks remain deferred because frozen GT does not provide canonical formula representation. Formula availability must not be interpreted as formula correctness."
+        }
+      ]
+    }
+  }
+}

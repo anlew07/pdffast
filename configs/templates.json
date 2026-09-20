@@ -1,0 +1,272 @@
+{
+  "schema_version": "1.2",
+  "templates": [
+    {
+      "template_id": "template_a",
+      "template_name": "科研项目申请书模板A",
+      "description": "包含项目负责人、拟开展研究内容、研究条件等章节的申请书模板。",
+      "sections": [
+        {
+          "section_id": "cover",
+          "title": "封面",
+          "zone_type": "strong_template",
+          "order": 0
+        },
+        {
+          "section_id": "basic_info",
+          "title": "第一章 基本信息",
+          "anchors": [
+            "第一章 基本信息",
+            "一、基本信息",
+            "一 基本信息"
+          ],
+          "zone_type": "strong_template",
+          "order": 1
+        },
+        {
+          "section_id": "project_leader",
+          "title": "第二章 项目负责人基本情况",
+          "anchors": [
+            "第二章 项目负责人基本情况",
+            "二、项目负责人基本情况",
+            "二 项目负责人基本情况"
+          ],
+          "zone_type": "strong_template",
+          "order": 2
+        },
+        {
+          "section_id": "research_content",
+          "title": "第三章 拟开展研究内容",
+          "anchors": [
+            "第三章 拟展开研究内容",
+            "第三章 拟开展研究内容",
+            "三、拟展开研究内容",
+            "三、拟开展研究内容",
+            "三 拟展开研究内容",
+            "三 拟开展研究内容"
+          ],
+          "zone_type": "semi_free",
+          "order": 3
+        },
+        {
+          "section_id": "research_conditions",
+          "title": "第四章 研究条件",
+          "anchors": [
+            "第四章 研究条件",
+            "四、研究条件",
+            "四 研究条件"
+          ],
+          "zone_type": "semi_free",
+          "order": 4
+        },
+        {
+          "section_id": "project_members",
+          "title": "第五章 项目人员情况",
+          "anchors": [
+            "第五章 项目人员情况",
+            "五、项目人员情况",
+            "五 项目人员情况"
+          ],
+          "zone_type": "strong_template",
+          "order": 5
+        },
+        {
+          "section_id": "progress_plan",
+          "title": "第六章 项目进度计划",
+          "anchors": [
+            "第六章 项目进度计划",
+            "六、项目进度计划",
+            "六 项目进度计划"
+          ],
+          "zone_type": "strong_template",
+          "order": 6
+        },
+        {
+          "section_id": "performance_targets",
+          "title": "第七章 项目绩效目标",
+          "anchors": [
+            "第七章 项目绩效目标",
+            "七、项目绩效目标",
+            "七 项目绩效目标"
+          ],
+          "zone_type": "strong_template",
+          "order": 7
+        },
+        {
+          "section_id": "attachment_list",
+          "title": "第八章 附件清单",
+          "anchors": [
+            "第八章 附件清单",
+            "八、附件清单",
+            "八 附件清单"
+          ],
+          "zone_type": "strong_template",
+          "order": 8
+        },
+        {
+          "section_id": "integrity_statement",
+          "title": "科研诚信承诺书",
+          "anchors": [
+            "科研诚信承诺书"
+          ],
+          "zone_type": "strong_template",
+          "order": 9
+        },
+        {
+          "section_id": "review_comments",
+          "title": "第九章 审核意见",
+          "anchors": [
+            "第九章 审核意见",
+            "九、审核意见",
+            "九 审核意见"
+          ],
+          "zone_type": "strong_template",
+          "order": 10
+        },
+        {
+          "section_id": "attachments",
+          "title": "附件内容",
+          "zone_type": "free",
+          "order": 11
+        }
+      ]
+    },
+    {
+      "template_id": "template_b",
+      "template_name": "科研项目申请书模板B",
+      "description": "包含单位基本情况、项目基本情况、项目概况、可行性分析报告等章节的申请书模板。",
+      "sections": [
+        {
+          "section_id": "cover",
+          "title": "封面",
+          "zone_type": "strong_template",
+          "order": 0
+        },
+        {
+          "section_id": "organization_info",
+          "title": "第一章 单位基本情况",
+          "anchors": [
+            "第一章 单位基本情况",
+            "一、单位基本情况",
+            "一 单位基本情况"
+          ],
+          "zone_type": "strong_template",
+          "order": 1
+        },
+        {
+          "section_id": "project_basic_info",
+          "title": "第二章 项目基本情况",
+          "anchors": [
+            "第二章 项目基本情况",
+            "二、项目基本情况",
+            "二 项目基本情况"
+          ],
+          "zone_type": "strong_template",
+          "order": 2
+        },
+        {
+          "section_id": "project_overview",
+          "title": "第三章 项目概况",
+          "anchors": [
+            "第三章 项目概况",
+            "三、项目概况",
+            "三 项目概况"
+          ],
+          "zone_type": "semi_free",
+          "order": 3
+        },
+        {
+          "section_id": "project_members",
+          "title": "第四章 项目人员情况",
+          "anchors": [
+            "第四章 项目人员情况",
+            "四、项目人员情况",
+            "四 项目人员情况"
+          ],
+          "zone_type": "strong_template",
+          "order": 4
+        },
+        {
+          "section_id": "progress_plan",
+          "title": "第五章 项目进度计划",
+          "anchors": [
+            "第五章 项目进度计划",
+            "五、项目进度计划",
+            "五 项目进度计划"
+          ],
+          "zone_type": "strong_template",
+          "order": 5
+        },
+        {
+          "section_id": "performance_targets",
+          "title": "第六章 项目绩效目标",
+          "anchors": [
+            "第六章 项目绩效目标",
+            "六、项目绩效目标",
+            "六 项目绩效目标"
+          ],
+          "zone_type": "strong_template",
+          "order": 6
+        },
+        {
+          "section_id": "feasibility_report",
+          "title": "第七章 可行性分析报告",
+
+          "anchors": [
+            "第七章 可行性分析报告",
+            "七、可行性分析报告",
+            "七 可行性分析报告"
+          ],
+
+          "semantic_anchors": [
+            "项目可行性研究报告",
+            "可行性研究报告",
+            "可行性分析报告"
+          ],
+
+          "semantic_match_scope": "page_top",
+
+          "zone_type": "semi_free",
+          "order": 7
+        },
+        {
+          "section_id": "attachment_list",
+          "title": "第八章 附件清单",
+          "anchors": [
+            "第八章 附件清单",
+            "八、附件清单",
+            "八 附件清单"
+          ],
+          "zone_type": "strong_template",
+          "order": 8
+        },
+        {
+          "section_id": "integrity_statement",
+          "title": "科研诚信承诺书",
+          "anchors": [
+            "科研诚信承诺书"
+          ],
+          "zone_type": "strong_template",
+          "order": 9
+        },
+        {
+          "section_id": "review_comments",
+          "title": "第九章 审核意见",
+          "anchors": [
+            "第九章 审核意见",
+            "九、审核意见",
+            "九 审核意见"
+          ],
+          "zone_type": "strong_template",
+          "order": 10
+        },
+        {
+          "section_id": "attachments",
+          "title": "附件内容",
+          "zone_type": "free",
+          "order": 11
+        }
+      ]
+    }
+  ]
+}
