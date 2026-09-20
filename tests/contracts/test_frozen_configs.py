@@ -15,7 +15,7 @@ import pytest
         ),
         (
             "configs/providers.json",
-            "2c8aca69d5d3f564d8282b64cc6513e008d829f3debd660afb1ef6361936f79a",
+            "805424d87fb8469230ba0c636957c6b4b83f889a4b6244ff35ef0e67037b0f6e",
         ),
         (
             "configs/frozen/stage9_route_candidates_prod_v001.json",
@@ -33,7 +33,6 @@ def test_provider_registry_contains_exact_approved_scope() -> None:
     registry = json.loads(Path("configs/providers.json").read_text(encoding="utf-8"))
     assert set(registry["providers"]) == {
         "paddleocr_v5_mobile",
-        "pp_structure_v3_light",
         "paddleocr_vl_16",
         "rapidocr_ch_light",
         "docling_local",
@@ -42,8 +41,8 @@ def test_provider_registry_contains_exact_approved_scope() -> None:
     }
 
 
-def test_retained_provider_objects_equal_reference() -> None:
-    """Catches field-level changes hidden by the deliberate registry subset."""
+def test_retained_provider_objects_equal_explicit_reference_migration() -> None:
+    """Only the enable split may change retained reference Provider objects."""
     raw_root = os.environ.get("PDFFAST_REFERENCE_ROOT")
     if not raw_root:
         pytest.skip("PDFFAST_REFERENCE_ROOT is not set")
@@ -56,4 +55,10 @@ def test_retained_provider_objects_equal_reference() -> None:
             encoding="utf-8"
         )
     )["providers"]
-    assert candidate == {name: reference[name] for name in candidate}
+    expected = {}
+    for name in candidate:
+        migrated = dict(reference[name])
+        migrated["benchmark_enabled"] = bool(migrated.pop("enabled"))
+        migrated["runtime_enabled"] = True
+        expected[name] = migrated
+    assert candidate == expected

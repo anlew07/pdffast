@@ -8,7 +8,6 @@ APPROVED_KINDS = {
     "rapidocr",
     "paddleocr_text",
     "paddleocr_vl",
-    "pp_structure_v3",
     "docling_worker",
     "mineru_worker",
     "marker_worker",
@@ -70,11 +69,21 @@ def test_registry_creates_injected_provider_without_optional_imports() -> None:
 
     assert registry.create(
         "rapidocr_ch_light",
-        {"enabled": True, "kind": "rapidocr", "params": {"lang": "ch"}},
+        {
+            "runtime_enabled": True,
+            "benchmark_enabled": True,
+            "kind": "rapidocr",
+            "params": {"lang": "ch"},
+        },
     ) == (
         sentinel,
         "rapidocr_ch_light",
-        {"enabled": True, "kind": "rapidocr", "params": {"lang": "ch"}},
+        {
+            "runtime_enabled": True,
+            "benchmark_enabled": True,
+            "kind": "rapidocr",
+            "params": {"lang": "ch"},
+        },
     )
 
 
@@ -84,7 +93,11 @@ def test_registry_rejects_disabled_provider() -> None:
     with pytest.raises(ProviderDisabledError, match="marker_local"):
         ProviderRegistry(factories={}).create(
             "marker_local",
-            {"enabled": False, "kind": "marker_worker"},
+            {
+                "runtime_enabled": False,
+                "benchmark_enabled": True,
+                "kind": "marker_worker",
+            },
         )
 
 
@@ -93,6 +106,10 @@ def test_registry_rejects_unknown_adapter_kind() -> None:
 
     with pytest.raises(UnknownProviderKindError, match="generic_cli"):
         ProviderRegistry(factories={}).create(
-            "unsupported",
-            {"enabled": True, "kind": "generic_cli"},
+            "rapidocr_ch_light",
+            {
+                "runtime_enabled": True,
+                "benchmark_enabled": False,
+                "kind": "generic_cli",
+            },
         )
