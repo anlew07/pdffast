@@ -1,6 +1,6 @@
 # PDFFast v2 迁移方案
 
-状态：设计已批准；Phase 0 已完成；Phase 1A（Stage 1–3）已完成并验证
+状态：设计已批准；Phase 0 已完成；Phase 1B（Stage 1–5）已完成并验证
 日期：2026-09-20
 旧工程（只读行为基线）：`/Users/admin/Workspace/pdffast`
 新工程：`/Users/admin/Workspace/pdffast-v2`
@@ -10,7 +10,7 @@
 | Phase | 状态 | 验证 |
 |---|---|---|
 | Phase 0：基线冻结与测试骨架 | 完成 | 默认套件 21 passed / 3 skipped；绑定 reference 的 contract 套件 7 passed |
-| Phase 1：Native Pipeline | 进行中 | Phase 1A Stage 1–3 已迁移；真实样本四项 Artifact 字节级一致 |
+| Phase 1：Native Pipeline | 进行中 | Phase 1B Stage 1–5 已迁移；真实样本八项 Artifact 字节级一致 |
 | Phase 2：Quality 与 Fallback Planning | 计划中 | 尚未迁移业务算法 |
 | Phase 3：Provider Runtime | 计划中 | 尚未迁移 Provider adapter |
 | Phase 4：Canonical、Renderer、Audit | 计划中 | 尚未迁移业务算法 |
@@ -698,9 +698,10 @@ Markdown 内容
 当前切片状态：
 
 - Phase 1A（Stage 1–3）完成：`profiler`、`detector`、`aligner` 已迁移为 package API；
-- `case_002.pdf` 上 `page_profile.json`、`page_snapshot.jsonl`、`template_analysis.json`、`section_alignment.json` 新旧实现字节级一致；
+- Phase 1B（Stage 4–5）完成：`structure`、`tables` 已迁移为 package API；
+- `case_002.pdf` 上 Stage 1–4 五项 JSON/JSONL 与 Stage 5 三项 JSON/Markdown 产物新旧实现字节级一致；
 - 默认套件在未提供外部 reference 时跳过真实回归，不把 SKIP 计为生产验证通过；
-- Phase 1B–1D（Stage 4–6 与最终 Native 集成）仍待实施。
+- Phase 1C–1D（Stage 6 与最终 Native 集成）仍待实施。
 
 工作：
 
