@@ -1,9 +1,20 @@
 # PDFFast v2 迁移方案
 
-状态：设计已批准，等待书面方案复核  
-日期：2026-09-20  
-旧工程（只读行为基线）：`/Users/admin/Workspace/pdffast`  
+状态：设计已批准；Phase 0 已完成并验证
+日期：2026-09-20
+旧工程（只读行为基线）：`/Users/admin/Workspace/pdffast`
 新工程：`/Users/admin/Workspace/pdffast-v2`
+
+## 实施状态
+
+| Phase | 状态 | 验证 |
+|---|---|---|
+| Phase 0：基线冻结与测试骨架 | 完成 | 默认套件 21 passed / 3 skipped；绑定 reference 的 contract 套件 7 passed |
+| Phase 1：Native Pipeline | 计划中 | 尚未迁移业务算法 |
+| Phase 2：Quality 与 Fallback Planning | 计划中 | 尚未迁移业务算法 |
+| Phase 3：Provider Runtime | 计划中 | 尚未迁移 Provider adapter |
+| Phase 4：Canonical、Renderer、Audit | 计划中 | 尚未迁移业务算法 |
+| Phase 5：性能优化 | 计划中 | 必须等待 Phase 1–4 等价回归通过 |
 
 ## 1. 目标与非目标
 
