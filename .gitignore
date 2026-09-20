@@ -1,0 +1,14 @@
+.DS_Store
+.idea/
+.pytest_cache/
+.coverage
+htmlcov/
+__pycache__/
+*.py[cod]
+.venv/
+.venv-*/
+outputs/
+benchmark/samples/*.pdf
+benchmark/samples/**/*.pdf
+*.log
+
