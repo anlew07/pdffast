@@ -5,15 +5,23 @@
 Stage 9.5.1
 Provider Result -> CanonicalPrediction
 
-Behavior-locked migration of the approved Provider adapters. This slice starts
-with rapidocr_ch_light; the remaining approved adapters are added under the
-same parity contract.
+v0.8.0
+- Adapters:
+    1) rapidocr_ch_light
+    2) mineru_local
+    3) marker_local
+    4) docling_local
+    5) pp_structure_v3_light
+    6) paddleocr_v5_mobile
+    7) paddleocr_vl_16
 - Manifest selected_task list is the authority.
 - Standardization only:
     * no re-OCR
     * no image re-understanding
     * no semantic structure guessing
     * no Ground Truth access
+- MinerU may expose richer canonical evidence only when that structure is
+  explicitly present in its emitted Markdown/HTML/LaTeX.
 """
 
 from __future__ import annotations
@@ -33,6 +41,12 @@ SCHEMA_VERSION = "1.1"
 
 SUPPORTED_PROVIDERS = {
     "rapidocr_ch_light",
+    "mineru_local",
+    "marker_local",
+    "docling_local",
+    "pp_structure_v3_light",
+    "paddleocr_v5_mobile",
+    "paddleocr_vl_16",
 }
 
 STATUS_MAP = {
@@ -1096,6 +1110,1459 @@ def normalize_rapidocr(
     return prediction
 
 
+def normalize_mineru(
+    result: dict[str, Any],
+    manifest_task: dict[str, Any],
+    manifest_path: Path,
+    result_path: Path,
+) -> dict[str, Any]:
+    task_id = result.get("task_id")
+    provider_obj = result.get("provider") or {}
+
+    provider_name = provider_obj.get("name")
+    provider_kind = provider_obj.get("kind")
+    provider_model = provider_obj.get("model_or_engine")
+
+    if provider_name != "mineru_local":
+        raise ValueError(
+            f"{task_id}: mineru adapter received "
+            f"provider={provider_name!r}"
+        )
+
+    raw_status = str(
+        result.get("status") or ""
+    ).upper()
+    canonical_status = STATUS_MAP.get(
+        raw_status,
+        "ERROR",
+    )
+
+    warnings = result.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+
+    exception = result.get("exception")
+    quality_hints = result.get("quality_hints")
+    structure = result.get("structure")
+    if not isinstance(structure, dict):
+        structure = {}
+
+    raw_markdown = (
+        result.get("text")
+        if isinstance(result.get("text"), str)
+        else ""
+    )
+
+    tables = extract_tables(raw_markdown)
+    formulas = extract_formulas(raw_markdown)
+    reading_blocks = extract_reading_blocks(
+        raw_markdown
+    )
+
+    canonical_text = markdown_to_plain_text(
+        raw_markdown,
+        tables,
+    )
+
+    table_enabled = structure.get("table_enable") is True
+    formula_enabled = (
+        structure.get("formula_enable") is True
+    )
+
+    if tables:
+        table_availability = "AVAILABLE"
+    elif table_enabled:
+        table_availability = "NOT_EMITTED"
+    else:
+        table_availability = "UNSUPPORTED"
+
+    if formulas:
+        formula_availability = "AVAILABLE"
+    elif formula_enabled:
+        formula_availability = "NOT_EMITTED"
+    else:
+        formula_availability = "UNSUPPORTED"
+
+    if canonical_status in {
+        "SUCCESS",
+        "SUCCESS_WITH_WARNINGS",
+    } and raw_markdown:
+        reading_availability = (
+            "AVAILABLE"
+            if reading_blocks
+            else "NOT_EMITTED"
+        )
+    else:
+        reading_availability = "NOT_EMITTED"
+
+    prediction = {
+        "schema_version": SCHEMA_VERSION,
+        "stage": 9,
+        "substage": "9.5.1",
+        "name": "canonical_prediction",
+        "version": VERSION,
+
+        "task_id": task_id,
+        "task_type": (
+            result.get("task_type")
+            or manifest_task.get("task_type")
+        ),
+        "page_number": result.get(
+            "page_number",
+            manifest_task.get("page_number"),
+        ),
+        "source_id": (
+            result.get("source_id")
+            or manifest_task.get("source_id")
+        ),
+        "capability_route": (
+            result.get("capability_route")
+            or manifest_task.get("capability_route")
+        ),
+
+        "provider": {
+            "name": provider_name,
+            "kind": provider_kind,
+            "model_or_engine": provider_model,
+            "adapter": "mineru_local_v1",
+        },
+
+        "status": canonical_status,
+        "raw_status": raw_status,
+        "elapsed_seconds": result.get("elapsed_seconds"),
+
+        "text": text_payload(
+            canonical_status,
+            canonical_text,
+            result.get("confidence"),
+            raw_content=raw_markdown,
+            source_format="markdown",
+        ),
+
+        # Only explicit provider-emitted structure is exposed.
+        "tables": availability(
+            table_availability,
+            tables,
+        ),
+        "formulas": availability(
+            formula_availability,
+            formulas,
+        ),
+        "reading_blocks": availability(
+            reading_availability,
+            reading_blocks,
+        ),
+
+        # Semantic parent/child/field relations are not emitted by the
+        # current Stage9.3 MinerU task-result. Do not infer them here.
+        "relations": availability(
+            "UNSUPPORTED",
+            [],
+        ),
+
+        "warnings": warnings,
+        "exception": exception,
+
+        "diagnostics": {
+            "quality_hints": (
+                quality_hints
+                if isinstance(quality_hints, dict)
+                else {}
+            ),
+            "provider_structure_summary": structure,
+            "standardization": {
+                "explicit_html_table_count": len(tables),
+                "explicit_formula_count": len(formulas),
+                "reading_block_count": len(
+                    reading_blocks
+                ),
+            },
+        },
+
+        "source_artifacts": {
+            "benchmark_manifest": str(manifest_path),
+            "benchmark_manifest_sha256": (
+                sha256_file(manifest_path)
+            ),
+            "task_result": str(result_path),
+            "task_result_sha256": (
+                sha256_file(result_path)
+            ),
+            "provider_raw_refs": (
+                result.get("provider_raw_refs") or []
+            ),
+            "input_image": (
+                result.get("input_image")
+                or manifest_task.get("input_image")
+            ),
+        },
+
+        "normalization_policy": {
+            "re_ocr": False,
+            "secondary_image_understanding": False,
+            "markdown_to_plain_text": True,
+            "extract_explicit_html_tables": True,
+            "extract_explicit_latex_formulas": True,
+            "segment_explicit_markdown_blocks": True,
+            "infer_table_when_no_markup": False,
+            "infer_formula_when_no_math_markup": False,
+            "infer_relations_from_text": False,
+        },
+    }
+
+    return prediction
+
+
+
+def normalize_marker(
+    result: dict[str, Any],
+    manifest_task: dict[str, Any],
+    manifest_path: Path,
+    result_path: Path,
+) -> dict[str, Any]:
+    """
+    Marker adapter v1.
+
+    Marker Stage9.3 output is Markdown. We only expose structures that are
+    explicitly represented in that Markdown:
+      - text: deterministic Markdown -> plain text standardization
+      - tables: explicit HTML <table>...</table> only
+      - formulas: explicit $...$ / $$...$$ LaTeX only
+      - reading_blocks: explicit Markdown/HTML block order
+      - relations: unsupported (no semantic relation graph emitted)
+
+    No OCR/image reprocessing and no structure inference are allowed here.
+    """
+    task_id = result.get("task_id")
+    provider_obj = result.get("provider") or {}
+
+    provider_name = provider_obj.get("name")
+    provider_kind = provider_obj.get("kind")
+    provider_model = provider_obj.get("model_or_engine")
+
+    if provider_name != "marker_local":
+        raise ValueError(
+            f"{task_id}: marker adapter received "
+            f"provider={provider_name!r}"
+        )
+
+    raw_status = str(result.get("status") or "").upper()
+    canonical_status = STATUS_MAP.get(raw_status, "ERROR")
+
+    warnings = result.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+
+    exception = result.get("exception")
+    quality_hints = result.get("quality_hints")
+    structure = result.get("structure")
+    if not isinstance(structure, dict):
+        structure = {}
+
+    raw_markdown = (
+        result.get("text")
+        if isinstance(result.get("text"), str)
+        else ""
+    )
+
+    tables = extract_tables(raw_markdown)
+    formulas = extract_formulas(raw_markdown)
+    reading_blocks = extract_reading_blocks(raw_markdown)
+    canonical_text = markdown_to_plain_text(raw_markdown, tables)
+
+    success_like = canonical_status in {
+        "SUCCESS",
+        "SUCCESS_WITH_WARNINGS",
+    }
+
+    # For Marker, the benchmark metadata does not expose explicit
+    # table/formula capability flags. Therefore absence is recorded as
+    # NOT_EMITTED, not UNSUPPORTED: the current output simply emitted no
+    # explicit structure of that kind.
+    table_availability = (
+        "AVAILABLE"
+        if tables
+        else "NOT_EMITTED"
+    )
+    formula_availability = (
+        "AVAILABLE"
+        if formulas
+        else "NOT_EMITTED"
+    )
+    reading_availability = (
+        "AVAILABLE"
+        if success_like and reading_blocks
+        else "NOT_EMITTED"
+    )
+
+    prediction = {
+        "schema_version": SCHEMA_VERSION,
+        "stage": 9,
+        "substage": "9.5.1",
+        "name": "canonical_prediction",
+        "version": VERSION,
+
+        "task_id": task_id,
+        "task_type": (
+            result.get("task_type")
+            or manifest_task.get("task_type")
+        ),
+        "page_number": result.get(
+            "page_number",
+            manifest_task.get("page_number"),
+        ),
+        "source_id": (
+            result.get("source_id")
+            or manifest_task.get("source_id")
+        ),
+        "capability_route": (
+            result.get("capability_route")
+            or manifest_task.get("capability_route")
+        ),
+
+        "provider": {
+            "name": provider_name,
+            "kind": provider_kind,
+            "model_or_engine": provider_model,
+            "adapter": "marker_local_v1",
+        },
+
+        "status": canonical_status,
+        "raw_status": raw_status,
+        "elapsed_seconds": result.get("elapsed_seconds"),
+
+        "text": text_payload(
+            canonical_status,
+            canonical_text,
+            result.get("confidence"),
+            raw_content=raw_markdown,
+            source_format="markdown",
+        ),
+
+        "tables": availability(
+            table_availability,
+            tables,
+        ),
+        "formulas": availability(
+            formula_availability,
+            formulas,
+        ),
+        "reading_blocks": availability(
+            reading_availability,
+            reading_blocks,
+        ),
+        "relations": availability(
+            "UNSUPPORTED",
+            [],
+        ),
+
+        "warnings": warnings,
+        "exception": exception,
+
+        "diagnostics": {
+            "quality_hints": (
+                quality_hints
+                if isinstance(quality_hints, dict)
+                else {}
+            ),
+            "provider_structure_summary": structure,
+            "standardization": {
+                "explicit_html_table_count": len(tables),
+                "explicit_formula_count": len(formulas),
+                "reading_block_count": len(reading_blocks),
+                "image_block_count": sum(
+                    1
+                    for block in reading_blocks
+                    if block.get("kind") == "image"
+                ),
+            },
+        },
+
+        "source_artifacts": {
+            "benchmark_manifest": str(manifest_path),
+            "benchmark_manifest_sha256": sha256_file(manifest_path),
+            "task_result": str(result_path),
+            "task_result_sha256": sha256_file(result_path),
+            "provider_raw_refs": result.get("provider_raw_refs") or [],
+            "input_image": (
+                result.get("input_image")
+                or manifest_task.get("input_image")
+            ),
+        },
+
+        "normalization_policy": {
+            "re_ocr": False,
+            "secondary_image_understanding": False,
+            "markdown_to_plain_text": True,
+            "extract_explicit_html_tables": True,
+            "extract_explicit_latex_formulas": True,
+            "segment_explicit_markdown_blocks": True,
+            "preserve_explicit_image_blocks_in_reading_blocks": True,
+            "infer_table_when_no_markup": False,
+            "infer_formula_when_no_math_markup": False,
+            "infer_relations_from_text": False,
+        },
+    }
+
+    return prediction
+
+
+DOC_COMMENT_RE = re.compile(
+    r"<!--\s*(.*?)\s*-->",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+DOC_SPECIAL_BLOCK_RE = re.compile(
+    r"(<table\b[^>]*>.*?</table>"
+    r"|\$\$.*?\$\$"
+    r"|!\[[^\]]*\]\([^)]*\)"
+    r"|<!--.*?-->)",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+
+def extract_docling_reading_blocks(
+    markdown_text: str,
+) -> list[dict[str, Any]]:
+    """
+    Preserve only blocks that Docling explicitly emitted in Markdown.
+
+    In addition to the generic Markdown blocks, Docling sometimes emits
+    explicit placeholders such as:
+      <!-- image -->
+      <!-- formula-not-decoded -->
+
+    These placeholders are preserved as ordered evidence blocks. They are
+    NOT treated as decoded image/formula content.
+    """
+    result: list[dict[str, Any]] = []
+    cursor = 0
+    table_index = 0
+    formula_index = 0
+    image_index = 0
+    formula_placeholder_index = 0
+
+    for match in DOC_SPECIAL_BLOCK_RE.finditer(markdown_text):
+        before = markdown_text[cursor:match.start()]
+        result.extend(_plain_blocks_from_segment(before))
+
+        token = match.group(0)
+        token_lower = token.lower()
+
+        if token_lower.startswith("<table"):
+            table_index += 1
+            table_item = parse_html_table(token, table_index)
+            result.append(
+                {
+                    "kind": "table",
+                    "table_id": table_item["table_id"],
+                    "text": table_plain_text(table_item),
+                }
+            )
+
+        elif token.startswith("$$"):
+            formula_index += 1
+            result.append(
+                {
+                    "kind": "formula",
+                    "formula_id": f"formula_block_{formula_index:03d}",
+                    "text": token[2:-2].strip(),
+                }
+            )
+
+        elif token.startswith("!["):
+            image_index += 1
+            m = IMAGE_RE.fullmatch(token)
+            alt_text = ""
+            path = ""
+            if m:
+                alt_text = m.group(1).strip()
+                path = m.group(2).strip()
+            result.append(
+                {
+                    "kind": "image",
+                    "image_id": f"image_{image_index:03d}",
+                    "text": alt_text,
+                    "path": path,
+                }
+            )
+
+        elif token.startswith("<!--"):
+            m = DOC_COMMENT_RE.fullmatch(token)
+            label = m.group(1).strip() if m else ""
+            normalized_label = label.lower().replace("_", "-")
+
+            if normalized_label == "image":
+                image_index += 1
+                result.append(
+                    {
+                        "kind": "image_placeholder",
+                        "image_id": f"image_placeholder_{image_index:03d}",
+                        "text": "",
+                        "provider_marker": label,
+                    }
+                )
+            elif normalized_label == "formula-not-decoded":
+                formula_placeholder_index += 1
+                result.append(
+                    {
+                        "kind": "formula_placeholder",
+                        "formula_id": (
+                            f"formula_placeholder_{formula_placeholder_index:03d}"
+                        ),
+                        "text": "",
+                        "provider_marker": label,
+                        "decoded": False,
+                    }
+                )
+            # Other HTML comments are intentionally omitted from canonical
+            # reading blocks because they are implementation metadata rather
+            # than document content.
+
+        cursor = match.end()
+
+    result.extend(_plain_blocks_from_segment(markdown_text[cursor:]))
+
+    for order, block in enumerate(result):
+        block["block_id"] = f"block_{order + 1:03d}"
+        block["order"] = order
+
+    return result
+
+
+def normalize_docling(
+    result: dict[str, Any],
+    manifest_task: dict[str, Any],
+    manifest_path: Path,
+    result_path: Path,
+) -> dict[str, Any]:
+    """
+    Docling adapter v1.
+
+    The current Stage9.3 task result exposes Docling's Markdown text plus
+    references to result.md/result.json, but does not embed Docling's full
+    document object. Therefore this adapter only standardizes structures
+    explicitly visible in the emitted Markdown:
+      - text: Markdown -> canonical plain text
+      - tables: explicit HTML <table> only
+      - formulas: explicit LaTeX $...$/$$...$$ only
+      - reading_blocks: emitted Markdown block order, including explicit
+        Docling image/formula-not-decoded placeholders
+      - relations: unsupported (not emitted as semantic relation objects)
+
+    A <!-- formula-not-decoded --> marker is evidence that a formula was
+    detected but NOT decoded, so formulas stay NOT_EMITTED unless actual
+    LaTeX is present.
+    """
+    task_id = result.get("task_id")
+    provider_obj = result.get("provider") or {}
+
+    provider_name = provider_obj.get("name")
+    provider_kind = provider_obj.get("kind")
+    provider_model = provider_obj.get("model_or_engine")
+
+    if provider_name != "docling_local":
+        raise ValueError(
+            f"{task_id}: docling adapter received "
+            f"provider={provider_name!r}"
+        )
+
+    raw_status = str(result.get("status") or "").upper()
+    canonical_status = STATUS_MAP.get(raw_status, "ERROR")
+
+    warnings = result.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+
+    exception = result.get("exception")
+    quality_hints = result.get("quality_hints")
+    structure = result.get("structure")
+    if not isinstance(structure, dict):
+        structure = {}
+
+    raw_markdown = (
+        result.get("text")
+        if isinstance(result.get("text"), str)
+        else ""
+    )
+
+    tables = extract_tables(raw_markdown)
+    formulas = extract_formulas(raw_markdown)
+    reading_blocks = extract_docling_reading_blocks(raw_markdown)
+    canonical_text = markdown_to_plain_text(raw_markdown, tables)
+
+    success_like = canonical_status in {
+        "SUCCESS",
+        "SUCCESS_WITH_WARNINGS",
+    }
+
+    # The current task-result does not expose a separate Docling capability
+    # flag. Absence therefore means NOT_EMITTED, not UNSUPPORTED.
+    table_availability = "AVAILABLE" if tables else "NOT_EMITTED"
+    formula_availability = "AVAILABLE" if formulas else "NOT_EMITTED"
+    reading_availability = (
+        "AVAILABLE"
+        if success_like and reading_blocks
+        else "NOT_EMITTED"
+    )
+
+    comment_labels = [
+        m.group(1).strip()
+        for m in DOC_COMMENT_RE.finditer(raw_markdown)
+    ]
+    formula_not_decoded_count = sum(
+        1
+        for x in comment_labels
+        if x.lower().replace("_", "-") == "formula-not-decoded"
+    )
+    image_placeholder_count = sum(
+        1
+        for x in comment_labels
+        if x.lower().replace("_", "-") == "image"
+    )
+
+    prediction = {
+        "schema_version": SCHEMA_VERSION,
+        "stage": 9,
+        "substage": "9.5.1",
+        "name": "canonical_prediction",
+        "version": VERSION,
+
+        "task_id": task_id,
+        "task_type": (
+            result.get("task_type")
+            or manifest_task.get("task_type")
+        ),
+        "page_number": result.get(
+            "page_number",
+            manifest_task.get("page_number"),
+        ),
+        "source_id": (
+            result.get("source_id")
+            or manifest_task.get("source_id")
+        ),
+        "capability_route": (
+            result.get("capability_route")
+            or manifest_task.get("capability_route")
+        ),
+
+        "provider": {
+            "name": provider_name,
+            "kind": provider_kind,
+            "model_or_engine": provider_model,
+            "adapter": "docling_local_v1",
+        },
+
+        "status": canonical_status,
+        "raw_status": raw_status,
+        "elapsed_seconds": result.get("elapsed_seconds"),
+
+        "text": text_payload(
+            canonical_status,
+            canonical_text,
+            result.get("confidence"),
+            raw_content=raw_markdown,
+            source_format="markdown",
+        ),
+
+        "tables": availability(
+            table_availability,
+            tables,
+        ),
+        "formulas": availability(
+            formula_availability,
+            formulas,
+        ),
+        "reading_blocks": availability(
+            reading_availability,
+            reading_blocks,
+        ),
+        "relations": availability(
+            "UNSUPPORTED",
+            [],
+        ),
+
+        "warnings": warnings,
+        "exception": exception,
+
+        "diagnostics": {
+            "quality_hints": (
+                quality_hints
+                if isinstance(quality_hints, dict)
+                else {}
+            ),
+            "provider_structure_summary": structure,
+            "standardization": {
+                "explicit_html_table_count": len(tables),
+                "explicit_formula_count": len(formulas),
+                "formula_not_decoded_count": formula_not_decoded_count,
+                "image_placeholder_count": image_placeholder_count,
+                "reading_block_count": len(reading_blocks),
+            },
+        },
+
+        "source_artifacts": {
+            "benchmark_manifest": str(manifest_path),
+            "benchmark_manifest_sha256": sha256_file(manifest_path),
+            "task_result": str(result_path),
+            "task_result_sha256": sha256_file(result_path),
+            "provider_raw_refs": result.get("provider_raw_refs") or [],
+            "input_image": (
+                result.get("input_image")
+                or manifest_task.get("input_image")
+            ),
+        },
+
+        "normalization_policy": {
+            "re_ocr": False,
+            "secondary_image_understanding": False,
+            "markdown_to_plain_text": True,
+            "extract_explicit_html_tables": True,
+            "extract_explicit_latex_formulas": True,
+            "preserve_docling_image_placeholders_in_reading_blocks": True,
+            "preserve_formula_not_decoded_placeholders_in_reading_blocks": True,
+            "infer_table_when_no_markup": False,
+            "infer_formula_when_no_math_markup": False,
+            "infer_relations_from_text": False,
+        },
+    }
+
+    return prediction
+
+
+HTML_IMG_RE = re.compile(
+    r"<img\b([^>]*)/?>",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+HTML_SRC_RE = re.compile(
+    r"\bsrc\s*=\s*[\"']([^\"']*)[\"']",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+HTML_ALT_RE = re.compile(
+    r"\balt\s*=\s*[\"']([^\"']*)[\"']",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+PP_SPECIAL_BLOCK_RE = re.compile(
+    r"(<table\b[^>]*>.*?</table>"
+    r"|\$\$.*?\$\$"
+    r"|!\[[^\]]*\]\([^)]*\)"
+    r"|<img\b[^>]*?/?>)",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+
+def _html_img_attrs(token: str) -> tuple[str, str]:
+    src_match = HTML_SRC_RE.search(token)
+    alt_match = HTML_ALT_RE.search(token)
+    src = src_match.group(1).strip() if src_match else ""
+    alt = alt_match.group(1).strip() if alt_match else ""
+    return src, alt
+
+
+def _looks_like_formula_image(src: str, alt: str) -> bool:
+    """
+    This does NOT decode or infer formula content.
+
+    PP-StructureV3 may explicitly emit an image whose own provider-generated
+    filename says it came from a formula box, e.g. img_in_formula_box_....jpg.
+    We preserve that provider evidence only as an undecoded formula placeholder.
+    """
+    signal = f"{src} {alt}".lower()
+    return (
+        "formula" in signal
+        or "equation" in signal
+        or "math" in signal
+    )
+
+
+def extract_ppstructure_reading_blocks(
+    markdown_text: str,
+) -> list[dict[str, Any]]:
+    """
+    Deterministically preserve the provider-emitted order.
+
+    Supported explicit blocks:
+      - HTML <table>...</table>
+      - decoded LaTeX $$...$$
+      - Markdown images
+      - HTML <img ...>
+
+    An HTML image explicitly labelled by PP-Structure's own generated path as
+    a formula-box image becomes formula_placeholder(decoded=False), NOT a
+    decoded formula.
+    """
+    result: list[dict[str, Any]] = []
+    cursor = 0
+    table_index = 0
+    formula_index = 0
+    image_index = 0
+    formula_placeholder_index = 0
+
+    for match in PP_SPECIAL_BLOCK_RE.finditer(markdown_text):
+        before = markdown_text[cursor:match.start()]
+        result.extend(_plain_blocks_from_segment(before))
+
+        token = match.group(0)
+        token_lower = token.lower()
+
+        if token_lower.startswith("<table"):
+            table_index += 1
+            table_item = parse_html_table(token, table_index)
+            result.append(
+                {
+                    "kind": "table",
+                    "table_id": table_item["table_id"],
+                    "text": table_plain_text(table_item),
+                }
+            )
+
+        elif token.startswith("$$"):
+            formula_index += 1
+            result.append(
+                {
+                    "kind": "formula",
+                    "formula_id": f"formula_block_{formula_index:03d}",
+                    "text": token[2:-2].strip(),
+                }
+            )
+
+        elif token.startswith("!["):
+            image_index += 1
+            m = IMAGE_RE.fullmatch(token)
+            alt_text = ""
+            path = ""
+            if m:
+                alt_text = m.group(1).strip()
+                path = m.group(2).strip()
+
+            if _looks_like_formula_image(path, alt_text):
+                formula_placeholder_index += 1
+                result.append(
+                    {
+                        "kind": "formula_placeholder",
+                        "formula_id": (
+                            f"formula_placeholder_{formula_placeholder_index:03d}"
+                        ),
+                        "text": "",
+                        "path": path,
+                        "alt": alt_text,
+                        "decoded": False,
+                        "provider_evidence": "image_path_or_alt",
+                    }
+                )
+            else:
+                result.append(
+                    {
+                        "kind": "image",
+                        "image_id": f"image_{image_index:03d}",
+                        "text": alt_text,
+                        "path": path,
+                    }
+                )
+
+        elif token_lower.startswith("<img"):
+            src, alt = _html_img_attrs(token)
+
+            if _looks_like_formula_image(src, alt):
+                formula_placeholder_index += 1
+                result.append(
+                    {
+                        "kind": "formula_placeholder",
+                        "formula_id": (
+                            f"formula_placeholder_{formula_placeholder_index:03d}"
+                        ),
+                        "text": "",
+                        "path": src,
+                        "alt": alt,
+                        "decoded": False,
+                        "provider_evidence": "html_img_src_or_alt",
+                    }
+                )
+            else:
+                image_index += 1
+                result.append(
+                    {
+                        "kind": "image",
+                        "image_id": f"image_{image_index:03d}",
+                        "text": alt,
+                        "path": src,
+                    }
+                )
+
+        cursor = match.end()
+
+    result.extend(_plain_blocks_from_segment(markdown_text[cursor:]))
+
+    for order, block in enumerate(result):
+        block["block_id"] = f"block_{order + 1:03d}"
+        block["order"] = order
+
+    return result
+
+
+def normalize_pp_structure_v3(
+    result: dict[str, Any],
+    manifest_task: dict[str, Any],
+    manifest_path: Path,
+    result_path: Path,
+) -> dict[str, Any]:
+    """
+    PP-StructureV3-light adapter v1.
+
+    Current Stage9.3 output is an HTML/Markdown string. Canonicalization uses
+    only structures explicitly present there:
+      - text: deterministic HTML/Markdown -> plain text
+      - tables: explicit HTML <table>...</table>
+      - formulas: explicit LaTeX $...$/$$...$$ only
+      - reading_blocks: provider-emitted block order
+      - formula-box images: preserved as undecoded placeholders only
+      - relations: unsupported
+
+    No image OCR, no formula decoding, and no semantic relation inference.
+    """
+    task_id = result.get("task_id")
+    provider_obj = result.get("provider") or {}
+
+    provider_name = provider_obj.get("name")
+    provider_kind = provider_obj.get("kind")
+    provider_model = provider_obj.get("model_or_engine")
+
+    if provider_name != "pp_structure_v3_light":
+        raise ValueError(
+            f"{task_id}: PP-Structure adapter received "
+            f"provider={provider_name!r}"
+        )
+
+    raw_status = str(result.get("status") or "").upper()
+    canonical_status = STATUS_MAP.get(raw_status, "ERROR")
+
+    warnings = result.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+
+    exception = result.get("exception")
+    quality_hints = result.get("quality_hints")
+    structure = result.get("structure")
+    if not isinstance(structure, dict):
+        structure = {}
+
+    raw_markup = (
+        result.get("text")
+        if isinstance(result.get("text"), str)
+        else ""
+    )
+
+    tables = extract_tables(raw_markup)
+    formulas = extract_formulas(raw_markup)
+    reading_blocks = extract_ppstructure_reading_blocks(raw_markup)
+    canonical_text = markdown_to_plain_text(raw_markup, tables)
+
+    success_like = canonical_status in {
+        "SUCCESS",
+        "SUCCESS_WITH_WARNINGS",
+    }
+
+    # Stage9.3 does not preserve an explicit feature flag set in the task
+    # result. Therefore "no emitted table/formula" means NOT_EMITTED rather
+    # than UNSUPPORTED.
+    table_availability = "AVAILABLE" if tables else "NOT_EMITTED"
+    formula_availability = "AVAILABLE" if formulas else "NOT_EMITTED"
+    reading_availability = (
+        "AVAILABLE"
+        if success_like and reading_blocks
+        else "NOT_EMITTED"
+    )
+
+    formula_placeholder_count = sum(
+        1
+        for block in reading_blocks
+        if block.get("kind") == "formula_placeholder"
+    )
+    image_block_count = sum(
+        1
+        for block in reading_blocks
+        if block.get("kind") == "image"
+    )
+
+    prediction = {
+        "schema_version": SCHEMA_VERSION,
+        "stage": 9,
+        "substage": "9.5.1",
+        "name": "canonical_prediction",
+        "version": VERSION,
+
+        "task_id": task_id,
+        "task_type": (
+            result.get("task_type")
+            or manifest_task.get("task_type")
+        ),
+        "page_number": result.get(
+            "page_number",
+            manifest_task.get("page_number"),
+        ),
+        "source_id": (
+            result.get("source_id")
+            or manifest_task.get("source_id")
+        ),
+        "capability_route": (
+            result.get("capability_route")
+            or manifest_task.get("capability_route")
+        ),
+
+        "provider": {
+            "name": provider_name,
+            "kind": provider_kind,
+            "model_or_engine": provider_model,
+            "adapter": "pp_structure_v3_light_v1",
+        },
+
+        "status": canonical_status,
+        "raw_status": raw_status,
+        "elapsed_seconds": result.get("elapsed_seconds"),
+
+        "text": text_payload(
+            canonical_status,
+            canonical_text,
+            result.get("confidence"),
+            raw_content=raw_markup,
+            source_format="html_markdown",
+        ),
+
+        "tables": availability(
+            table_availability,
+            tables,
+        ),
+        "formulas": availability(
+            formula_availability,
+            formulas,
+        ),
+        "reading_blocks": availability(
+            reading_availability,
+            reading_blocks,
+        ),
+        "relations": availability(
+            "UNSUPPORTED",
+            [],
+        ),
+
+        "warnings": warnings,
+        "exception": exception,
+
+        "diagnostics": {
+            "quality_hints": (
+                quality_hints
+                if isinstance(quality_hints, dict)
+                else {}
+            ),
+            "provider_structure_summary": structure,
+            "standardization": {
+                "explicit_html_table_count": len(tables),
+                "explicit_formula_count": len(formulas),
+                "formula_image_placeholder_count": formula_placeholder_count,
+                "image_block_count": image_block_count,
+                "reading_block_count": len(reading_blocks),
+            },
+        },
+
+        "source_artifacts": {
+            "benchmark_manifest": str(manifest_path),
+            "benchmark_manifest_sha256": sha256_file(manifest_path),
+            "task_result": str(result_path),
+            "task_result_sha256": sha256_file(result_path),
+            "provider_raw_refs": result.get("provider_raw_refs") or [],
+            "input_image": (
+                result.get("input_image")
+                or manifest_task.get("input_image")
+            ),
+        },
+
+        "normalization_policy": {
+            "re_ocr": False,
+            "secondary_image_understanding": False,
+            "markup_to_plain_text": True,
+            "extract_explicit_html_tables": True,
+            "extract_explicit_latex_formulas": True,
+            "preserve_explicit_html_images_in_reading_blocks": True,
+            "preserve_formula_box_images_as_undecoded_placeholders": True,
+            "infer_table_when_no_markup": False,
+            "decode_formula_from_image": False,
+            "infer_formula_when_no_math_markup": False,
+            "infer_relations_from_text": False,
+        },
+    }
+
+    return prediction
+
+
+def normalize_paddleocr_v5_mobile(
+    result: dict[str, Any],
+    manifest_task: dict[str, Any],
+    manifest_path: Path,
+    result_path: Path,
+) -> dict[str, Any]:
+    """
+    PP-OCRv5 mobile adapter v1.
+
+    Current Stage9.3 task-result preserves:
+      - flattened OCR text
+      - overall confidence
+      - ocr_line_count summary
+
+    It does NOT preserve line polygons / ordered block objects / table cells /
+    decoded formula objects. Therefore:
+      - text: AVAILABLE on successful provider output, including empty text
+      - tables: UNSUPPORTED
+      - formulas: UNSUPPORTED
+      - reading_blocks: NOT_EMITTED
+      - relations: UNSUPPORTED
+
+    Newline-separated OCR text is NOT promoted into fake reading blocks.
+    Formula-looking OCR text is NOT promoted into a formula object.
+    """
+    task_id = result.get("task_id")
+    provider_obj = result.get("provider") or {}
+
+    provider_name = provider_obj.get("name")
+    provider_kind = provider_obj.get("kind")
+    provider_model = provider_obj.get("model_or_engine")
+
+    if provider_name != "paddleocr_v5_mobile":
+        raise ValueError(
+            f"{task_id}: PP-OCRv5 adapter received "
+            f"provider={provider_name!r}"
+        )
+
+    raw_status = str(result.get("status") or "").upper()
+    canonical_status = STATUS_MAP.get(raw_status, "ERROR")
+
+    warnings = result.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+
+    exception = result.get("exception")
+    quality_hints = result.get("quality_hints")
+    structure = result.get("structure")
+    if not isinstance(structure, dict):
+        structure = {}
+
+    raw_text = (
+        result.get("text")
+        if isinstance(result.get("text"), str)
+        else ""
+    )
+
+    prediction = {
+        "schema_version": SCHEMA_VERSION,
+        "stage": 9,
+        "substage": "9.5.1",
+        "name": "canonical_prediction",
+        "version": VERSION,
+
+        "task_id": task_id,
+        "task_type": (
+            result.get("task_type")
+            or manifest_task.get("task_type")
+        ),
+        "page_number": result.get(
+            "page_number",
+            manifest_task.get("page_number"),
+        ),
+        "source_id": (
+            result.get("source_id")
+            or manifest_task.get("source_id")
+        ),
+        "capability_route": (
+            result.get("capability_route")
+            or manifest_task.get("capability_route")
+        ),
+
+        "provider": {
+            "name": provider_name,
+            "kind": provider_kind,
+            "model_or_engine": provider_model,
+            "adapter": "paddleocr_v5_mobile_v1",
+        },
+
+        "status": canonical_status,
+        "raw_status": raw_status,
+        "elapsed_seconds": result.get("elapsed_seconds"),
+
+        "text": text_payload(
+            canonical_status,
+            raw_text,
+            result.get("confidence"),
+            raw_content=raw_text,
+            source_format="plain_text",
+        ),
+
+        "tables": availability(
+            "UNSUPPORTED",
+            [],
+        ),
+        "formulas": availability(
+            "UNSUPPORTED",
+            [],
+        ),
+        "reading_blocks": availability(
+            "NOT_EMITTED",
+            [],
+        ),
+        "relations": availability(
+            "UNSUPPORTED",
+            [],
+        ),
+
+        "warnings": warnings,
+        "exception": exception,
+
+        "diagnostics": {
+            "quality_hints": (
+                quality_hints
+                if isinstance(quality_hints, dict)
+                else {}
+            ),
+            "provider_structure_summary": structure,
+        },
+
+        "source_artifacts": {
+            "benchmark_manifest": str(manifest_path),
+            "benchmark_manifest_sha256": sha256_file(manifest_path),
+            "task_result": str(result_path),
+            "task_result_sha256": sha256_file(result_path),
+            "provider_raw_refs": result.get("provider_raw_refs") or [],
+            "input_image": (
+                result.get("input_image")
+                or manifest_task.get("input_image")
+            ),
+        },
+
+        "normalization_policy": {
+            "re_ocr": False,
+            "secondary_image_understanding": False,
+            "infer_tables_from_text": False,
+            "infer_formulas_from_text": False,
+            "infer_relations_from_text": False,
+            "split_plain_text_into_fake_reading_blocks": False,
+            "promote_formula_like_ocr_text_to_formula_object": False,
+        },
+    }
+
+    return prediction
+
+
+def normalize_paddleocr_vl_16(
+    result: dict[str, Any],
+    manifest_task: dict[str, Any],
+    manifest_path: Path,
+    result_path: Path,
+) -> dict[str, Any]:
+    """
+    PaddleOCR-VL v1.6 adapter v1.
+
+    Current Stage9.3 output is Markdown/HTML and may explicitly contain:
+      - HTML tables
+      - LaTeX inline/block formulas
+      - HTML/Markdown image blocks
+      - ordered Markdown/HTML blocks
+
+    Canonicalization uses only provider-emitted evidence:
+      - no re-OCR
+      - no image re-understanding
+      - no table inference when no table markup exists
+      - no formula inference when no math markup exists
+      - no semantic relation inference
+    """
+    task_id = result.get("task_id")
+    provider_obj = result.get("provider") or {}
+
+    provider_name = provider_obj.get("name")
+    provider_kind = provider_obj.get("kind")
+    provider_model = provider_obj.get("model_or_engine")
+
+    if provider_name != "paddleocr_vl_16":
+        raise ValueError(
+            f"{task_id}: PaddleOCR-VL adapter received "
+            f"provider={provider_name!r}"
+        )
+
+    raw_status = str(result.get("status") or "").upper()
+    canonical_status = STATUS_MAP.get(raw_status, "ERROR")
+
+    warnings = result.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+
+    exception = result.get("exception")
+    quality_hints = result.get("quality_hints")
+    structure = result.get("structure")
+    if not isinstance(structure, dict):
+        structure = {}
+
+    raw_markup = (
+        result.get("text")
+        if isinstance(result.get("text"), str)
+        else ""
+    )
+
+    tables = extract_tables(raw_markup)
+    formulas = extract_formulas(raw_markup)
+
+    # Reuse the explicit ordered block parser already used for PP-Structure.
+    # It handles HTML tables, Markdown/HTML images and LaTeX blocks without
+    # performing secondary image understanding.
+    reading_blocks = extract_ppstructure_reading_blocks(raw_markup)
+
+    canonical_text = markdown_to_plain_text(
+        raw_markup,
+        tables,
+    )
+
+    success_like = canonical_status in {
+        "SUCCESS",
+        "SUCCESS_WITH_WARNINGS",
+    }
+
+    table_availability = (
+        "AVAILABLE"
+        if tables
+        else "NOT_EMITTED"
+    )
+
+    formula_availability = (
+        "AVAILABLE"
+        if formulas
+        else "NOT_EMITTED"
+    )
+
+    reading_availability = (
+        "AVAILABLE"
+        if success_like and reading_blocks
+        else "NOT_EMITTED"
+    )
+
+    formula_placeholder_count = sum(
+        1
+        for block in reading_blocks
+        if block.get("kind") == "formula_placeholder"
+    )
+    image_block_count = sum(
+        1
+        for block in reading_blocks
+        if block.get("kind") == "image"
+    )
+
+    prediction = {
+        "schema_version": SCHEMA_VERSION,
+        "stage": 9,
+        "substage": "9.5.1",
+        "name": "canonical_prediction",
+        "version": VERSION,
+
+        "task_id": task_id,
+        "task_type": (
+            result.get("task_type")
+            or manifest_task.get("task_type")
+        ),
+        "page_number": result.get(
+            "page_number",
+            manifest_task.get("page_number"),
+        ),
+        "source_id": (
+            result.get("source_id")
+            or manifest_task.get("source_id")
+        ),
+        "capability_route": (
+            result.get("capability_route")
+            or manifest_task.get("capability_route")
+        ),
+
+        "provider": {
+            "name": provider_name,
+            "kind": provider_kind,
+            "model_or_engine": provider_model,
+            "adapter": "paddleocr_vl_16_v1",
+        },
+
+        "status": canonical_status,
+        "raw_status": raw_status,
+        "elapsed_seconds": result.get("elapsed_seconds"),
+
+        "text": text_payload(
+            canonical_status,
+            canonical_text,
+            result.get("confidence"),
+            raw_content=raw_markup,
+            source_format="html_markdown",
+        ),
+
+        "tables": availability(
+            table_availability,
+            tables,
+        ),
+        "formulas": availability(
+            formula_availability,
+            formulas,
+        ),
+        "reading_blocks": availability(
+            reading_availability,
+            reading_blocks,
+        ),
+        "relations": availability(
+            "UNSUPPORTED",
+            [],
+        ),
+
+        "warnings": warnings,
+        "exception": exception,
+
+        "diagnostics": {
+            "quality_hints": (
+                quality_hints
+                if isinstance(quality_hints, dict)
+                else {}
+            ),
+            "provider_structure_summary": structure,
+            "standardization": {
+                "explicit_html_table_count": len(tables),
+                "explicit_formula_count": len(formulas),
+                "formula_image_placeholder_count": formula_placeholder_count,
+                "image_block_count": image_block_count,
+                "reading_block_count": len(reading_blocks),
+            },
+        },
+
+        "source_artifacts": {
+            "benchmark_manifest": str(manifest_path),
+            "benchmark_manifest_sha256": sha256_file(manifest_path),
+            "task_result": str(result_path),
+            "task_result_sha256": sha256_file(result_path),
+            "provider_raw_refs": result.get("provider_raw_refs") or [],
+            "input_image": (
+                result.get("input_image")
+                or manifest_task.get("input_image")
+            ),
+        },
+
+        "normalization_policy": {
+            "re_ocr": False,
+            "secondary_image_understanding": False,
+            "markup_to_plain_text": True,
+            "extract_explicit_html_tables": True,
+            "extract_explicit_latex_formulas": True,
+            "preserve_explicit_images_in_reading_blocks": True,
+            "preserve_formula_box_images_as_undecoded_placeholders": True,
+            "infer_table_when_no_markup": False,
+            "decode_formula_from_image": False,
+            "infer_formula_when_no_math_markup": False,
+            "infer_relations_from_text": False,
+        },
+    }
+
+    return prediction
+
 def validate_task_result(
     result: dict[str, Any],
     task_map: dict[str, dict[str, Any]],
@@ -1232,6 +2699,79 @@ def validate_canonical(
         )
 
 
+def normalize_one(
+    manifest: dict[str, Any],
+    manifest_path: Path,
+    task_map: dict[str, dict[str, Any]],
+    provider: str,
+    result_path: Path,
+) -> dict[str, Any]:
+    result = load_json(result_path)
+
+    manifest_task = validate_task_result(
+        result,
+        task_map,
+        provider,
+    )
+
+    if provider == "rapidocr_ch_light":
+        pred = normalize_rapidocr(
+            result=result,
+            manifest_task=manifest_task,
+            manifest_path=manifest_path,
+            result_path=result_path,
+        )
+    elif provider == "mineru_local":
+        pred = normalize_mineru(
+            result=result,
+            manifest_task=manifest_task,
+            manifest_path=manifest_path,
+            result_path=result_path,
+        )
+    elif provider == "marker_local":
+        pred = normalize_marker(
+            result=result,
+            manifest_task=manifest_task,
+            manifest_path=manifest_path,
+            result_path=result_path,
+        )
+    elif provider == "docling_local":
+        pred = normalize_docling(
+            result=result,
+            manifest_task=manifest_task,
+            manifest_path=manifest_path,
+            result_path=result_path,
+        )
+    elif provider == "pp_structure_v3_light":
+        pred = normalize_pp_structure_v3(
+            result=result,
+            manifest_task=manifest_task,
+            manifest_path=manifest_path,
+            result_path=result_path,
+        )
+    elif provider == "paddleocr_v5_mobile":
+        pred = normalize_paddleocr_v5_mobile(
+            result=result,
+            manifest_task=manifest_task,
+            manifest_path=manifest_path,
+            result_path=result_path,
+        )
+    elif provider == "paddleocr_vl_16":
+        pred = normalize_paddleocr_vl_16(
+            result=result,
+            manifest_task=manifest_task,
+            manifest_path=manifest_path,
+            result_path=result_path,
+        )
+    else:
+        raise ValueError(
+            f"no adapter for provider={provider}"
+        )
+
+    validate_canonical(pred)
+    return pred
+
+
 def normalize_prediction(
     *,
     manifest: dict[str, Any],
@@ -1241,18 +2781,10 @@ def normalize_prediction(
     result_path: Path,
 ) -> dict[str, Any]:
     """Normalize one approved raw Provider result into CanonicalPrediction."""
-    if provider not in SUPPORTED_PROVIDERS:
-        raise ValueError(f"no adapter for provider={provider}")
-
-    result_path = Path(result_path)
-    manifest_path = Path(manifest_path)
-    result = load_json(result_path)
-    manifest_task = validate_task_result(result, task_map, provider)
-    prediction = normalize_rapidocr(
-        result=result,
-        manifest_task=manifest_task,
-        manifest_path=manifest_path,
-        result_path=result_path,
+    return normalize_one(
+        manifest=manifest,
+        manifest_path=Path(manifest_path),
+        task_map=task_map,
+        provider=provider,
+        result_path=Path(result_path),
     )
-    validate_canonical(prediction)
-    return prediction

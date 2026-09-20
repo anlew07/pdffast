@@ -6,6 +6,17 @@ from pathlib import Path
 import pytest
 
 
+PROVIDERS = (
+    ("rapidocr_ch_light", "rapidocr"),
+    ("paddleocr_v5_mobile", "paddleocr_text"),
+    ("paddleocr_vl_16", "paddleocr_vl"),
+    ("pp_structure_v3_light", "pp_structure_v3"),
+    ("docling_local", "docling_worker"),
+    ("mineru_local", "mineru_worker"),
+    ("marker_local", "marker_worker"),
+)
+
+
 def _load_reference_normalizer(reference_root: Path):
     source = reference_root / "scripts/9_5_1_prediction_normalizer.py"
     spec = importlib.util.spec_from_file_location("pdffast_reference_normalizer", source)
@@ -15,7 +26,12 @@ def _load_reference_normalizer(reference_root: Path):
     return module
 
 
-def test_rapidocr_prediction_normalizer_is_byte_identical(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("provider", "kind"), PROVIDERS)
+def test_prediction_normalizer_is_byte_identical(
+    tmp_path: Path,
+    provider: str,
+    kind: str,
+) -> None:
     reference_root_raw = os.environ.get("PDFFAST_REFERENCE_ROOT")
     if not reference_root_raw:
         pytest.skip("PDFFAST_REFERENCE_ROOT is required")
@@ -27,7 +43,7 @@ def test_rapidocr_prediction_normalizer_is_byte_identical(tmp_path: Path) -> Non
 
     reference_root = Path(reference_root_raw).resolve()
     manifest_path = tmp_path / "provider_manifest.json"
-    result_path = tmp_path / "rapidocr_result.json"
+    result_path = tmp_path / f"{provider}_result.json"
     task = {
         "task_id": "synthetic-region-1",
         "task_type": "REGION_FALLBACK",
@@ -40,18 +56,18 @@ def test_rapidocr_prediction_normalizer_is_byte_identical(tmp_path: Path) -> Non
         "name": "provider_benchmark",
         "selected_task_count": 1,
         "selected_tasks": [task],
-        "selection": {"requested_providers": ["rapidocr_ch_light"]},
+        "selection": {"requested_providers": [provider]},
     }
     result = {
         **task,
         "provider": {
-            "name": "rapidocr_ch_light",
-            "kind": "rapidocr",
-            "model_or_engine": "RapidOCR/ch",
+            "name": provider,
+            "kind": kind,
+            "model_or_engine": "synthetic-engine",
         },
         "status": "SUCCESS",
         "elapsed_seconds": 0.125,
-        "text": "合成 OCR 文本 123",
+        "text": "合成 Provider 文本 123",
         "confidence": 0.98,
         "warnings": [],
         "quality_hints": {"empty": False, "char_count": 12},
@@ -70,14 +86,14 @@ def test_rapidocr_prediction_normalizer_is_byte_identical(tmp_path: Path) -> Non
         manifest=manifest,
         manifest_path=manifest_path,
         task_map=task_map,
-        provider="rapidocr_ch_light",
+        provider=provider,
         result_path=result_path,
     )
     candidate = normalize_prediction(
         manifest=manifest,
         manifest_path=manifest_path,
         task_map=task_map,
-        provider="rapidocr_ch_light",
+        provider=provider,
         result_path=result_path,
     )
     assert json.dumps(candidate, ensure_ascii=False, indent=2) == json.dumps(
