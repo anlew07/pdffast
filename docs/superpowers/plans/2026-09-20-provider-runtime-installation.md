@@ -59,10 +59,10 @@
 **Interfaces:**
 - Produces: subprocess-only `mineru_local` PAGE_DOCUMENT_LAYOUT_PARSE smoke with clean worker shutdown.
 
-- [ ] Create a Python 3.12 arm64 environment and install exactly `mineru==3.4.5`.
-- [ ] Configure shared Hugging Face cache and local MinerU model source without copying or downloading artifacts.
-- [ ] Run import in worker environment, main-environment preflight, Registry resolve, one layout task, canonical normalization, and orphan-process check.
-- [ ] Run required test suites, update evidence, and commit before Task 4.
+- [x] Create a Python 3.12 arm64 environment and install exactly `mineru==3.4.5`.
+- [x] Configure shared Hugging Face cache and local MinerU model source without copying or downloading artifacts.
+- [x] Run import in worker environment, main-environment preflight, Registry resolve, one layout task, canonical normalization, and orphan-process check.
+- [x] Run required test suites, update evidence, and commit before Task 4.
 
 ### Task 4: Marker worker environment
 

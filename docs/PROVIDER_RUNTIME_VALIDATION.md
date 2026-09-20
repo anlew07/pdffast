@@ -15,7 +15,7 @@ Python：3.12.13
 | `rapidocr_ch_light` | `/Users/admin/Workspace/pdffast-v2/.venv` | `rapidocr 3.9.2`; `onnxruntime 1.30.0` | PASS | PASS | N/A — weights are wheel package data | NO | PASS | PASS | PASS — in-process `close()` |
 | `paddleocr_v5_mobile` | `/Users/admin/Workspace/pdffast-v2/.venv` | `paddleocr 3.6.0`; `paddlepaddle 3.2.1`; `paddlex 3.6.1` | PASS | PASS | YES — PaddleX | NO | PASS | PASS | PASS — in-process `close()` |
 | `paddleocr_vl_16` | `/Users/admin/Workspace/pdffast-v2/.venv` | `paddleocr 3.6.0`; `paddlepaddle 3.2.1`; `paddlex[ocr] 3.6.1` | PASS | PASS | YES — PaddleX | NO | PASS | PASS | PASS — in-process `close()` |
-| `mineru_local` | `/Users/admin/Workspace/pdffast-v2/.venv-mineru` | Pending Step 3 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| `mineru_local` | `/Users/admin/Workspace/pdffast-v2/.venv-mineru` | `mineru[pipeline] 3.4.5`; `six 1.17.0` | PASS | PASS | YES — Hugging Face snapshot | NO | PASS | PASS | PASS — worker PID exited |
 | `marker_local` | `/Users/admin/Workspace/pdffast-v2/.venv-marker` | Pending Step 4 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 | `docling_local` | `/Users/admin/Workspace/pdffast-v2/.venv-docling` | Pending Step 5 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
@@ -182,3 +182,88 @@ Reference-bound full suite: 83 passed, 3 skipped
 
 The three remaining reference-bound skips are only the not-yet-installed Docling,
 Marker, and MinerU optional Provider preflight cases.
+
+## Step 3 — MinerU subprocess worker
+
+### Environment and installation
+
+Created a new V2-owned Python 3.12.13 arm64 environment. The main `.venv` was
+verified with `find_spec('mineru') == None`.
+
+```text
+uv venv --python 3.12 /Users/admin/Workspace/pdffast-v2/.venv-mineru
+uv pip install --python /Users/admin/Workspace/pdffast-v2/.venv-mineru/bin/python \
+  mineru==3.4.5
+uv pip install --python /Users/admin/Workspace/pdffast-v2/.venv-mineru/bin/python \
+  'mineru[pipeline]==3.4.5'
+```
+
+The first pipeline smoke exposed an undeclared direct import of `six` in MinerU's
+bundled `pytorchocr/data/imaug/operators.py`. The complete worker traceback was
+captured before installing the same version present in the reference environment:
+
+```text
+uv pip install --python /Users/admin/Workspace/pdffast-v2/.venv-mineru/bin/python \
+  six==1.17.0
+```
+
+No MinerU version substitution was made.
+
+### Existing model/cache reuse
+
+```text
+MINERU_TOOLS_CONFIG_JSON=/Users/admin/mineru.json
+MINERU_MODEL_SOURCE=local
+HF_HOME=/Users/admin/.cache/huggingface
+HF_HUB_OFFLINE=1
+TRANSFORMERS_OFFLINE=1
+
+/Users/admin/.cache/huggingface/hub/
+  models--opendatalab--PDF-Extract-Kit-1.0/
+  snapshots/ed6b654c018d742e65a17671e379c5e6ecc87ec9
+```
+
+The snapshot contains 17 symlink-resolved files and approximately 1.2 GB. Its
+directory mtime remained `2026-09-15T10:54:04+0800` after the smoke. No model
+download occurred and no model was copied into the repository.
+
+### PAGE_DOCUMENT_LAYOUT_PARSE smoke
+
+Read-only input:
+
+```text
+/Users/admin/Workspace/pdffast/outputs/9_fallback_units/
+  case_001_v010_150dpi/inputs/page/p0001_page.png
+```
+
+Observed result:
+
+```text
+Registry resolve: PASS
+Preflight: PASS (mineru=ok through .venv-mineru subprocess)
+Package version: mineru 3.4.5
+Capability route: PAGE_DOCUMENT_LAYOUT_PARSE
+Raw status: SUCCESS
+Raw Markdown length: 389
+Raw reference count: 4
+Canonical status: SUCCESS
+Canonical text availability: AVAILABLE
+Canonical text length: 300
+Canonical reading blocks availability: AVAILABLE
+Worker PID: exited after close; no matching orphan process remained
+```
+
+### Step 3 regression gate
+
+The Provider contract was corrected to check isolated environments through their
+configured Python executables instead of importing heavy packages in the main
+environment.
+
+```text
+Provider + Registry + fake executor focused suite: 23 passed, 2 skipped
+Full default suite: 59 passed, 27 skipped
+Reference-bound full suite: 84 passed, 2 skipped
+```
+
+The two remaining reference-bound skips are the not-yet-created Docling and Marker
+worker environments.
