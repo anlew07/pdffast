@@ -1,5 +1,7 @@
-import sys
+import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -52,11 +54,25 @@ def test_registry_declares_only_approved_lazy_adapter_kinds() -> None:
     from pdffast.providers.registry import DEFAULT_ADAPTER_PATHS
 
     assert set(DEFAULT_ADAPTER_PATHS) == APPROVED_KINDS
-    assert "rapidocr" not in sys.modules
-    assert "paddleocr" not in sys.modules
-    assert "docling" not in sys.modules
-    assert "mineru" not in sys.modules
-    assert "marker" not in sys.modules
+
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json, sys; "
+                "import pdffast.providers.registry; "
+                "print(json.dumps(sorted(name for name in "
+                "['rapidocr', 'paddleocr', 'docling', 'mineru', 'marker'] "
+                "if name in sys.modules)))"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert json.loads(probe.stdout) == []
 
 
 def test_registry_creates_injected_provider_without_optional_imports() -> None:
