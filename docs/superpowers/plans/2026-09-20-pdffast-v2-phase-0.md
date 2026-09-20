@@ -672,7 +672,7 @@ Expected: FAIL because the command planner is absent.
 
 Use list arguments only; never construct shell strings. Keep all behavior-relevant defaults explicit so old and new runs cannot silently diverge.
 
-Until the v2 runner exists, `build_candidate_command` raises `NotImplementedError("candidate pipeline is introduced in Phase 4")`; test that exact behavior.
+`build_candidate_command` returns the future public-entry command without checking that `scripts/run_pipeline.py` exists. Phase 0 may plan and review that command, but the CLI must not execute the candidate until the runner is introduced in Phase 4.
 
 - [ ] **Step 4: Implement safe CLI planning**
 
