@@ -3,12 +3,10 @@
 PDFFast v2 is a clean, behavior-preserving migration of the validated
 PDFFast PDF-to-Markdown pipeline.
 
-The project is currently in **Phase 1**. Phase 0 migration infrastructure is
-complete, Phase 1 has migrated the behavior-locked Stage 1–6 native path, and
-Phase 2 is in progress with Stage 7 evidence accounting and Stage 8 quality
-gating migrated. The native path includes
-page profiling, template detection, section alignment, page structure, and
-table recovery, followed by final native text-flow normalization. See
+The project has completed **Phase 2**. Phase 0 migration infrastructure,
+the behavior-locked Stage 1–6 native path, and Stage 7–9.6.3 quality and
+selective-fallback planning are migrated. No Provider is invoked yet; Provider
+runtime remains Phase 3 work. See
 [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) for the approved
 architecture, boundaries, and acceptance criteria.
 
@@ -59,3 +57,12 @@ The test runs both implementations and requires nineteen byte-identical
 artifacts: the eight Stage 1–5 outputs plus all eleven Stage 6 JSON and
 Markdown outputs, including `normalized_text_flow.json` and
 `readable_final.md`.
+
+Run the complete Phase 2 parity test, including probe crops and rendered
+fallback inputs:
+
+```bash
+PDFFAST_REFERENCE_ROOT=/Users/admin/Workspace/pdffast \
+PDFFAST_SAMPLE_PDF=/absolute/path/to/sample.pdf \
+  uv run pytest tests/regression/test_phase2_pipeline_parity.py -v
+```

@@ -1,6 +1,6 @@
 # PDFFast v2 迁移方案
 
-状态：设计已批准；Phase 0–1 已完成并验证；Phase 2A（Stage 7–8）已完成
+状态：设计已批准；Phase 0–2 已完成并验证；Phase 3 尚未开始
 日期：2026-09-20
 旧工程（只读行为基线）：`/Users/admin/Workspace/pdffast`
 新工程：`/Users/admin/Workspace/pdffast-v2`
@@ -11,7 +11,7 @@
 |---|---|---|
 | Phase 0：基线冻结与测试骨架 | 完成 | 默认套件 21 passed / 3 skipped；绑定 reference 的 contract 套件 7 passed |
 | Phase 1：Native Pipeline | 完成 | Stage 1–6 已迁移；真实样本十九项 Artifact 字节级一致 |
-| Phase 2：Quality 与 Fallback Planning | 进行中 | Stage 7–8 已迁移并完成真实样本逐文件等价回归；Stage 9 planning/policy 待迁移 |
+| Phase 2：Quality 与 Fallback Planning | 完成 | Stage 7–9.6.3 已迁移；真实样本全文件等价，含 probe crop 与 fallback 输入 PNG |
 | Phase 3：Provider Runtime | 计划中 | 尚未迁移 Provider adapter |
 | Phase 4：Canonical、Renderer、Audit | 计划中 | 尚未迁移业务算法 |
 | Phase 5：性能优化 | 计划中 | 必须等待 Phase 1–4 等价回归通过 |
@@ -718,6 +718,14 @@ Markdown 内容
 - Native-only 测试全部通过。
 
 ### Phase 2：Quality 与 Selective Fallback Planning（Stage 7–9.6.3）
+
+当前状态：
+
+- `quality.evidence` 与 `quality.gate` 已迁移，保留 evidence accounting、硬路由、probe 和 crop 行为；
+- `fallback.planner` 与 `fallback.router` 已迁移，保留 task ID、输入渲染、capability route 和 output contract；
+- `fallback.policy` 已迁移并消费冻结的 route candidate 配置，provider chain、acceptance 与 terminal fallback 保持一致；
+- `case_002.pdf` 上 Stage 1–9.6.3 所有生成文件新旧字节级一致，包括 probe crop 与 fallback task PNG；
+- contract test 已确认生产 fallback 模块不导入 GT、evaluator、holdout 或 benchmark-selection 包。
 
 工作：
 
