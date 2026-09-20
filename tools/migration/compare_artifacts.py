@@ -35,6 +35,7 @@ PATH_KEYS = frozenset(
         "pdf",
         "provider_raw_ref",
         "result_path",
+        "snapshot_file",
         "source_file",
         "source_path",
         "source_pdf",
