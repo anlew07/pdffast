@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-09-18T10:00:00",
+  "run_id": "reference_run",
+  "wall_seconds": 1.25,
+  "pid": 111,
+  "source_pdf": "/reference/benchmark/samples/case.pdf",
+  "log_path": "/reference/outputs/reference_run/logs/stage1.log",
+  "records": [
+    {
+      "id": "r1",
+      "text": "literal /reference text must remain literal",
+      "bbox": {"x0": 1.0, "top": 2.0, "x1": 3.0, "bottom": 4.0},
+      "route": "NATIVE_PASS",
+      "selected_provider": null,
+      "warnings": [],
+      "source_file": "/reference/outputs/reference_run/06_stage6/normalized_text_flow.json"
+    }
+  ]
+}
+

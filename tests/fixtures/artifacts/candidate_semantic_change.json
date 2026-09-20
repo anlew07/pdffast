@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-09-20T12:30:00",
+  "run_id": "candidate_run",
+  "wall_seconds": 9.75,
+  "pid": 999,
+  "source_pdf": "/candidate/benchmark/samples/case.pdf",
+  "log_path": "/candidate/outputs/candidate_run/logs/stage1.log",
+  "records": [
+    {
+      "id": "r1",
+      "text": "changed semantic text",
+      "bbox": {"x0": 1.0, "top": 2.0, "x1": 3.0, "bottom": 4.0},
+      "route": "NATIVE_PASS",
+      "selected_provider": null,
+      "warnings": [],
+      "source_file": "/candidate/outputs/candidate_run/06_stage6/normalized_text_flow.json"
+    }
+  ]
+}
+
