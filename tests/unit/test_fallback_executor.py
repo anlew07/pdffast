@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from pdffast.providers.base import ProviderPreflight, ProviderTask, RawProviderResult
 
 
@@ -78,27 +80,49 @@ def test_executor_accepts_and_escalates_by_wave(tmp_path: Path) -> None:
     from pdffast.fallback.executor import execute_fallback
 
     p1 = FakeProvider(
-        "p1",
+        "rapidocr_ch_light",
         {
-            "accept": _canonical("accept", "p1", "first"),
-            "escalate": _canonical("escalate", "p1", ""),
+            "accept": _canonical("accept", "rapidocr_ch_light", "first"),
+            "escalate": _canonical("escalate", "rapidocr_ch_light", ""),
         },
     )
-    p2 = FakeProvider("p2", {"escalate": _canonical("escalate", "p2", "second")})
-    tasks = [_task("accept", ["p1", "p2"]), _task("escalate", ["p1", "p2"])]
+    p2 = FakeProvider(
+        "mineru_local",
+        {"escalate": _canonical("escalate", "mineru_local", "second")},
+    )
+    tasks = [
+        _task("accept", ["rapidocr_ch_light", "mineru_local"]),
+        _task("escalate", ["rapidocr_ch_light", "mineru_local"]),
+    ]
 
     manifest = execute_fallback(
         policy={"source_file": "fixture.pdf", "tasks": tasks},
         plan={"tasks": tasks},
-        provider_configs={"p1": {"enabled": True}, "p2": {"enabled": True}},
-        registry=FakeRegistry({"p1": p1, "p2": p2}),
+        provider_configs={
+            "rapidocr_ch_light": {
+                "kind": "rapidocr",
+                "runtime_enabled": True,
+                "benchmark_enabled": True,
+            },
+            "mineru_local": {
+                "kind": "mineru_worker",
+                "runtime_enabled": True,
+                "benchmark_enabled": False,
+            },
+        },
+        registry=FakeRegistry(
+            {"rapidocr_ch_light": p1, "mineru_local": p2}
+        ),
         normalizer=lambda raw, task: raw.payload,
         output_dir=tmp_path,
     )
 
     assert manifest["summary"]["accepted_task_count"] == 2
     assert manifest["summary"]["escalated_count"] == 1
-    assert manifest["summary"]["selected_provider_counts"] == {"p1": 1, "p2": 1}
+    assert manifest["summary"]["selected_provider_counts"] == {
+        "rapidocr_ch_light": 1,
+        "mineru_local": 1,
+    }
     assert p1.calls == ["accept", "escalate"]
     assert p2.calls == ["escalate"]
     assert p1.initialized == p1.closed == 1
@@ -111,19 +135,32 @@ def test_executor_applies_terminal_or_pipeline_failure(tmp_path: Path) -> None:
     from pdffast.fallback.executor import execute_fallback
 
     provider = FakeProvider(
-        "p1",
+        "rapidocr_ch_light",
         {
-            "terminal": _canonical("terminal", "p1", "", status="ERROR"),
-            "failure": _canonical("failure", "p1", "", status="ERROR"),
+            "terminal": _canonical(
+                "terminal", "rapidocr_ch_light", "", status="ERROR"
+            ),
+            "failure": _canonical(
+                "failure", "rapidocr_ch_light", "", status="ERROR"
+            ),
         },
     )
-    tasks = [_task("terminal", ["p1"], terminal=True), _task("failure", ["p1"])]
+    tasks = [
+        _task("terminal", ["rapidocr_ch_light"], terminal=True),
+        _task("failure", ["rapidocr_ch_light"]),
+    ]
 
     manifest = execute_fallback(
         policy={"source_file": "fixture.pdf", "tasks": tasks},
         plan={"tasks": tasks},
-        provider_configs={"p1": {"enabled": True}},
-        registry=FakeRegistry({"p1": provider}),
+        provider_configs={
+            "rapidocr_ch_light": {
+                "kind": "rapidocr",
+                "runtime_enabled": True,
+                "benchmark_enabled": True,
+            }
+        },
+        registry=FakeRegistry({"rapidocr_ch_light": provider}),
         normalizer=lambda raw, task: raw.payload,
         output_dir=tmp_path,
     )
@@ -140,34 +177,56 @@ def test_executor_records_provider_and_normalizer_exceptions_then_escalates(
     from pdffast.fallback.executor import execute_fallback
 
     p1 = FakeProvider(
-        "p1",
+        "rapidocr_ch_light",
         {
             "execute-error": RuntimeError("engine crashed"),
-            "normalize-error": _canonical("normalize-error", "p1", "raw"),
+            "normalize-error": _canonical(
+                "normalize-error", "rapidocr_ch_light", "raw"
+            ),
         },
     )
     p2 = FakeProvider(
-        "p2",
+        "mineru_local",
         {
-            "execute-error": _canonical("execute-error", "p2", "recovered"),
-            "normalize-error": _canonical("normalize-error", "p2", "recovered"),
+            "execute-error": _canonical(
+                "execute-error", "mineru_local", "recovered"
+            ),
+            "normalize-error": _canonical(
+                "normalize-error", "mineru_local", "recovered"
+            ),
         },
     )
     tasks = [
-        _task("execute-error", ["p1", "p2"]),
-        _task("normalize-error", ["p1", "p2"]),
+        _task("execute-error", ["rapidocr_ch_light", "mineru_local"]),
+        _task("normalize-error", ["rapidocr_ch_light", "mineru_local"]),
     ]
 
     def normalize(raw: RawProviderResult, task: dict) -> dict:
-        if raw.provider == "p1" and task["task_id"] == "normalize-error":
+        if (
+            raw.provider == "rapidocr_ch_light"
+            and task["task_id"] == "normalize-error"
+        ):
             raise ValueError("bad provider payload")
         return raw.payload
 
     manifest = execute_fallback(
         policy={"source_file": "fixture.pdf", "tasks": tasks},
         plan={"tasks": tasks},
-        provider_configs={"p1": {"enabled": True}, "p2": {"enabled": True}},
-        registry=FakeRegistry({"p1": p1, "p2": p2}),
+        provider_configs={
+            "rapidocr_ch_light": {
+                "kind": "rapidocr",
+                "runtime_enabled": True,
+                "benchmark_enabled": True,
+            },
+            "mineru_local": {
+                "kind": "mineru_worker",
+                "runtime_enabled": True,
+                "benchmark_enabled": False,
+            },
+        },
+        registry=FakeRegistry(
+            {"rapidocr_ch_light": p1, "mineru_local": p2}
+        ),
         normalizer=normalize,
         output_dir=tmp_path,
     )
@@ -187,3 +246,29 @@ def test_executor_records_provider_and_normalizer_exceptions_then_escalates(
         "RuntimeError: engine crashed",
         "ValueError: bad provider payload",
     ]
+
+
+def test_executor_validates_complete_runtime_closure_before_resolving_or_writing(
+    tmp_path: Path,
+) -> None:
+    from pdffast.fallback.executor import execute_fallback
+    from pdffast.providers.registry import ProviderClosureError
+
+    class RegistryMustNotRun:
+        def create(self, name: str, config: dict):
+            raise AssertionError("registry resolution happened before closure validation")
+
+    task = _task("missing-provider", ["mineru_local"])
+    output_dir = tmp_path / "must-not-exist"
+
+    with pytest.raises(ProviderClosureError, match="mineru_local.*missing"):
+        execute_fallback(
+            policy={"source_file": "fixture.pdf", "tasks": [task]},
+            plan={"tasks": [task]},
+            provider_configs={},
+            registry=RegistryMustNotRun(),
+            normalizer=lambda raw, metadata: raw.payload,
+            output_dir=output_dir,
+        )
+
+    assert not output_dir.exists()

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from pdffast.providers.base import Provider, ProviderTask, RawProviderResult
+from pdffast.providers.registry import validate_runtime_provider_closure
 
 
 SUCCESS_STATUSES = {"SUCCESS", "SUCCESS_WITH_WARNINGS"}
@@ -86,6 +87,8 @@ def execute_fallback(
     plan_ids = [str(task.get("task_id") or "") for task in plan_tasks]
     if not all(policy_ids) or set(policy_ids) != set(plan_ids):
         raise ValueError("policy/plan task_id 集不一致")
+
+    validate_runtime_provider_closure(policy, provider_configs)
 
     output_dir = Path(output_dir)
     selected_dir = output_dir / "selected_predictions"

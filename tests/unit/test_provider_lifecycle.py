@@ -85,7 +85,12 @@ def test_rapidocr_lifecycle_is_lazy_reused_and_idempotently_closed(tmp_path: Pat
 
     provider = RapidOCRProvider(
         "rapid",
-        {"kind": "rapidocr", "enabled": True, "predict_options": {"use_det": True}},
+        {
+            "kind": "rapidocr",
+            "runtime_enabled": True,
+            "benchmark_enabled": True,
+            "predict_options": {"use_det": True},
+        },
         engine_factory=factory,
         dependency_probe=lambda: (True, "rapidocr=fake"),
     )
@@ -141,7 +146,11 @@ def test_paddle_adapters_share_lifecycle_without_importing_dependency(
     provider_class = getattr(paddleocr, class_name)
     provider = provider_class(
         "paddle",
-        {"kind": kind, "enabled": True},
+        {
+            "kind": kind,
+            "runtime_enabled": kind != "pp_structure_v3",
+            "benchmark_enabled": True,
+        },
         engine_factory=lambda config: engine,
         dependency_probe=lambda: (True, "paddleocr=fake"),
     )
@@ -187,7 +196,12 @@ def test_isolated_adapters_use_persistent_worker_and_close_once(
     provider_class = getattr(module, class_name)
     provider = provider_class(
         "worker-provider",
-        {"kind": kind, "enabled": True, "predict_timeout_seconds": 3},
+        {
+            "kind": kind,
+            "runtime_enabled": True,
+            "benchmark_enabled": False,
+            "predict_timeout_seconds": 3,
+        },
         worker_factory=lambda config: worker,
     )
 
