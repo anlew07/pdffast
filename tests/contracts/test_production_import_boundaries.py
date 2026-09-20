@@ -10,11 +10,12 @@ FORBIDDEN_IMPORT_PARTS = {
 }
 
 
-def test_fallback_production_modules_do_not_import_evaluation_code() -> None:
-    fallback_root = Path("pdffast/fallback")
+def test_runtime_modules_do_not_import_evaluation_code() -> None:
     violations: list[str] = []
 
-    for source_path in sorted(fallback_root.glob("*.py")):
+    source_paths = sorted(Path("pdffast/fallback").glob("*.py"))
+    source_paths += sorted(Path("pdffast/providers").glob("*.py"))
+    for source_path in source_paths:
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             names: list[str] = []

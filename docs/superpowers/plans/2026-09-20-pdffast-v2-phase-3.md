@@ -30,7 +30,7 @@
 
 **Interfaces:**
 - Produces: `ProviderPreflight`, `ProviderTask`, `RawProviderResult`, `Provider` protocol, and `ProviderRegistry.create(name, config)`.
-- Registry accepts only the six approved adapter kinds and raises a named configuration error for disabled/unknown kinds.
+- Registry accepts only the seven approved adapter kinds (`rapidocr`, `paddleocr_text`, `paddleocr_vl`, `pp_structure_v3`, `docling_worker`, `mineru_worker`, `marker_worker`) covering the six approved Provider families, and raises a named configuration error for disabled/unknown kinds.
 
 - [ ] Write tests for lifecycle shape, exact supported-kind mapping, disabled providers, unknown kinds, and no eager optional imports.
 - [ ] Run the focused test and confirm RED because `pdffast.providers` is absent.
