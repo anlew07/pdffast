@@ -7,10 +7,18 @@ import signal
 import subprocess
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 from .base import ProviderPreflight, ProviderTask, RawProviderResult
+
+
+@dataclass(frozen=True)
+class _ProcessIdentity:
+    pid: int
+    started_at: str
+    command: str
 
 
 class WorkerProtocol(Protocol):
@@ -40,13 +48,19 @@ class JsonLineWorker:
         self.preflight_timeout_seconds = preflight_timeout_seconds
         self.extra_env = dict(env or {})
         self._process: subprocess.Popen[str] | None = None
+        self._owned_descendants: dict[int, _ProcessIdentity] = {}
         self._closed = False
 
     def _env(self) -> dict[str, str]:
         env = os.environ.copy()
         for key in ("VIRTUAL_ENV", "PYTHONHOME", "PYTHONPATH", "__PYVENV_LAUNCHER__"):
             env.pop(key, None)
-        env.update(self.extra_env)
+        env.update(
+            {
+                key: os.path.expandvars(os.path.expanduser(value))
+                for key, value in self.extra_env.items()
+            }
+        )
         return env
 
     def preflight(self) -> tuple[bool, str]:
@@ -73,6 +87,7 @@ class JsonLineWorker:
         if not ready:
             self._terminate()
             raise TimeoutError(f"worker response timeout after {timeout_seconds:g}s")
+        self._capture_descendants()
         line = process.stdout.readline()
         if not line:
             code = process.poll()
@@ -119,27 +134,22 @@ class JsonLineWorker:
 
     def _terminate(self) -> None:
         process = self._process
+        self._capture_descendants()
         self._process = None
-        if process is None or process.poll() is not None:
-            return
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        self._terminate_descendants()
 
     @staticmethod
-    def _descendant_pids(root_pid: int) -> tuple[int, ...]:
-        """Return the current process tree below a worker.
-
-        Some isolated providers launch detached model servers. Detaching changes
-        the session but not the parent PID, so capture the tree while the worker
-        is still alive and reap any survivors after its protocol shutdown.
-        """
+    def _process_rows() -> tuple[tuple[int, int, _ProcessIdentity], ...]:
         try:
             completed = subprocess.run(
-                ["ps", "-axo", "pid=,ppid="],
+                ["ps", "-axo", "pid=,ppid=,lstart=,command="],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -148,49 +158,92 @@ class JsonLineWorker:
         except Exception:
             return ()
 
-        children: dict[int, list[int]] = {}
+        rows: list[tuple[int, int, _ProcessIdentity]] = []
         for line in completed.stdout.splitlines():
-            fields = line.split()
-            if len(fields) != 2:
+            fields = line.split(None, 7)
+            if len(fields) != 8:
                 continue
             try:
-                pid, parent_pid = (int(value) for value in fields)
+                pid = int(fields[0])
+                parent_pid = int(fields[1])
             except ValueError:
                 continue
-            children.setdefault(parent_pid, []).append(pid)
+            rows.append(
+                (
+                    pid,
+                    parent_pid,
+                    _ProcessIdentity(
+                        pid=pid,
+                        started_at=" ".join(fields[2:7]),
+                        command=fields[7],
+                    ),
+                )
+            )
+        return tuple(rows)
 
-        descendants: list[int] = []
+    @classmethod
+    def _descendant_processes(cls, root_pid: int) -> tuple[_ProcessIdentity, ...]:
+        """Return the current process tree below a worker.
+
+        Some isolated providers launch detached model servers. Detaching changes
+        the session but not the parent PID, so capture the tree while the worker
+        is still alive and reap any survivors after its protocol shutdown.
+        """
+        children: dict[int, list[int]] = {}
+        identities: dict[int, _ProcessIdentity] = {}
+        for pid, parent_pid, identity in cls._process_rows():
+            children.setdefault(parent_pid, []).append(pid)
+            identities[pid] = identity
+
+        descendants: list[_ProcessIdentity] = []
         pending = list(children.get(root_pid, ()))
         while pending:
             pid = pending.pop()
-            descendants.append(pid)
+            identity = identities.get(pid)
+            if identity is not None:
+                descendants.append(identity)
             pending.extend(children.get(pid, ()))
         return tuple(descendants)
 
-    @staticmethod
-    def _terminate_descendants(pids: tuple[int, ...]) -> None:
-        remaining = set(pids)
-        for pid in reversed(pids):
+    @classmethod
+    def _current_identity(cls, pid: int) -> _ProcessIdentity | None:
+        return next(
+            (identity for row_pid, _, identity in cls._process_rows() if row_pid == pid),
+            None,
+        )
+
+    def _capture_descendants(self) -> None:
+        process = self._process
+        if process is None or process.poll() is not None:
+            return
+        for identity in self._descendant_processes(process.pid):
+            self._owned_descendants[identity.pid] = identity
+
+    def _terminate_descendants(self) -> None:
+        remaining = dict(self._owned_descendants)
+        self._owned_descendants.clear()
+        for identity in reversed(tuple(remaining.values())):
+            if self._current_identity(identity.pid) != identity:
+                remaining.pop(identity.pid, None)
+                continue
             try:
-                os.kill(pid, signal.SIGTERM)
+                os.kill(identity.pid, signal.SIGTERM)
             except ProcessLookupError:
-                remaining.discard(pid)
+                remaining.pop(identity.pid, None)
             except PermissionError:
-                remaining.discard(pid)
+                remaining.pop(identity.pid, None)
 
         deadline = time.monotonic() + 5.0
         while remaining and time.monotonic() < deadline:
-            for pid in tuple(remaining):
-                try:
-                    os.kill(pid, 0)
-                except ProcessLookupError:
-                    remaining.discard(pid)
-                except PermissionError:
-                    remaining.discard(pid)
+            for pid, identity in tuple(remaining.items()):
+                if self._current_identity(pid) != identity:
+                    remaining.pop(pid, None)
             if remaining:
                 time.sleep(0.05)
 
-        for pid in remaining:
+        for pid, identity in remaining.items():
+            if self._current_identity(pid) != identity:
+                continue
             try:
                 os.kill(pid, signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
@@ -200,11 +253,7 @@ class JsonLineWorker:
         if self._closed:
             return
         process = self._process
-        descendant_pids = (
-            self._descendant_pids(process.pid)
-            if process is not None and process.poll() is None
-            else ()
-        )
+        self._capture_descendants()
         exited_cleanly = False
         if process is not None and process.poll() is None and process.stdin is not None:
             try:
@@ -218,9 +267,9 @@ class JsonLineWorker:
                 pass
         if exited_cleanly:
             self._process = None
+            self._terminate_descendants()
         else:
             self._terminate()
-        self._terminate_descendants(descendant_pids)
         self._closed = True
 
 

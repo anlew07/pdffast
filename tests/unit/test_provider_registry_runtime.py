@@ -54,6 +54,13 @@ def test_production_config_contains_exact_runtime_closure_and_explicit_flags() -
         assert isinstance(provider["benchmark_enabled"], bool)
         assert "enabled" not in provider
 
+    for name in ("mineru_local", "marker_local", "docling_local"):
+        assert providers[name]["env"]["HF_HUB_OFFLINE"] == "1"
+        assert providers[name]["env"]["TRANSFORMERS_OFFLINE"] == "1"
+        assert providers[name]["required_artifacts"]
+    for name in ("paddleocr_v5_mobile", "paddleocr_vl_16"):
+        assert providers[name]["required_artifacts"]
+
 
 def test_registry_declares_only_production_adapter_kinds() -> None:
     from pdffast.providers.registry import DEFAULT_ADAPTER_PATHS
@@ -72,12 +79,71 @@ def test_all_six_production_providers_resolve_without_optional_imports() -> None
         kind: (lambda name, config: (name, config["kind"]))
         for kind in PRODUCTION_KINDS
     }
-    registry = ProviderRegistry(factories=factories)
+    registry = ProviderRegistry(factories=factories, base_dir=Path.cwd())
 
     assert {
         registry.create(name, config)
         for name, config in providers.items()
     } == {(name, config["kind"]) for name, config in providers.items()}
+
+
+def test_registry_resolves_worker_python_relative_to_explicit_base_dir(
+    tmp_path: Path,
+) -> None:
+    from pdffast.providers.registry import ProviderRegistry
+
+    registry = ProviderRegistry(
+        factories={"docling_worker": lambda name, config: config},
+        base_dir=tmp_path,
+    )
+    config = _config(
+        "docling_local", "docling_worker", runtime=True, benchmark=True
+    )
+    config["python_executable"] = ".venv-docling/bin/python"
+
+    resolved = registry.create("docling_local", config)
+
+    assert resolved["python_executable"] == str(
+        tmp_path / ".venv-docling/bin/python"
+    )
+
+
+def test_registry_rejects_relative_worker_python_without_base_dir() -> None:
+    from pdffast.providers.registry import ProviderConfigurationError, ProviderRegistry
+
+    registry = ProviderRegistry(
+        factories={"docling_worker": lambda name, config: config}
+    )
+    config = _config(
+        "docling_local", "docling_worker", runtime=True, benchmark=True
+    )
+    config["python_executable"] = ".venv-docling/bin/python"
+
+    with pytest.raises(ProviderConfigurationError, match="base_dir"):
+        registry.create("docling_local", config)
+
+
+def test_registry_rejects_missing_required_artifact_before_factory(
+    tmp_path: Path,
+) -> None:
+    from pdffast.providers.registry import ProviderConfigurationError, ProviderRegistry
+
+    factory_called = False
+
+    def factory(name: str, config: dict):
+        nonlocal factory_called
+        factory_called = True
+        return name
+
+    registry = ProviderRegistry(factories={"rapidocr": factory}, base_dir=tmp_path)
+    config = _config(
+        "rapidocr_ch_light", "rapidocr", runtime=True, benchmark=True
+    )
+    config["required_artifacts"] = ["missing/model.onnx"]
+
+    with pytest.raises(ProviderConfigurationError, match="required artifact"):
+        registry.create("rapidocr_ch_light", config)
+    assert factory_called is False
 
 
 def test_benchmark_disabled_production_provider_still_resolves() -> None:

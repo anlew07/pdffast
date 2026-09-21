@@ -28,7 +28,7 @@ V2 不以旧工程的 `.venv*` 作为解释器或 import 路径，也不把模�
 
 职责：PDFFast Core 与进程内 Provider host。
 
-规划版本（来自旧生产环境审计，不代表本轮已安装）：
+已安装并验证版本：
 
 ```text
 PDFFast Core
@@ -146,6 +146,20 @@ package import
 RapidOCR Torch 权重自动下载；该次运行已中止，原环境整体隔离保留，最终环境重建后
 使用 package-provided ONNX 权重完成离线验证。完整记录见
 `docs/PROVIDER_RUNTIME_VALIDATION.md`。
+
+生产配置使用 `required_artifacts` 在 Provider factory 和模型初始化之前验证共享 cache；
+缺失 artifact 会直接导致配置错误。Paddle Provider 同时接收已展开的本地模型目录，
+MinerU、Marker、Docling worker 固定携带离线环境变量。`${HOME}` 和 `~` 在 worker
+启动前展开，配置文件不绑定具体用户名。
+
+Registry 必须以显式工程根目录构造：
+
+```python
+registry = ProviderRegistry(base_dir=context.project_root)
+```
+
+相对虚拟环境路径只相对该根目录解析；未提供 `base_dir` 时会在配置阶段失败，不读取
+调用进程的当前工作目录。
 
 ## 5. 配置语义
 

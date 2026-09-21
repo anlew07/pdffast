@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib
+import os
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 from .base import Provider
@@ -107,8 +109,52 @@ class ProviderRegistry:
         self,
         *,
         factories: Mapping[str, ProviderFactory] | None = None,
+        base_dir: Path | None = None,
     ) -> None:
         self._factories = dict(factories or {})
+        self._base_dir = Path(base_dir).resolve() if base_dir is not None else None
+
+    def _resolve_path(self, raw_path: str, *, field: str) -> Path:
+        path = Path(os.path.expandvars(raw_path)).expanduser()
+        if not path.is_absolute():
+            if self._base_dir is None:
+                raise ProviderConfigurationError(
+                    f"relative {field} requires ProviderRegistry(base_dir=...): {raw_path}"
+                )
+            path = self._base_dir / path
+        # Keep virtualenv interpreter symlinks intact: resolving the final
+        # component would invoke the base interpreter without its venv prefix.
+        return Path(os.path.abspath(path))
+
+    def _prepare_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        prepared = dict(config)
+        python_executable = prepared.get("python_executable")
+        if python_executable:
+            prepared["python_executable"] = str(
+                self._resolve_path(str(python_executable), field="python_executable")
+            )
+
+        for field in (
+            "text_detection_model_dir",
+            "text_recognition_model_dir",
+            "layout_detection_model_dir",
+            "vl_rec_model_dir",
+        ):
+            if prepared.get(field):
+                prepared[field] = str(
+                    self._resolve_path(str(prepared[field]), field=field)
+                )
+
+        missing: list[str] = []
+        for raw_path in prepared.get("required_artifacts") or []:
+            resolved = self._resolve_path(str(raw_path), field="required_artifact")
+            if not resolved.exists():
+                missing.append(str(resolved))
+        if missing:
+            raise ProviderConfigurationError(
+                "missing required artifact(s): " + ", ".join(missing)
+            )
+        return prepared
 
     def create(self, name: str, config: dict[str, Any]) -> Provider:
         if config.get("runtime_enabled") is not True:
@@ -124,7 +170,9 @@ class ProviderRegistry:
         if kind not in DEFAULT_ADAPTER_PATHS:
             raise UnknownProviderKindError(f"Unsupported Provider kind: {kind}")
 
+        prepared = self._prepare_config(config)
+
         factory = self._factories.get(kind)
         if factory is None:
             factory = _load_factory(DEFAULT_ADAPTER_PATHS[kind])
-        return factory(name, config)
+        return factory(name, prepared)

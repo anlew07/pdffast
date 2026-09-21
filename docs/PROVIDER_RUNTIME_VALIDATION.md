@@ -454,9 +454,9 @@ Worker PID: exited after close; no matching orphan process remained
 ### Step 5 regression gate
 
 ```text
-Provider + Registry + fake executor focused suite: 36 passed
-Full default suite: 63 passed, 25 skipped
-Reference-bound full suite: 88 passed
+Provider + Registry + fake executor focused suite: 42 passed
+Full default suite: 69 passed, 25 skipped
+Reference-bound full suite: 94 passed
 ```
 
 All six production Providers now pass their required smoke and canonical
@@ -465,3 +465,19 @@ normalization checks. Frozen route config SHA-256 remains:
 ```text
 0d999777e130de54ff25248c02cf39ae37e9fe7c5ef9231650aa3304008772d3
 ```
+
+### Post-validation production hardening
+
+The production Registry now resolves relative worker interpreter paths only from
+an explicit project root, validates every configured `required_artifacts` path
+before constructing a Provider, expands portable `${HOME}` cache paths, and pins
+Paddle adapters to the audited local model directories. Isolated worker configs
+carry their cache-only/offline environment instead of depending on the launching
+shell.
+
+`JsonLineWorker` records stable descendant identity (PID, start time, and command)
+and applies cleanup on timeout, malformed/closed protocol, forced termination, and
+graceful close. Identity is revalidated before TERM and KILL, preventing a recycled
+PID from targeting an unrelated process. Regression tests cover timeout cleanup,
+detached descendants, worker `atexit`, sanitized offline environment propagation,
+and recycled-PID rejection.

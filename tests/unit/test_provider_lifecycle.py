@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -254,7 +255,7 @@ for line in sys.stdin:
     }
 
 
-def test_json_line_worker_close_allows_child_atexit_cleanup(tmp_path: Path) -> None:
+def test_json_line_worker_close_allows_worker_atexit_cleanup(tmp_path: Path) -> None:
     from pdffast.providers.workers import JsonLineWorker
 
     cleanup_marker = tmp_path / "child-atexit-ran.txt"
@@ -344,4 +345,103 @@ for line in sys.stdin:
         worker.request({"op": "parse"}, timeout_seconds=0.01)
 
     assert worker._process is None
+
+
+def test_json_line_worker_timeout_reaps_detached_descendants(tmp_path: Path) -> None:
+    from pdffast.providers.workers import JsonLineWorker
+
+    child_pid_path = tmp_path / "child.pid"
+    code = f'''
+import json, subprocess, sys, time
+from pathlib import Path
+print(json.dumps({{"status": "READY"}}), flush=True)
+for line in sys.stdin:
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        start_new_session=True,
+    )
+    Path({str(child_pid_path)!r}).write_text(str(child.pid), encoding="utf-8")
+    time.sleep(60)
+'''
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code=code,
+        dependency_probe_code="print('probe=ok')",
+        init_timeout_seconds=1,
+    )
+    worker.start()
+
+    with pytest.raises(TimeoutError, match="response timeout"):
+        worker.request({"op": "parse"}, timeout_seconds=0.2)
+
+    child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    with pytest.raises(ProcessLookupError):
+        os.kill(child_pid, 0)
+
+
+def test_worker_receives_offline_environment_from_production_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pdffast.providers.workers import JsonLineWorker
+
+    for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
+        monkeypatch.delenv(name, raising=False)
+    config = json.loads(Path("configs/providers.json").read_text(encoding="utf-8"))[
+        "providers"
+    ]["docling_local"]
+    code = r'''
+import json, os, sys
+print(json.dumps({
+    "status": "READY",
+    "hf_offline": os.environ.get("HF_HUB_OFFLINE"),
+    "transformers_offline": os.environ.get("TRANSFORMERS_OFFLINE"),
+}), flush=True)
+for line in sys.stdin:
+    command = json.loads(line)
+    if command.get("op") == "close":
+        print(json.dumps({"status": "BYE"}), flush=True)
+        break
+'''
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code=code,
+        dependency_probe_code="print('probe=ok')",
+        env=config["env"],
+        init_timeout_seconds=1,
+    )
+
+    ready = worker.start()
+    worker.close()
+
+    assert ready["hf_offline"] == "1"
+    assert ready["transformers_offline"] == "1"
+
+
+def test_descendant_cleanup_does_not_signal_recycled_pid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pdffast.providers.workers import JsonLineWorker, _ProcessIdentity
+
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code="",
+        dependency_probe_code="",
+    )
+    original = _ProcessIdentity(4242, "Sun Sep 21 16:00:00 2026", "owned-child")
+    recycled = _ProcessIdentity(4242, "Sun Sep 21 16:01:00 2026", "unrelated")
+    worker._owned_descendants[original.pid] = original
+    monkeypatch.setattr(worker, "_current_identity", lambda pid: recycled)
+    signals: list[tuple[int, int]] = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: signals.append((pid, sig)))
+
+    worker._terminate_descendants()
+
+    assert signals == []
     worker.close()

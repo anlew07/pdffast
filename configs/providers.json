@@ -13,7 +13,13 @@
       "use_doc_unwarping": false,
       "use_textline_orientation": false,
       "text_detection_model_name": "PP-OCRv5_mobile_det",
+      "text_detection_model_dir": "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_det",
       "text_recognition_model_name": "PP-OCRv5_mobile_rec",
+      "text_recognition_model_dir": "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_rec",
+      "required_artifacts": [
+        "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_det",
+        "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_rec"
+      ],
       "init_options": {},
       "predict_options": {}
     },
@@ -28,6 +34,12 @@
       "vl_rec_server_url": null,
       "vl_rec_api_model_name": null,
       "vl_rec_api_key_env": "PADDLEOCR_VL_API_KEY",
+      "layout_detection_model_dir": "${HOME}/.paddlex/official_models/PP-DocLayoutV3",
+      "vl_rec_model_dir": "${HOME}/.paddlex/official_models/PaddleOCR-VL-1.6",
+      "required_artifacts": [
+        "${HOME}/.paddlex/official_models/PP-DocLayoutV3",
+        "${HOME}/.paddlex/official_models/PaddleOCR-VL-1.6"
+      ],
       "init_options": {},
       "predict_options": {}
     },
@@ -46,7 +58,16 @@
       "preflight_timeout_seconds": 60,
       "worker_init_timeout_seconds": 180,
       "predict_timeout_seconds": 300,
-      "env": {"PYTHONUNBUFFERED": "1"}
+      "required_artifacts": [
+        "${HOME}/.cache/huggingface/hub/models--docling-project--docling-models/snapshots/fc0f2d45e2218ea24bce5045f58a389aed16dc23",
+        "${HOME}/.cache/huggingface/hub/models--docling-project--docling-layout-heron/snapshots/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "HF_HOME": "${HOME}/.cache/huggingface",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1"
+      }
     },
     "mineru_local": {
       "runtime_enabled": true,
@@ -58,7 +79,18 @@
       "preflight_timeout_seconds": 60,
       "worker_init_timeout_seconds": 300,
       "predict_timeout_seconds": 600,
-      "env": {"PYTHONUNBUFFERED": "1"}
+      "required_artifacts": [
+        "${HOME}/mineru.json",
+        "${HOME}/.cache/huggingface/hub/models--opendatalab--PDF-Extract-Kit-1.0/snapshots/ed6b654c018d742e65a17671e379c5e6ecc87ec9"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "MINERU_TOOLS_CONFIG_JSON": "${HOME}/mineru.json",
+        "MINERU_MODEL_SOURCE": "local",
+        "HF_HOME": "${HOME}/.cache/huggingface",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1"
+      }
     },
     "marker_local": {
       "runtime_enabled": true,
@@ -71,7 +103,24 @@
       "preflight_timeout_seconds": 60,
       "worker_init_timeout_seconds": 300,
       "predict_timeout_seconds": 600,
-      "env": {"PYTHONUNBUFFERED": "1"}
+      "required_artifacts": [
+        "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2.gguf",
+        "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2-mmproj.gguf",
+        "${HOME}/.cache/huggingface/hub/models--datalab-to--surya_layout2/snapshots/0aee81d5fd9275c0582e545bf3a56944b1e75679/rfdetr_layout.pth",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18",
+        "${HOME}/.local/bin/llama-server"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "HF_HOME": "${HOME}/.cache/huggingface",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "MODEL_CACHE_DIR": "${HOME}/Library/Caches/datalab/models",
+        "LLAMA_CPP_BINARY": "${HOME}/.local/bin/llama-server",
+        "SURYA_GGUF_LOCAL_MODEL_PATH": "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2.gguf",
+        "SURYA_GGUF_LOCAL_MMPROJ_PATH": "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2-mmproj.gguf",
+        "SURYA_INFERENCE_KEEP_ALIVE": "False"
+      }
     }
   }
 }
