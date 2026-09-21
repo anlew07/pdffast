@@ -36,7 +36,12 @@ class DoclingProvider(IsolatedWorkerProvider):
     default_python = ".venv-docling/bin/python"
     result_path_key = "markdown_path"
     worker_code = WORKER_CODE
-    dependency_probe_code = "from docling.document_converter import DocumentConverter; print('docling=ok')"
+    dependency_probe_code = (
+        "import importlib.metadata as md; import onnxruntime; "
+        "from docling.document_converter import DocumentConverter; "
+        "print('docling=' + md.version('docling') + "
+        "' onnxruntime=' + md.version('onnxruntime'))"
+    )
 
     def build_command(self, task: ProviderTask) -> dict[str, Any]:
         return super().build_command(task)

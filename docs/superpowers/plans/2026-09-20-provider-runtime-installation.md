@@ -87,7 +87,7 @@
 **Interfaces:**
 - Produces: subprocess-only `docling_local` one-task smoke with clean shutdown.
 
-- [ ] Create Python 3.12 arm64 environment and install exactly `docling==2.127.0`.
-- [ ] Reuse existing Docling Hugging Face caches in offline mode.
-- [ ] Run import, preflight, Registry resolve, one task, canonical normalization, and orphan-process check.
-- [ ] Run required test suites, update evidence, verify Frozen SHA and clean Git state, then commit.
+- [x] Create Python 3.12 arm64 environment and install exactly `docling==2.127.0`.
+- [x] Reuse existing Docling Hugging Face caches in offline mode.
+- [x] Run import, preflight, Registry resolve, one task, canonical normalization, and orphan-process check.
+- [x] Run required test suites, update evidence, verify Frozen SHA and clean Git state, then commit.

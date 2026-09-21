@@ -17,7 +17,7 @@ Python：3.12.13
 | `paddleocr_vl_16` | `/Users/admin/Workspace/pdffast-v2/.venv` | `paddleocr 3.6.0`; `paddlepaddle 3.2.1`; `paddlex[ocr] 3.6.1` | PASS | PASS | YES — PaddleX | NO | PASS | PASS | PASS — in-process `close()` |
 | `mineru_local` | `/Users/admin/Workspace/pdffast-v2/.venv-mineru` | `mineru[pipeline] 3.4.5`; `six 1.17.0` | PASS | PASS | YES — Hugging Face snapshot | NO | PASS | PASS | PASS — worker PID exited |
 | `marker_local` | `/Users/admin/Workspace/pdffast-v2/.venv-marker` | `marker-pdf 2.0.0`; `surya-ocr 0.22.1` | PASS | PASS | YES — Hugging Face + Datalab caches | NO | PASS — REGION + INLINE | PASS | PASS — worker and spawned servers exited |
-| `docling_local` | `/Users/admin/Workspace/pdffast-v2/.venv-docling` | Pending Step 5 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| `docling_local` | `/Users/admin/Workspace/pdffast-v2/.venv-docling` | `docling 2.127.0`; `onnxruntime 1.30.0` | PASS | PASS | YES — Hugging Face + wheel weights | YES — aborted first attempt only; final environment/smoke NO | PASS | PASS | PASS — worker PID exited |
 
 ## Step 1 — RapidOCR
 
@@ -357,6 +357,110 @@ Reference-bound full suite: 87 passed, 1 skipped
 
 The only remaining reference-bound skip is the not-yet-created Docling worker
 environment. Frozen route config SHA-256 remains:
+
+```text
+0d999777e130de54ff25248c02cf39ae37e9fe7c5ef9231650aa3304008772d3
+```
+
+## Step 5 — Docling subprocess worker
+
+### Environment and installation
+
+The final V2-owned Python 3.12.13 arm64 environment contains:
+
+```text
+docling 2.127.0
+docling-core 2.97.1
+docling-ibm-models 4.0.3
+onnxruntime 1.30.0
+rapidocr 3.9.2 (Docling dependency)
+```
+
+`onnxruntime 1.30.0` is an explicit runtime requirement for this environment.
+Docling's automatic OCR selection prefers ONNX Runtime when present; without it,
+the installed Torch runtime becomes the fallback and RapidOCR attempts to resolve
+separate Torch weights. The Docling Provider preflight now imports and reports both
+Docling and ONNX Runtime so this condition fails before task execution.
+
+The main environment reports `find_spec('docling') == None`; Docling remains a
+subprocess-only dependency.
+
+### Existing model/cache reuse
+
+The successful smoke used:
+
+```text
+HF_HOME=/Users/admin/.cache/huggingface
+HF_HUB_OFFLINE=1
+TRANSFORMERS_OFFLINE=1
+
+/Users/admin/.cache/huggingface/hub/
+  models--docling-project--docling-models/
+    snapshots/fc0f2d45e2218ea24bce5045f58a389aed16dc23
+  models--docling-project--docling-layout-heron/
+    snapshots/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8
+```
+
+The shared cache directories are approximately 342 MB and 164 MB. Their directory
+mtimes remained `2026-09-04T15:34:24+0800` and
+`2026-09-04T15:33:57+0800` after the successful smoke.
+
+RapidOCR used the three ONNX weights shipped as package data in the final clean
+environment. Its logs reported `File exists and is valid` for detection,
+classification, and recognition weights.
+
+### Auto-download incident and clean rebuild
+
+The first offline smoke found that `HF_HUB_OFFLINE` does not govern RapidOCR's
+ModelScope downloader. Because ONNX Runtime was absent, Docling selected the Torch
+backend, which downloaded three `.pth` files and one dictionary (approximately
+31 MB) into the disposable new virtualenv. The smoke was interrupted, and the
+entire environment was moved intact to:
+
+```text
+/tmp/pdffast-v2-docling-autodownload-quarantine-20260921-1600
+```
+
+The final `.venv-docling` was rebuilt from scratch with ONNX Runtime before any
+conversion. It contains only RapidOCR's package-provided ONNX weights and the final
+successful smoke performed no model download. The quarantined environment is kept
+for recoverability and is not referenced by V2.
+
+### PAGE_DOCUMENT_LAYOUT_PARSE smoke
+
+Read-only input:
+
+```text
+/Users/admin/Workspace/pdffast/outputs/9_fallback_units/
+  case_001_v010_150dpi/inputs/page/p0001_page.png
+```
+
+Observed result:
+
+```text
+Registry resolve: PASS
+Preflight: PASS (docling=2.127.0 onnxruntime=1.30.0)
+OCR backend: ONNX Runtime
+Raw status: SUCCESS
+Raw Markdown length: 331
+Raw reference count: 1
+Canonical status: SUCCESS
+Canonical text availability: AVAILABLE
+Canonical text length: 311
+Canonical reading blocks availability: AVAILABLE
+Worker PID: exited after close; no matching orphan process remained
+```
+
+### Step 5 regression gate
+
+```text
+Provider + Registry + fake executor focused suite: 36 passed
+Full default suite: 63 passed, 25 skipped
+Reference-bound full suite: 88 passed
+```
+
+All six production Providers now pass their required smoke and canonical
+normalization checks. Frozen route config SHA-256 remains:
 
 ```text
 0d999777e130de54ff25248c02cf39ae37e9fe7c5ef9231650aa3304008772d3

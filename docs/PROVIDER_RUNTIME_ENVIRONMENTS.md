@@ -1,7 +1,7 @@
 # Provider Runtime Environments
 
 日期：2026-09-20  
-状态：Phase 3 规划已冻结；本轮未安装 Provider、未创建隔离环境、未下载或初始化模型。
+状态：Phase 3 六个 Production Provider 环境已落地并完成单任务验证。
 
 ## 1. 目标与边界
 
@@ -63,7 +63,9 @@ Marker 内部使用 Surya 组件不等于启用独立 Surya Provider。
 
 ### `/Users/admin/Workspace/pdffast-v2/.venv-docling`
 
-职责：`docling_local` persistent subprocess worker。规划包版本为 `docling 2.127.0`。
+职责：`docling_local` persistent subprocess worker。安装 `docling 2.127.0` 与
+`onnxruntime 1.30.0`。ONNX Runtime 是 Docling 自动 OCR 选择的显式保障，使其使用
+RapidOCR wheel 自带 ONNX 权重并在 preflight 阶段阻止 Torch 下载型 fallback。
 
 除以上四个环境外，本阶段不新增 Provider 环境。尤其不为 PP-Structure、Tesseract、
 独立 Surya 或 generic CLI 创建环境。
@@ -129,7 +131,7 @@ RapidOCR 的约 31 MB ONNX 模型是 wheel package data。安装新的 V2 Python
 
 ## 4. 安装后的验证顺序
 
-只有后续得到单独安装授权后，才按以下顺序验证每个生产 Provider：
+生产 Provider 已按以下顺序完成验证；后续环境重建沿用同一顺序：
 
 ```text
 package import
@@ -140,7 +142,10 @@ package import
 
 任一步发现缺失都应停止该 Provider 的验证，并报告：缺失 artifact、预期路径、来源、估算大小
 及是否会产生外部成本。只有生产必需 artifact 确认不存在并再次获批后，才加入下载计划。
-当前显式模型下载计划仍为 `0`。
+当前显式模型下载计划仍为 `0`。Docling 首次 smoke 曾因缺少 ONNX Runtime 触发
+RapidOCR Torch 权重自动下载；该次运行已中止，原环境整体隔离保留，最终环境重建后
+使用 package-provided ONNX 权重完成离线验证。完整记录见
+`docs/PROVIDER_RUNTIME_VALIDATION.md`。
 
 ## 5. 配置语义
 
