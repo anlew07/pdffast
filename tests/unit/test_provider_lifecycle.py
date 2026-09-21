@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
+import os
+import subprocess
 import sys
+import time
+from pathlib import Path
 
 import pytest
 
@@ -249,6 +252,75 @@ for line in sys.stdin:
         "status": "SUCCESS",
         "echo": {"op": "parse", "value": 7},
     }
+
+
+def test_json_line_worker_close_allows_child_atexit_cleanup(tmp_path: Path) -> None:
+    from pdffast.providers.workers import JsonLineWorker
+
+    cleanup_marker = tmp_path / "child-atexit-ran.txt"
+    code = f'''
+import atexit, json, sys, time
+from pathlib import Path
+marker = Path({str(cleanup_marker)!r})
+atexit.register(lambda: marker.write_text("clean", encoding="utf-8"))
+print(json.dumps({{"status": "READY"}}), flush=True)
+for line in sys.stdin:
+    command = json.loads(line)
+    if command.get("op") == "close":
+        print(json.dumps({{"status": "BYE"}}), flush=True)
+        time.sleep(0.5)
+        break
+'''
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code=code,
+        dependency_probe_code="print('probe=ok')",
+        init_timeout_seconds=1,
+    )
+    worker.start()
+
+    worker.close()
+
+    assert cleanup_marker.read_text(encoding="utf-8") == "clean"
+
+
+def test_json_line_worker_close_reaps_detached_descendants() -> None:
+    from pdffast.providers.workers import JsonLineWorker
+
+    code = r'''
+import json, subprocess, sys
+child = subprocess.Popen(
+    [sys.executable, "-c", "import time; time.sleep(60)"],
+    start_new_session=True,
+)
+print(json.dumps({"status": "READY", "child_pid": child.pid}), flush=True)
+for line in sys.stdin:
+    command = json.loads(line)
+    if command.get("op") == "close":
+        print(json.dumps({"status": "BYE"}), flush=True)
+        break
+'''
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code=code,
+        dependency_probe_code="print('probe=ok')",
+        init_timeout_seconds=1,
+    )
+    child_pid = int(worker.start()["child_pid"])
+
+    try:
+        worker.close()
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
+    finally:
+        subprocess.run(["kill", "-KILL", str(child_pid)], capture_output=True)
 
 
 def test_json_line_worker_timeout_terminates_process() -> None:

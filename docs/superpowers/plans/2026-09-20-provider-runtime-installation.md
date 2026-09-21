@@ -73,10 +73,10 @@
 **Interfaces:**
 - Produces: subprocess-only `marker_local` REGION and INLINE smoke results with clean shutdown.
 
-- [ ] Create Python 3.12 arm64 environment and install exactly `marker-pdf==2.0.0`.
-- [ ] Reuse existing Hugging Face Marker/Surya-transitive caches in offline mode.
-- [ ] Run import, preflight, Registry resolve, REGION and INLINE tasks, canonical normalization, and orphan-process check.
-- [ ] Run required test suites, update evidence, and commit before Task 5.
+- [x] Create Python 3.12 arm64 environment and install exactly `marker-pdf==2.0.0`.
+- [x] Reuse existing Hugging Face Marker/Surya-transitive caches in offline mode.
+- [x] Run import, preflight, Registry resolve, REGION and INLINE tasks, canonical normalization, and orphan-process check.
+- [x] Run required test suites, update evidence, and commit before Task 5.
 
 ### Task 5: Docling worker environment
 

@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import os
 import select
+import signal
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
@@ -127,18 +129,98 @@ class JsonLineWorker:
             process.kill()
             process.wait(timeout=5)
 
+    @staticmethod
+    def _descendant_pids(root_pid: int) -> tuple[int, ...]:
+        """Return the current process tree below a worker.
+
+        Some isolated providers launch detached model servers. Detaching changes
+        the session but not the parent PID, so capture the tree while the worker
+        is still alive and reap any survivors after its protocol shutdown.
+        """
+        try:
+            completed = subprocess.run(
+                ["ps", "-axo", "pid=,ppid="],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=True,
+            )
+        except Exception:
+            return ()
+
+        children: dict[int, list[int]] = {}
+        for line in completed.stdout.splitlines():
+            fields = line.split()
+            if len(fields) != 2:
+                continue
+            try:
+                pid, parent_pid = (int(value) for value in fields)
+            except ValueError:
+                continue
+            children.setdefault(parent_pid, []).append(pid)
+
+        descendants: list[int] = []
+        pending = list(children.get(root_pid, ()))
+        while pending:
+            pid = pending.pop()
+            descendants.append(pid)
+            pending.extend(children.get(pid, ()))
+        return tuple(descendants)
+
+    @staticmethod
+    def _terminate_descendants(pids: tuple[int, ...]) -> None:
+        remaining = set(pids)
+        for pid in reversed(pids):
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                remaining.discard(pid)
+            except PermissionError:
+                remaining.discard(pid)
+
+        deadline = time.monotonic() + 5.0
+        while remaining and time.monotonic() < deadline:
+            for pid in tuple(remaining):
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    remaining.discard(pid)
+                except PermissionError:
+                    remaining.discard(pid)
+            if remaining:
+                time.sleep(0.05)
+
+        for pid in remaining:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+
     def close(self) -> None:
         if self._closed:
             return
         process = self._process
+        descendant_pids = (
+            self._descendant_pids(process.pid)
+            if process is not None and process.poll() is None
+            else ()
+        )
+        exited_cleanly = False
         if process is not None and process.poll() is None and process.stdin is not None:
             try:
                 process.stdin.write(json.dumps({"op": "close"}) + "\n")
                 process.stdin.flush()
-                self._read_response(5.0)
+                response = self._read_response(5.0)
+                if response.get("status") == "BYE":
+                    process.wait(timeout=5.0)
+                    exited_cleanly = True
             except Exception:
                 pass
-        self._terminate()
+        if exited_cleanly:
+            self._process = None
+        else:
+            self._terminate()
+        self._terminate_descendants(descendant_pids)
         self._closed = True
 
 

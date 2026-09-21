@@ -1,6 +1,6 @@
 # Provider Runtime Validation
 
-验证日期：2026-09-20  
+验证日期：2026-09-20 至 2026-09-21
 平台：macOS arm64  
 Python：3.12.13  
 安装器：uv 0.11.28
@@ -16,7 +16,7 @@ Python：3.12.13
 | `paddleocr_v5_mobile` | `/Users/admin/Workspace/pdffast-v2/.venv` | `paddleocr 3.6.0`; `paddlepaddle 3.2.1`; `paddlex 3.6.1` | PASS | PASS | YES — PaddleX | NO | PASS | PASS | PASS — in-process `close()` |
 | `paddleocr_vl_16` | `/Users/admin/Workspace/pdffast-v2/.venv` | `paddleocr 3.6.0`; `paddlepaddle 3.2.1`; `paddlex[ocr] 3.6.1` | PASS | PASS | YES — PaddleX | NO | PASS | PASS | PASS — in-process `close()` |
 | `mineru_local` | `/Users/admin/Workspace/pdffast-v2/.venv-mineru` | `mineru[pipeline] 3.4.5`; `six 1.17.0` | PASS | PASS | YES — Hugging Face snapshot | NO | PASS | PASS | PASS — worker PID exited |
-| `marker_local` | `/Users/admin/Workspace/pdffast-v2/.venv-marker` | Pending Step 4 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| `marker_local` | `/Users/admin/Workspace/pdffast-v2/.venv-marker` | `marker-pdf 2.0.0`; `surya-ocr 0.22.1` | PASS | PASS | YES — Hugging Face + Datalab caches | NO | PASS — REGION + INLINE | PASS | PASS — worker and spawned servers exited |
 | `docling_local` | `/Users/admin/Workspace/pdffast-v2/.venv-docling` | Pending Step 5 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 ## Step 1 — RapidOCR
@@ -267,3 +267,97 @@ Reference-bound full suite: 84 passed, 2 skipped
 
 The two remaining reference-bound skips are the not-yet-created Docling and Marker
 worker environments.
+
+## Step 4 — Marker subprocess worker
+
+### Environment and installation
+
+Created a V2-owned Python 3.12.13 arm64 environment and installed the frozen
+package version:
+
+```text
+uv venv --python 3.12 /Users/admin/Workspace/pdffast-v2/.venv-marker
+uv pip install --python /Users/admin/Workspace/pdffast-v2/.venv-marker/bin/python \
+  marker-pdf==2.0.0
+```
+
+The resolved runtime includes `surya-ocr 0.22.1`, `torch 2.14.0`, and
+`transformers 5.17.0`. The main environment reports both `marker` and `surya` as
+absent, so Marker remains a subprocess-only dependency.
+
+### Existing model/cache reuse
+
+The smoke used offline Hugging Face mode and explicit existing paths:
+
+```text
+HF_HOME=/Users/admin/.cache/huggingface
+HF_HUB_OFFLINE=1
+TRANSFORMERS_OFFLINE=1
+MODEL_CACHE_DIR=/Users/admin/Library/Caches/datalab/models
+LLAMA_CPP_BINARY=/Users/admin/.local/bin/llama-server
+
+/Users/admin/.cache/huggingface/hub/
+  models--datalab-to--surya-ocr-2-gguf/
+    snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470
+  models--datalab-to--surya_layout2/
+    snapshots/0aee81d5fd9275c0582e545bf3a56944b1e75679
+/Users/admin/Library/Caches/datalab/models/
+  ocr_error_detection/2025_02_18
+```
+
+The GGUF snapshot is approximately 1.4 GB, the layout snapshot approximately
+135 MB, and the shared Datalab cache approximately 262 MB. No model was downloaded
+or copied into the repository.
+
+### REGION and INLINE smokes
+
+Both tasks used the existing read-only crop:
+
+```text
+/Users/admin/Workspace/pdffast/outputs/8_quality_gate/case_006_v032/
+  probe_crops/p0001_p0001_r002.png
+```
+
+Observed result:
+
+```text
+Registry resolve: PASS
+Preflight: PASS (marker-pdf=2.0.0 through .venv-marker subprocess)
+
+REGION_MULTIMODAL_PARSE
+  Raw status: SUCCESS
+  Raw Markdown length: 12
+  Canonical status: SUCCESS
+  Canonical text: AVAILABLE, 12 characters
+  Canonical reading blocks: AVAILABLE
+
+INLINE_CONTEXT_PARSE
+  Raw status: SUCCESS
+  Raw Markdown length: 12
+  Canonical status: SUCCESS
+  Canonical text: AVAILABLE, 12 characters
+  Canonical reading blocks: AVAILABLE
+```
+
+Marker's Surya dependency starts detached FastLayout and OCR Error servers and
+configures them to persist after the spawning process exits. `JsonLineWorker`
+now captures the worker-owned descendant tree before protocol shutdown and
+terminates only surviving descendants after the worker exits. A regression test
+uses a deliberately detached child process. The real smoke confirmed the Marker
+worker, FastLayout server, OCR Error server/resource tracker, and VLM server all
+exited, while the old project's pre-existing shared servers remained untouched.
+
+### Step 4 regression gate
+
+```text
+Provider + Registry + fake executor focused suite: 35 passed, 1 skipped
+Full default suite: 62 passed, 26 skipped
+Reference-bound full suite: 87 passed, 1 skipped
+```
+
+The only remaining reference-bound skip is the not-yet-created Docling worker
+environment. Frozen route config SHA-256 remains:
+
+```text
+0d999777e130de54ff25248c02cf39ae37e9fe7c5ef9231650aa3304008772d3
+```
