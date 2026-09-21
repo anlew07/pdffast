@@ -47,6 +47,16 @@
       "runtime_enabled": true,
       "benchmark_enabled": true,
       "kind": "rapidocr",
+      "required_artifacts": [
+        ".venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx",
+        ".venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx",
+        ".venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx"
+      ],
+      "required_artifact_sha256": {
+        ".venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx": "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
+        ".venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+        ".venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c"
+      },
       "params": {"Rec.lang_type": "ch"},
       "predict_options": {"use_det": true, "use_cls": false, "use_rec": true}
     },
@@ -60,8 +70,16 @@
       "predict_timeout_seconds": 300,
       "required_artifacts": [
         "${HOME}/.cache/huggingface/hub/models--docling-project--docling-models/snapshots/fc0f2d45e2218ea24bce5045f58a389aed16dc23",
-        "${HOME}/.cache/huggingface/hub/models--docling-project--docling-layout-heron/snapshots/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8"
+        "${HOME}/.cache/huggingface/hub/models--docling-project--docling-layout-heron/snapshots/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8",
+        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx",
+        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx",
+        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx"
       ],
+      "required_artifact_sha256": {
+        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx": "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
+        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c"
+      },
       "env": {
         "PYTHONUNBUFFERED": "1",
         "HF_HOME": "${HOME}/.cache/huggingface",
@@ -107,8 +125,24 @@
         "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2.gguf",
         "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2-mmproj.gguf",
         "${HOME}/.cache/huggingface/hub/models--datalab-to--surya_layout2/snapshots/0aee81d5fd9275c0582e545bf3a56944b1e75679/rfdetr_layout.pth",
-        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/.gitattributes",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/README.md",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/config.json",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/manifest.json",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/model.safetensors",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/special_tokens_map.json",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/tokenizer.json",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/tokenizer_config.json",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/vocab.txt",
         "${HOME}/.local/bin/llama-server"
+      ],
+      "process_sentinel_paths": [
+        "${HOME}/.cache/datalab/surya/fast_layout_server.json",
+        "${HOME}/.cache/datalab/surya/ocr_error_server.json",
+        "${HOME}/.cache/datalab/surya/llamacpp_server.json"
+      ],
+      "required_artifact_manifests": [
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/manifest.json"
       ],
       "env": {
         "PYTHONUNBUFFERED": "1",

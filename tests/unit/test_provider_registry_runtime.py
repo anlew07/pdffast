@@ -60,6 +60,10 @@ def test_production_config_contains_exact_runtime_closure_and_explicit_flags() -
         assert providers[name]["required_artifacts"]
     for name in ("paddleocr_v5_mobile", "paddleocr_vl_16"):
         assert providers[name]["required_artifacts"]
+    for name in ("rapidocr_ch_light", "docling_local"):
+        assert len(providers[name]["required_artifact_sha256"]) == 3
+    assert len(providers["marker_local"]["process_sentinel_paths"]) == 3
+    assert len(providers["marker_local"]["required_artifact_manifests"]) == 1
 
 
 def test_registry_declares_only_production_adapter_kinds() -> None:
@@ -143,6 +147,66 @@ def test_registry_rejects_missing_required_artifact_before_factory(
 
     with pytest.raises(ProviderConfigurationError, match="required artifact"):
         registry.create("rapidocr_ch_light", config)
+    assert factory_called is False
+
+
+def test_registry_rejects_required_artifact_hash_mismatch_before_factory(
+    tmp_path: Path,
+) -> None:
+    """Catches a present but wrong bundled model passing the offline gate."""
+    from pdffast.providers.registry import ProviderConfigurationError, ProviderRegistry
+
+    artifact = tmp_path / "model.onnx"
+    artifact.write_bytes(b"wrong-model")
+    factory_called = False
+
+    def factory(name: str, config: dict):
+        nonlocal factory_called
+        factory_called = True
+        return name
+
+    registry = ProviderRegistry(factories={"rapidocr": factory}, base_dir=tmp_path)
+    config = _config(
+        "rapidocr_ch_light", "rapidocr", runtime=True, benchmark=True
+    )
+    config["required_artifact_sha256"] = {"model.onnx": "0" * 64}
+
+    with pytest.raises(ProviderConfigurationError, match="sha256 mismatch"):
+        registry.create("rapidocr_ch_light", config)
+    assert factory_called is False
+
+
+def test_registry_rejects_file_missing_from_required_artifact_manifest(
+    tmp_path: Path,
+) -> None:
+    """Catches an incomplete cache that would otherwise invoke a downloader."""
+    from pdffast.providers.registry import ProviderConfigurationError, ProviderRegistry
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    (model_dir / "manifest.json").write_text(
+        json.dumps({"files": ["config.json", "model.safetensors"]}),
+        encoding="utf-8",
+    )
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    factory_called = False
+
+    def factory(name: str, config: dict):
+        nonlocal factory_called
+        factory_called = True
+        return name
+
+    registry = ProviderRegistry(factories={"marker_worker": factory}, base_dir=tmp_path)
+    config = _config(
+        "marker_local", "marker_worker", runtime=True, benchmark=False
+    )
+    config["required_artifact_manifests"] = ["model/manifest.json"]
+
+    with pytest.raises(
+        ProviderConfigurationError,
+        match="model.safetensors",
+    ):
+        registry.create("marker_local", config)
     assert factory_called is False
 
 

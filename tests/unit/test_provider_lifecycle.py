@@ -386,6 +386,80 @@ for line in sys.stdin:
         os.kill(child_pid, 0)
 
 
+def test_json_line_worker_eof_reaps_process_registered_in_new_sentinel(
+    tmp_path: Path,
+) -> None:
+    """Catches a detached server leak when its worker exits before READY."""
+    from pdffast.providers.workers import JsonLineWorker
+
+    sentinel = tmp_path / "server.json"
+    child_pid_path = tmp_path / "child.pid"
+    code = f'''
+import json, subprocess, sys
+from pathlib import Path
+child = subprocess.Popen(
+    [sys.executable, "-c", "import time; time.sleep(60)"],
+    start_new_session=True,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
+Path({str(child_pid_path)!r}).write_text(str(child.pid), encoding="utf-8")
+Path({str(sentinel)!r}).write_text(
+    json.dumps({{"pid": child.pid}}), encoding="utf-8"
+)
+raise SystemExit(9)
+'''
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code=code,
+        dependency_probe_code="print('probe=ok')",
+        process_sentinel_paths=(sentinel,),
+        init_timeout_seconds=1,
+    )
+
+    with pytest.raises(RuntimeError, match="worker exited before response"):
+        worker.start()
+
+    child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    with pytest.raises(ProcessLookupError):
+        os.kill(child_pid, 0)
+
+
+def test_json_line_worker_does_not_own_unchanged_preexisting_sentinel(
+    tmp_path: Path,
+) -> None:
+    """Catches cleanup of a shared model server that predates this worker."""
+    from pdffast.providers.workers import JsonLineWorker
+
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        start_new_session=True,
+    )
+    sentinel = tmp_path / "server.json"
+    sentinel.write_text(json.dumps({"pid": child.pid}), encoding="utf-8")
+    try:
+        worker = JsonLineWorker(
+            python_executable=Path(sys.executable),
+            worker_code="raise SystemExit(9)",
+            dependency_probe_code="print('probe=ok')",
+            process_sentinel_paths=(sentinel,),
+            init_timeout_seconds=1,
+        )
+        with pytest.raises(RuntimeError, match="worker exited before response"):
+            worker.start()
+        os.kill(child.pid, 0)
+    finally:
+        child.kill()
+        child.wait(timeout=2)
+
+
 def test_worker_receives_offline_environment_from_production_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

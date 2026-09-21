@@ -148,9 +148,16 @@ RapidOCR Torch 权重自动下载；该次运行已中止，原环境整体隔�
 `docs/PROVIDER_RUNTIME_VALIDATION.md`。
 
 生产配置使用 `required_artifacts` 在 Provider factory 和模型初始化之前验证共享 cache；
-缺失 artifact 会直接导致配置错误。Paddle Provider 同时接收已展开的本地模型目录，
-MinerU、Marker、Docling worker 固定携带离线环境变量。`${HOME}` 和 `~` 在 worker
-启动前展开，配置文件不绑定具体用户名。
+缺失 artifact 会直接导致配置错误。RapidOCR 主环境及 Docling 环境中的三个 wheel 内置
+ONNX 文件还由 `required_artifact_sha256` 做精确校验；Marker 的 OCR-error cache 则由
+`required_artifact_manifests` 解析 `manifest.json` 并逐一验证其引用文件，避免“目录存在但
+模型不完整”时进入下载逻辑。Paddle Provider 同时接收已展开的本地模型目录，MinerU、
+Marker、Docling worker 固定携带离线环境变量。`${HOME}` 和 `~` 在 worker 启动前展开，
+配置文件不绑定具体用户名。
+
+Marker 配置还声明三个真实 server sentinel。worker 启动前记录已有 sentinel 及其进程
+身份；只认领本次启动后新建或指向新进程的 sentinel。这样既能在 worker 未返回 READY
+就退出时清理本次创建的 detached server，又不会终止旧工程已经运行的共享 server。
 
 Registry 必须以显式工程根目录构造：
 

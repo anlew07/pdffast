@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib
+from hashlib import sha256
+import json
 import os
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -153,6 +155,67 @@ class ProviderRegistry:
         if missing:
             raise ProviderConfigurationError(
                 "missing required artifact(s): " + ", ".join(missing)
+            )
+
+        for raw_path in prepared.get("required_artifact_manifests") or []:
+            manifest = self._resolve_path(
+                str(raw_path), field="required_artifact_manifest"
+            )
+            if not manifest.is_file():
+                missing.append(str(manifest))
+                continue
+            try:
+                payload = json.loads(manifest.read_text(encoding="utf-8"))
+                references = payload["files"]
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError) as exc:
+                raise ProviderConfigurationError(
+                    f"invalid required artifact manifest: {manifest}: {exc}"
+                ) from exc
+            if not isinstance(references, list):
+                raise ProviderConfigurationError(
+                    f"invalid required artifact manifest files[]: {manifest}"
+                )
+            for reference in references:
+                relative = Path(str(reference))
+                if (
+                    not isinstance(reference, str)
+                    or not reference
+                    or relative.is_absolute()
+                    or ".." in relative.parts
+                ):
+                    raise ProviderConfigurationError(
+                        f"invalid required artifact manifest entry: {manifest}: {reference!r}"
+                    )
+                artifact = manifest.parent / relative
+                if not artifact.is_file():
+                    missing.append(str(artifact))
+        if missing:
+            raise ProviderConfigurationError(
+                "missing required artifact(s): " + ", ".join(missing)
+            )
+
+        mismatched: list[str] = []
+        for raw_path, expected in (
+            prepared.get("required_artifact_sha256") or {}
+        ).items():
+            resolved = self._resolve_path(str(raw_path), field="required_artifact_sha256")
+            if not resolved.is_file():
+                missing.append(str(resolved))
+                continue
+            digest = sha256()
+            with resolved.open("rb") as artifact:
+                for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            actual = digest.hexdigest()
+            if actual != str(expected).lower():
+                mismatched.append(f"{resolved} expected={expected} actual={actual}")
+        if missing:
+            raise ProviderConfigurationError(
+                "missing required artifact(s): " + ", ".join(missing)
+            )
+        if mismatched:
+            raise ProviderConfigurationError(
+                "required artifact sha256 mismatch: " + "; ".join(mismatched)
             )
         return prepared
 

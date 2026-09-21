@@ -4,6 +4,7 @@ import json
 import os
 import select
 import signal
+import string
 import subprocess
 import time
 from collections.abc import Callable
@@ -40,6 +41,7 @@ class JsonLineWorker:
         init_timeout_seconds: float = 300.0,
         preflight_timeout_seconds: float = 60.0,
         env: dict[str, str] | None = None,
+        process_sentinel_paths: tuple[Path, ...] = (),
     ) -> None:
         self.python_executable = Path(python_executable).absolute()
         self.worker_code = worker_code
@@ -47,8 +49,13 @@ class JsonLineWorker:
         self.init_timeout_seconds = init_timeout_seconds
         self.preflight_timeout_seconds = preflight_timeout_seconds
         self.extra_env = dict(env or {})
+        self.process_sentinel_paths = tuple(process_sentinel_paths)
         self._process: subprocess.Popen[str] | None = None
         self._owned_descendants: dict[int, _ProcessIdentity] = {}
+        self._sentinel_baselines: dict[
+            Path, tuple[bytes | None, _ProcessIdentity | None]
+        ] = {}
+        self._owned_sentinels: dict[Path, tuple[bytes, _ProcessIdentity]] = {}
         self._closed = False
 
     def _env(self) -> dict[str, str]:
@@ -62,6 +69,56 @@ class JsonLineWorker:
             }
         )
         return env
+
+    def _sentinel_paths(self) -> tuple[Path, ...]:
+        env = self._env()
+        paths: list[Path] = []
+        for raw_path in self.process_sentinel_paths:
+            expanded = string.Template(str(raw_path)).safe_substitute(env)
+            if expanded == "~" or expanded.startswith("~/"):
+                expanded = str(Path(env.get("HOME", str(Path.home()))) / expanded[2:])
+            paths.append(Path(expanded).absolute())
+        return tuple(paths)
+
+    @staticmethod
+    def _read_sentinel(path: Path) -> bytes | None:
+        try:
+            return path.read_bytes()
+        except (FileNotFoundError, IsADirectoryError, PermissionError, OSError):
+            return None
+
+    @staticmethod
+    def _sentinel_pid(content: bytes | None) -> int | None:
+        if content is None:
+            return None
+        try:
+            pid = int(json.loads(content).get("pid"))
+        except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+            return None
+        return pid if pid > 0 else None
+
+    def _snapshot_sentinels(self) -> None:
+        self._sentinel_baselines.clear()
+        self._owned_sentinels.clear()
+        for path in self._sentinel_paths():
+            content = self._read_sentinel(path)
+            pid = self._sentinel_pid(content)
+            identity = self._current_identity(pid) if pid is not None else None
+            self._sentinel_baselines[path] = (content, identity)
+
+    def _capture_sentinel_processes(self) -> None:
+        for path, (baseline_content, baseline_identity) in self._sentinel_baselines.items():
+            content = self._read_sentinel(path)
+            if content is None or content == baseline_content:
+                continue
+            pid = self._sentinel_pid(content)
+            if pid is None:
+                continue
+            identity = self._current_identity(pid)
+            if identity is None or identity == baseline_identity:
+                continue
+            self._owned_descendants[pid] = identity
+            self._owned_sentinels[path] = (content, identity)
 
     def preflight(self) -> tuple[bool, str]:
         if not self.python_executable.exists():
@@ -108,6 +165,7 @@ class JsonLineWorker:
             return {"status": "READY", "reused": True}
         if not self.python_executable.exists():
             raise FileNotFoundError(self.python_executable)
+        self._snapshot_sentinels()
         self._process = subprocess.Popen(
             [str(self.python_executable), "-u", "-c", self.worker_code],
             stdin=subprocess.PIPE,
@@ -135,6 +193,7 @@ class JsonLineWorker:
     def _terminate(self) -> None:
         process = self._process
         self._capture_descendants()
+        self._capture_sentinel_processes()
         self._process = None
         if process is not None and process.poll() is None:
             process.terminate()
@@ -249,11 +308,22 @@ class JsonLineWorker:
             except (ProcessLookupError, PermissionError):
                 pass
 
+        for path, (content, identity) in tuple(self._owned_sentinels.items()):
+            if self._current_identity(identity.pid) == identity:
+                continue
+            if self._read_sentinel(path) == content:
+                try:
+                    path.unlink()
+                except (FileNotFoundError, PermissionError, OSError):
+                    pass
+        self._owned_sentinels.clear()
+
     def close(self) -> None:
         if self._closed:
             return
         process = self._process
         self._capture_descendants()
+        self._capture_sentinel_processes()
         exited_cleanly = False
         if process is not None and process.poll() is None and process.stdin is not None:
             try:
@@ -301,6 +371,10 @@ class IsolatedWorkerProvider:
             init_timeout_seconds=float(config.get("worker_init_timeout_seconds", 300)),
             preflight_timeout_seconds=float(config.get("preflight_timeout_seconds", 60)),
             env={str(k): str(v) for k, v in (config.get("env") or {}).items()},
+            process_sentinel_paths=tuple(
+                Path(str(value))
+                for value in config.get("process_sentinel_paths") or ()
+            ),
         )
 
     def _get_worker(self) -> WorkerProtocol:
