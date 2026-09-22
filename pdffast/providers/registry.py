@@ -166,11 +166,15 @@ class ProviderRegistry:
                 continue
             try:
                 payload = json.loads(manifest.read_text(encoding="utf-8"))
-                references = payload["files"]
             except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError) as exc:
                 raise ProviderConfigurationError(
                     f"invalid required artifact manifest: {manifest}: {exc}"
                 ) from exc
+            if not isinstance(payload, dict) or "files" not in payload:
+                raise ProviderConfigurationError(
+                    f"invalid required artifact manifest: {manifest}"
+                )
+            references = payload["files"]
             if not isinstance(references, list):
                 raise ProviderConfigurationError(
                     f"invalid required artifact manifest files[]: {manifest}"
@@ -187,6 +191,32 @@ class ProviderRegistry:
                         f"invalid required artifact manifest entry: {manifest}: {reference!r}"
                     )
                 artifact = manifest.parent / relative
+                if not artifact.is_file():
+                    missing.append(str(artifact))
+
+        for raw_root, references in (
+            prepared.get("required_artifact_trees") or {}
+        ).items():
+            root = self._resolve_path(str(raw_root), field="required_artifact_tree")
+            if not root.is_dir():
+                missing.append(str(root))
+                continue
+            if not isinstance(references, list):
+                raise ProviderConfigurationError(
+                    f"invalid required artifact tree files[]: {root}"
+                )
+            for reference in references:
+                relative = Path(str(reference))
+                if (
+                    not isinstance(reference, str)
+                    or not reference
+                    or relative.is_absolute()
+                    or ".." in relative.parts
+                ):
+                    raise ProviderConfigurationError(
+                        f"invalid required artifact tree entry: {root}: {reference!r}"
+                    )
+                artifact = root / relative
                 if not artifact.is_file():
                     missing.append(str(artifact))
         if missing:

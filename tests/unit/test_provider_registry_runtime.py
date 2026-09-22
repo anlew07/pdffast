@@ -64,6 +64,14 @@ def test_production_config_contains_exact_runtime_closure_and_explicit_flags() -
         assert len(providers[name]["required_artifact_sha256"]) == 3
     assert len(providers["marker_local"]["process_sentinel_paths"]) == 3
     assert len(providers["marker_local"]["required_artifact_manifests"]) == 1
+    for name in (
+        "paddleocr_v5_mobile",
+        "paddleocr_vl_16",
+        "mineru_local",
+        "docling_local",
+    ):
+        assert providers[name]["required_artifact_trees"]
+    assert "${PDFFAST_WORKER_ID}" in providers["marker_local"]["env"]["HOME"]
 
 
 def test_registry_declares_only_production_adapter_kinds() -> None:
@@ -208,6 +216,56 @@ def test_registry_rejects_file_missing_from_required_artifact_manifest(
     ):
         registry.create("marker_local", config)
     assert factory_called is False
+
+
+def test_registry_rejects_file_missing_from_required_artifact_tree_before_factory(
+    tmp_path: Path,
+) -> None:
+    """Catches a partial model directory reaching provider initialization."""
+    from pdffast.providers.registry import ProviderConfigurationError, ProviderRegistry
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    factory_called = False
+
+    def factory(name: str, config: dict):
+        nonlocal factory_called
+        factory_called = True
+        return name
+
+    registry = ProviderRegistry(factories={"paddleocr_text": factory}, base_dir=tmp_path)
+    config = _config(
+        "paddleocr_v5_mobile", "paddleocr_text", runtime=True, benchmark=True
+    )
+    config["required_artifact_trees"] = {
+        "model": ["config.json", "inference.pdiparams"],
+    }
+
+    with pytest.raises(ProviderConfigurationError, match="inference.pdiparams"):
+        registry.create("paddleocr_v5_mobile", config)
+    assert factory_called is False
+
+
+def test_registry_wraps_non_object_artifact_manifest_as_configuration_error(
+    tmp_path: Path,
+) -> None:
+    """Catches malformed cache metadata escaping as an implementation TypeError."""
+    from pdffast.providers.registry import ProviderConfigurationError, ProviderRegistry
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("[]", encoding="utf-8")
+    registry = ProviderRegistry(
+        factories={"marker_worker": lambda name, config: name},
+        base_dir=tmp_path,
+    )
+    config = _config(
+        "marker_local", "marker_worker", runtime=True, benchmark=False
+    )
+    config["required_artifact_manifests"] = ["manifest.json"]
+
+    with pytest.raises(ProviderConfigurationError, match="invalid.*manifest"):
+        registry.create("marker_local", config)
 
 
 def test_benchmark_disabled_production_provider_still_resolves() -> None:

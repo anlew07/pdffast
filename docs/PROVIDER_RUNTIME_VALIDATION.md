@@ -340,12 +340,15 @@ INLINE_CONTEXT_PARSE
 ```
 
 Marker's Surya dependency starts detached FastLayout and OCR Error servers and
-configures them to persist after the spawning process exits. `JsonLineWorker`
-now captures the worker-owned descendant tree before protocol shutdown and
-terminates only surviving descendants after the worker exits. A regression test
-uses a deliberately detached child process. The real smoke confirmed the Marker
-worker, FastLayout server, OCR Error server/resource tracker, and VLM server all
-exited, while the old project's pre-existing shared servers remained untouched.
+configures them to persist after the spawning process exits. Each V2 Marker
+worker now receives a nonce-specific `HOME` under the user cache, so its three
+Surya sentinel namespaces cannot collide with a concurrent worker or the old
+project. Shared model caches remain explicitly pinned outside that private HOME.
+`JsonLineWorker` captures the worker-owned descendant tree and private sentinels
+before protocol shutdown and terminates only those surviving descendants. The
+real nonce-isolation smoke confirmed the V2 Marker worker, FastLayout server,
+OCR Error server/resource tracker, and VLM server all exited, while the old
+project's pre-existing shared servers remained untouched.
 
 ### Step 4 regression gate
 
@@ -454,9 +457,9 @@ Worker PID: exited after close; no matching orphan process remained
 ### Step 5 regression gate
 
 ```text
-Provider + Registry + fake executor focused suite: 46 passed
-Full default suite: 73 passed, 25 skipped
-Reference-bound full suite: 98 passed
+Provider + Registry + fake executor focused suite: 49 passed
+Full default suite: 76 passed, 25 skipped
+Reference-bound full suite: 101 passed
 ```
 
 All six production Providers now pass their required smoke and canonical
@@ -472,7 +475,8 @@ The production Registry now resolves relative worker interpreter paths only from
 an explicit project root, validates every configured `required_artifacts` path
 before constructing a Provider, expands portable `${HOME}` cache paths, and pins
 Paddle adapters to the audited local model directories. RapidOCR's three bundled
-ONNX files are SHA-256 checked in both the main and Docling environments. Marker's
+ONNX files are SHA-256 checked in both the main and Docling environments. Paddle,
+Docling, and MinerU cache roots have explicit runtime file trees; Marker's
 OCR-error manifest is parsed and every referenced file is required before its
 factory runs. Isolated worker configs carry their cache-only/offline environment
 instead of depending on the launching shell.
@@ -480,10 +484,15 @@ instead of depending on the launching shell.
 `JsonLineWorker` records stable descendant identity (PID, start time, and command)
 and applies cleanup on timeout, malformed/closed protocol, forced termination, and
 graceful close. Identity is revalidated before TERM and KILL, preventing a recycled
-PID from targeting an unrelated process. Marker also snapshots the three real
-Surya server sentinel files before worker start. A new or changed sentinel is
-owned only when it points to a different stable process identity, closing the
-worker-crash-before-READY gap while leaving pre-existing shared servers untouched.
-Regression tests cover timeout cleanup, immediate EOF cleanup, unchanged sentinel
-isolation, detached descendants, worker `atexit`, sanitized offline environment
-propagation, and recycled-PID rejection.
+PID from targeting an unrelated process. Marker also uses a per-worker nonce HOME,
+making the three real Surya server sentinel paths causal to one worker rather than
+inferring ownership from a shared path's modification time. Regression tests cover
+disjoint concurrent namespaces, timeout cleanup, immediate EOF cleanup, unchanged
+sentinel isolation, detached descendants, worker `atexit`, sanitized offline
+environment propagation, and recycled-PID rejection.
+
+The post-review nonce-isolation smoke reused the same read-only crop and returned
+`SUCCESS` with 41 Markdown characters. It created only sentinel lock/log state
+under `${HOME}/Library/Caches/pdffast-v2/marker-workers/<worker-id>`, left no V2
+Marker/Surya/llama server process after close, and did not alter the old project's
+three pre-existing server PIDs. No model download occurred.

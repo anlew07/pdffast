@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
+from uuid import uuid4
 
 from .base import ProviderPreflight, ProviderTask, RawProviderResult
 
@@ -49,6 +50,7 @@ class JsonLineWorker:
         self.init_timeout_seconds = init_timeout_seconds
         self.preflight_timeout_seconds = preflight_timeout_seconds
         self.extra_env = dict(env or {})
+        self.worker_id = uuid4().hex
         self.process_sentinel_paths = tuple(process_sentinel_paths)
         self._process: subprocess.Popen[str] | None = None
         self._owned_descendants: dict[int, _ProcessIdentity] = {}
@@ -62,9 +64,12 @@ class JsonLineWorker:
         env = os.environ.copy()
         for key in ("VIRTUAL_ENV", "PYTHONHOME", "PYTHONPATH", "__PYVENV_LAUNCHER__"):
             env.pop(key, None)
+        substitutions = dict(env)
+        substitutions["PDFFAST_WORKER_ID"] = self.worker_id
+        env["PDFFAST_WORKER_ID"] = self.worker_id
         env.update(
             {
-                key: os.path.expandvars(os.path.expanduser(value))
+                key: string.Template(value).safe_substitute(substitutions)
                 for key, value in self.extra_env.items()
             }
         )

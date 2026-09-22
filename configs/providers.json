@@ -20,6 +20,20 @@
         "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_det",
         "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_rec"
       ],
+      "required_artifact_trees": {
+        "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_det": [
+          "config.json",
+          "inference.json",
+          "inference.pdiparams",
+          "inference.yml"
+        ],
+        "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_rec": [
+          "config.json",
+          "inference.json",
+          "inference.pdiparams",
+          "inference.yml"
+        ]
+      },
       "init_options": {},
       "predict_options": {}
     },
@@ -40,6 +54,31 @@
         "${HOME}/.paddlex/official_models/PP-DocLayoutV3",
         "${HOME}/.paddlex/official_models/PaddleOCR-VL-1.6"
       ],
+      "required_artifact_trees": {
+        "${HOME}/.paddlex/official_models/PP-DocLayoutV3": [
+          "inference.json",
+          "inference.pdiparams",
+          "inference.yml"
+        ],
+        "${HOME}/.paddlex/official_models/PaddleOCR-VL-1.6": [
+          "added_tokens.json",
+          "chat_template.jinja",
+          "config.json",
+          "configuration_paddleocr_vl.py",
+          "generation_config.json",
+          "image_processing_paddleocr_vl.py",
+          "inference.yml",
+          "model.safetensors",
+          "modeling_paddleocr_vl.py",
+          "preprocessor_config.json",
+          "processing_paddleocr_vl.py",
+          "processor_config.json",
+          "special_tokens_map.json",
+          "tokenizer.json",
+          "tokenizer.model",
+          "tokenizer_config.json"
+        ]
+      },
       "init_options": {},
       "predict_options": {}
     },
@@ -80,6 +119,20 @@
         ".venv-docling/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
         ".venv-docling/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c"
       },
+      "required_artifact_trees": {
+        "${HOME}/.cache/huggingface/hub/models--docling-project--docling-models/snapshots/fc0f2d45e2218ea24bce5045f58a389aed16dc23": [
+          "config.json",
+          "model_artifacts/tableformer/accurate/tableformer_accurate.safetensors",
+          "model_artifacts/tableformer/accurate/tm_config.json",
+          "model_artifacts/tableformer/fast/tableformer_fast.safetensors",
+          "model_artifacts/tableformer/fast/tm_config.json"
+        ],
+        "${HOME}/.cache/huggingface/hub/models--docling-project--docling-layout-heron/snapshots/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8": [
+          "config.json",
+          "model.safetensors",
+          "preprocessor_config.json"
+        ]
+      },
       "env": {
         "PYTHONUNBUFFERED": "1",
         "HF_HOME": "${HOME}/.cache/huggingface",
@@ -101,6 +154,26 @@
         "${HOME}/mineru.json",
         "${HOME}/.cache/huggingface/hub/models--opendatalab--PDF-Extract-Kit-1.0/snapshots/ed6b654c018d742e65a17671e379c5e6ecc87ec9"
       ],
+      "required_artifact_trees": {
+        "${HOME}/.cache/huggingface/hub/models--opendatalab--PDF-Extract-Kit-1.0/snapshots/ed6b654c018d742e65a17671e379c5e6ecc87ec9": [
+          "models/Layout/PP-DocLayoutV2/config.json",
+          "models/Layout/PP-DocLayoutV2/model.safetensors",
+          "models/Layout/PP-DocLayoutV2/preprocessor_config.json",
+          "models/MFR/unimernet_hf_small_2503/config.json",
+          "models/MFR/unimernet_hf_small_2503/generation_config.json",
+          "models/MFR/unimernet_hf_small_2503/model.safetensors",
+          "models/MFR/unimernet_hf_small_2503/special_tokens_map.json",
+          "models/MFR/unimernet_hf_small_2503/tokenizer.json",
+          "models/MFR/unimernet_hf_small_2503/tokenizer_config.json",
+          "models/OCR/paddleocr_torch/ch_PP-OCRv6_medium_rec_infer.safetensors",
+          "models/OCR/paddleocr_torch/ch_PP-OCRv6_small_det_infer.safetensors",
+          "models/OCR/paddleocr_torch/ch_PP-OCRv6_small_rec_infer.safetensors",
+          "models/OCR/paddleocr_torch/seal_PP-OCRv4_det_server_infer.pth",
+          "models/TabCls/paddle_table_cls/PP-LCNet_x1_0_table_cls.onnx",
+          "models/TabRec/SlanetPlus/slanet-plus.onnx",
+          "models/TabRec/UnetStructure/unet.onnx"
+        ]
+      },
       "env": {
         "PYTHONUNBUFFERED": "1",
         "MINERU_TOOLS_CONFIG_JSON": "${HOME}/mineru.json",
@@ -146,6 +219,7 @@
       ],
       "env": {
         "PYTHONUNBUFFERED": "1",
+        "HOME": "${HOME}/Library/Caches/pdffast-v2/marker-workers/${PDFFAST_WORKER_ID}",
         "HF_HOME": "${HOME}/.cache/huggingface",
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",

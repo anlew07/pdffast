@@ -498,6 +498,48 @@ for line in sys.stdin:
     assert ready["transformers_offline"] == "1"
 
 
+def test_workers_expand_nonce_templated_home_into_disjoint_sentinel_namespaces(
+    tmp_path: Path,
+) -> None:
+    """Catches concurrent Marker workers sharing ambiguous sentinel ownership."""
+    from pdffast.providers.workers import JsonLineWorker
+
+    code = r'''
+import json, os, sys
+print(json.dumps({"status": "READY", "home": os.environ["HOME"]}), flush=True)
+for line in sys.stdin:
+    if json.loads(line).get("op") == "close":
+        print(json.dumps({"status": "BYE"}), flush=True)
+        break
+'''
+
+    def make_worker() -> JsonLineWorker:
+        return JsonLineWorker(
+            python_executable=Path(sys.executable),
+            worker_code=code,
+            dependency_probe_code="print('probe=ok')",
+            env={
+                "HOME": str(tmp_path / "marker-${PDFFAST_WORKER_ID}"),
+            },
+            process_sentinel_paths=(Path("${HOME}/server.json"),),
+            init_timeout_seconds=1,
+        )
+
+    first = make_worker()
+    second = make_worker()
+    try:
+        first_home = Path(first.start()["home"])
+        second_home = Path(second.start()["home"])
+        assert first_home.parent == tmp_path
+        assert second_home.parent == tmp_path
+        assert first_home != second_home
+        assert first._sentinel_paths() == (first_home / "server.json",)
+        assert second._sentinel_paths() == (second_home / "server.json",)
+    finally:
+        first.close()
+        second.close()
+
+
 def test_descendant_cleanup_does_not_signal_recycled_pid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
