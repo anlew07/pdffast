@@ -191,6 +191,7 @@
       "mode": "fast",
       "output_format": "markdown",
       "force_ocr": true,
+      "force_child_process_group": true,
       "preflight_timeout_seconds": 60,
       "worker_init_timeout_seconds": 300,
       "predict_timeout_seconds": 600,

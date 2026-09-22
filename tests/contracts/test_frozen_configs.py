@@ -15,7 +15,7 @@ import pytest
         ),
         (
             "configs/providers.json",
-            "e7a12ba20ce94ee93eeaba14fbec169fc59cf34cfd07abef440c2af87e42eb24",
+            "dd023e32c91b28b03440f6a392d71cfc7c3650aa9901b3824382ab77239e79b9",
         ),
         (
             "configs/frozen/stage9_route_candidates_prod_v001.json",
@@ -69,6 +69,7 @@ def test_retained_provider_objects_equal_explicit_reference_migration() -> None:
         actual.pop("required_artifact_sha256", None)
         actual.pop("required_artifact_trees", None)
         actual.pop("process_sentinel_paths", None)
+        actual.pop("force_child_process_group", None)
         for field in (
             "text_detection_model_dir",
             "text_recognition_model_dir",

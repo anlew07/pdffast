@@ -64,6 +64,7 @@ def test_production_config_contains_exact_runtime_closure_and_explicit_flags() -
         assert len(providers[name]["required_artifact_sha256"]) == 3
     assert len(providers["marker_local"]["process_sentinel_paths"]) == 3
     assert len(providers["marker_local"]["required_artifact_manifests"]) == 1
+    assert providers["marker_local"]["force_child_process_group"] is True
     for name in (
         "paddleocr_v5_mobile",
         "paddleocr_vl_16",

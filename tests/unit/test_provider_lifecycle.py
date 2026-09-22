@@ -432,6 +432,48 @@ raise SystemExit(9)
         os.kill(child_pid, 0)
 
 
+def test_json_line_worker_eof_reaps_grouped_child_before_sentinel_publication(
+    tmp_path: Path,
+) -> None:
+    """Catches the detached-spawn to sentinel-publication crash window."""
+    from pdffast.providers.workers import JsonLineWorker
+
+    child_pid_path = tmp_path / "child.pid"
+    code = f'''
+import subprocess, sys
+from pathlib import Path
+child = subprocess.Popen(
+    [sys.executable, "-c", "import time; time.sleep(60)"],
+    start_new_session=True,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
+Path({str(child_pid_path)!r}).write_text(str(child.pid), encoding="utf-8")
+raise SystemExit(9)
+'''
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code=code,
+        dependency_probe_code="print('probe=ok')",
+        force_child_process_group=True,
+        init_timeout_seconds=1,
+    )
+
+    with pytest.raises(RuntimeError, match="worker exited before response"):
+        worker.start()
+
+    child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    with pytest.raises(ProcessLookupError):
+        os.kill(child_pid, 0)
+
+
 def test_json_line_worker_does_not_own_unchanged_preexisting_sentinel(
     tmp_path: Path,
 ) -> None:

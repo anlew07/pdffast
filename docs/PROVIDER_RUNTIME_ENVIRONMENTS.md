@@ -160,7 +160,10 @@ Marker 为每个 worker 注入随机 `PDFFAST_WORKER_ID`，并将该 worker 的 
 cache 下的独立 nonce 目录。Surya 的三个 server sentinel/lock/log 因此只属于该 worker；
 模型仍通过显式 `HF_HOME`、`MODEL_CACHE_DIR` 与 GGUF 路径复用用户级共享 cache。该隔离
 消除了并发 worker 仅凭 sentinel 时间变化误认所有权的问题，也确保 V2 不会连接或终止
-旧工程 `.venv-marker` 启动的共享 server。
+旧工程 `.venv-marker` 启动的共享 server。每个 isolated worker 同时运行在独立 OS
+process group；Marker 内部请求 detached session 的 server 启动会被收拢到该 group。
+因此即使 worker 在 server spawn 后、sentinel 写入前异常退出，父进程仍可通过 PGID
+发现并清理该 worker 的 server。
 
 Registry 必须以显式工程根目录构造：
 

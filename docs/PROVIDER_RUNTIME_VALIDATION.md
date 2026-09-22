@@ -350,6 +350,12 @@ real nonce-isolation smoke confirmed the V2 Marker worker, FastLayout server,
 OCR Error server/resource tracker, and VLM server all exited, while the old
 project's pre-existing shared servers remained untouched.
 
+Each isolated worker also owns a distinct OS process group. For Marker, child
+launches that request a detached session are deliberately kept in that group.
+This provides an ownership channel independent of sentinel publication: the
+spawn-before-sentinel crash regression creates a server child, exits without
+writing any sentinel, and confirms the parent still reaps the child by PGID.
+
 ### Step 4 regression gate
 
 ```text
@@ -457,9 +463,9 @@ Worker PID: exited after close; no matching orphan process remained
 ### Step 5 regression gate
 
 ```text
-Provider + Registry + fake executor focused suite: 49 passed
-Full default suite: 76 passed, 25 skipped
-Reference-bound full suite: 101 passed
+Provider + Registry + fake executor focused suite: 50 passed
+Full default suite: 77 passed, 25 skipped
+Reference-bound full suite: 102 passed
 ```
 
 All six production Providers now pass their required smoke and canonical
@@ -488,11 +494,14 @@ PID from targeting an unrelated process. Marker also uses a per-worker nonce HOM
 making the three real Surya server sentinel paths causal to one worker rather than
 inferring ownership from a shared path's modification time. Regression tests cover
 disjoint concurrent namespaces, timeout cleanup, immediate EOF cleanup, unchanged
-sentinel isolation, detached descendants, worker `atexit`, sanitized offline
-environment propagation, and recycled-PID rejection.
+sentinel isolation, pre-sentinel process-group cleanup, detached descendants,
+worker `atexit`, sanitized offline environment propagation, and recycled-PID
+rejection.
 
 The post-review nonce-isolation smoke reused the same read-only crop and returned
 `SUCCESS` with 41 Markdown characters. It created only sentinel lock/log state
 under `${HOME}/Library/Caches/pdffast-v2/marker-workers/<worker-id>`, left no V2
 Marker/Surya/llama server process after close, and did not alter the old project's
-three pre-existing server PIDs. No model download occurred.
+three pre-existing server PIDs. The smoke was repeated with enforced process-group
+supervision and produced the same 41-character result with no V2 process left
+after close. No model download occurred.

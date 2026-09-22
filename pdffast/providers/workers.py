@@ -43,6 +43,7 @@ class JsonLineWorker:
         preflight_timeout_seconds: float = 60.0,
         env: dict[str, str] | None = None,
         process_sentinel_paths: tuple[Path, ...] = (),
+        force_child_process_group: bool = False,
     ) -> None:
         self.python_executable = Path(python_executable).absolute()
         self.worker_code = worker_code
@@ -52,7 +53,9 @@ class JsonLineWorker:
         self.extra_env = dict(env or {})
         self.worker_id = uuid4().hex
         self.process_sentinel_paths = tuple(process_sentinel_paths)
+        self.force_child_process_group = force_child_process_group
         self._process: subprocess.Popen[str] | None = None
+        self._process_group_id: int | None = None
         self._owned_descendants: dict[int, _ProcessIdentity] = {}
         self._sentinel_baselines: dict[
             Path, tuple[bytes | None, _ProcessIdentity | None]
@@ -150,6 +153,7 @@ class JsonLineWorker:
             self._terminate()
             raise TimeoutError(f"worker response timeout after {timeout_seconds:g}s")
         self._capture_descendants()
+        self._capture_process_group()
         line = process.stdout.readline()
         if not line:
             code = process.poll()
@@ -171,15 +175,30 @@ class JsonLineWorker:
         if not self.python_executable.exists():
             raise FileNotFoundError(self.python_executable)
         self._snapshot_sentinels()
+        worker_code = self.worker_code
+        if self.force_child_process_group:
+            worker_code = r'''
+import subprocess as _pdffast_subprocess
+_pdffast_original_popen = _pdffast_subprocess.Popen
+def _pdffast_grouped_popen(*args, **kwargs):
+    if kwargs.get("start_new_session") is True:
+        kwargs["start_new_session"] = False
+    if kwargs.get("process_group") not in (None, -1):
+        kwargs["process_group"] = None
+    return _pdffast_original_popen(*args, **kwargs)
+_pdffast_subprocess.Popen = _pdffast_grouped_popen
+''' + worker_code
         self._process = subprocess.Popen(
-            [str(self.python_executable), "-u", "-c", self.worker_code],
+            [str(self.python_executable), "-u", "-c", worker_code],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=None,
             text=True,
             bufsize=1,
             env=self._env(),
+            start_new_session=True,
         )
+        self._process_group_id = self._process.pid
         self._closed = False
         response = self._read_response(self.init_timeout_seconds)
         if response.get("status") != "READY":
@@ -198,6 +217,7 @@ class JsonLineWorker:
     def _terminate(self) -> None:
         process = self._process
         self._capture_descendants()
+        self._capture_process_group()
         self._capture_sentinel_processes()
         self._process = None
         if process is not None and process.poll() is None:
@@ -207,13 +227,15 @@ class JsonLineWorker:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+        self._capture_process_group()
         self._terminate_descendants()
+        self._process_group_id = None
 
     @staticmethod
-    def _process_rows() -> tuple[tuple[int, int, _ProcessIdentity], ...]:
+    def _process_rows() -> tuple[tuple[int, int, int, _ProcessIdentity], ...]:
         try:
             completed = subprocess.run(
-                ["ps", "-axo", "pid=,ppid=,lstart=,command="],
+                ["ps", "-axo", "pid=,ppid=,pgid=,lstart=,command="],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -222,24 +244,26 @@ class JsonLineWorker:
         except Exception:
             return ()
 
-        rows: list[tuple[int, int, _ProcessIdentity]] = []
+        rows: list[tuple[int, int, int, _ProcessIdentity]] = []
         for line in completed.stdout.splitlines():
-            fields = line.split(None, 7)
-            if len(fields) != 8:
+            fields = line.split(None, 8)
+            if len(fields) != 9:
                 continue
             try:
                 pid = int(fields[0])
                 parent_pid = int(fields[1])
+                process_group_id = int(fields[2])
             except ValueError:
                 continue
             rows.append(
                 (
                     pid,
                     parent_pid,
+                    process_group_id,
                     _ProcessIdentity(
                         pid=pid,
-                        started_at=" ".join(fields[2:7]),
-                        command=fields[7],
+                        started_at=" ".join(fields[3:8]),
+                        command=fields[8],
                     ),
                 )
             )
@@ -255,7 +279,7 @@ class JsonLineWorker:
         """
         children: dict[int, list[int]] = {}
         identities: dict[int, _ProcessIdentity] = {}
-        for pid, parent_pid, identity in cls._process_rows():
+        for pid, parent_pid, _, identity in cls._process_rows():
             children.setdefault(parent_pid, []).append(pid)
             identities[pid] = identity
 
@@ -272,8 +296,20 @@ class JsonLineWorker:
     @classmethod
     def _current_identity(cls, pid: int) -> _ProcessIdentity | None:
         return next(
-            (identity for row_pid, _, identity in cls._process_rows() if row_pid == pid),
+            (
+                identity
+                for row_pid, _, _, identity in cls._process_rows()
+                if row_pid == pid
+            ),
             None,
+        )
+
+    @classmethod
+    def _process_group_members(cls, process_group_id: int) -> tuple[_ProcessIdentity, ...]:
+        return tuple(
+            identity
+            for pid, _, row_group_id, identity in cls._process_rows()
+            if row_group_id == process_group_id and pid != process_group_id
         )
 
     def _capture_descendants(self) -> None:
@@ -281,6 +317,12 @@ class JsonLineWorker:
         if process is None or process.poll() is not None:
             return
         for identity in self._descendant_processes(process.pid):
+            self._owned_descendants[identity.pid] = identity
+
+    def _capture_process_group(self) -> None:
+        if self._process_group_id is None:
+            return
+        for identity in self._process_group_members(self._process_group_id):
             self._owned_descendants[identity.pid] = identity
 
     def _terminate_descendants(self) -> None:
@@ -328,6 +370,7 @@ class JsonLineWorker:
             return
         process = self._process
         self._capture_descendants()
+        self._capture_process_group()
         self._capture_sentinel_processes()
         exited_cleanly = False
         if process is not None and process.poll() is None and process.stdin is not None:
@@ -342,7 +385,9 @@ class JsonLineWorker:
                 pass
         if exited_cleanly:
             self._process = None
+            self._capture_process_group()
             self._terminate_descendants()
+            self._process_group_id = None
         else:
             self._terminate()
         self._closed = True
@@ -379,6 +424,9 @@ class IsolatedWorkerProvider:
             process_sentinel_paths=tuple(
                 Path(str(value))
                 for value in config.get("process_sentinel_paths") or ()
+            ),
+            force_child_process_group=bool(
+                config.get("force_child_process_group", False)
             ),
         )
 
