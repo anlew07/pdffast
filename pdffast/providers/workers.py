@@ -57,6 +57,7 @@ class JsonLineWorker:
         self._process: subprocess.Popen[str] | None = None
         self._process_group_id: int | None = None
         self._owned_descendants: dict[int, _ProcessIdentity] = {}
+        self._owned_group_members: dict[int, _ProcessIdentity] = {}
         self._sentinel_baselines: dict[
             Path, tuple[bytes | None, _ProcessIdentity | None]
         ] = {}
@@ -152,12 +153,12 @@ class JsonLineWorker:
         if not ready:
             self._terminate()
             raise TimeoutError(f"worker response timeout after {timeout_seconds:g}s")
-        self._capture_descendants()
         self._capture_process_group()
+        self._capture_descendants()
         line = process.stdout.readline()
         if not line:
-            code = process.poll()
             self._terminate()
+            code = process.returncode
             raise RuntimeError(f"worker exited before response: exit={code}")
         try:
             response = json.loads(line)
@@ -170,8 +171,14 @@ class JsonLineWorker:
         return response
 
     def start(self) -> dict[str, Any]:
-        if self._process is not None and self._process.poll() is None:
-            return {"status": "READY", "reused": True}
+        if self._process is not None:
+            self._capture_process_group(
+                require_continuity=self._process.returncode is not None
+            )
+            self._capture_descendants()
+            if self._process.poll() is None:
+                return {"status": "READY", "reused": True}
+            self._terminate()
         if not self.python_executable.exists():
             raise FileNotFoundError(self.python_executable)
         self._snapshot_sentinels()
@@ -216,8 +223,10 @@ _pdffast_subprocess.Popen = _pdffast_grouped_popen
 
     def _terminate(self) -> None:
         process = self._process
+        self._capture_process_group(
+            require_continuity=process is None or process.returncode is not None
+        )
         self._capture_descendants()
-        self._capture_process_group()
         self._capture_sentinel_processes()
         self._process = None
         if process is not None and process.poll() is None:
@@ -227,7 +236,7 @@ _pdffast_subprocess.Popen = _pdffast_grouped_popen
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
-        self._capture_process_group()
+        self._capture_process_group(require_continuity=True)
         self._terminate_descendants()
         self._process_group_id = None
 
@@ -314,16 +323,22 @@ _pdffast_subprocess.Popen = _pdffast_grouped_popen
 
     def _capture_descendants(self) -> None:
         process = self._process
-        if process is None or process.poll() is not None:
+        if process is None or process.returncode is not None:
             return
         for identity in self._descendant_processes(process.pid):
             self._owned_descendants[identity.pid] = identity
 
-    def _capture_process_group(self) -> None:
+    def _capture_process_group(self, *, require_continuity: bool = False) -> None:
         if self._process_group_id is None:
+            return
+        if require_continuity and not any(
+            self._current_identity(pid) == identity
+            for pid, identity in self._owned_group_members.items()
+        ):
             return
         for identity in self._process_group_members(self._process_group_id):
             self._owned_descendants[identity.pid] = identity
+            self._owned_group_members[identity.pid] = identity
 
     def _terminate_descendants(self) -> None:
         remaining = dict(self._owned_descendants)
@@ -364,13 +379,14 @@ _pdffast_subprocess.Popen = _pdffast_grouped_popen
                 except (FileNotFoundError, PermissionError, OSError):
                     pass
         self._owned_sentinels.clear()
+        self._owned_group_members.clear()
 
     def close(self) -> None:
         if self._closed:
             return
         process = self._process
-        self._capture_descendants()
         self._capture_process_group()
+        self._capture_descendants()
         self._capture_sentinel_processes()
         exited_cleanly = False
         if process is not None and process.poll() is None and process.stdin is not None:
@@ -385,7 +401,7 @@ _pdffast_subprocess.Popen = _pdffast_grouped_popen
                 pass
         if exited_cleanly:
             self._process = None
-            self._capture_process_group()
+            self._capture_process_group(require_continuity=True)
             self._terminate_descendants()
             self._process_group_id = None
         else:

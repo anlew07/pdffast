@@ -463,9 +463,9 @@ Worker PID: exited after close; no matching orphan process remained
 ### Step 5 regression gate
 
 ```text
-Provider + Registry + fake executor focused suite: 50 passed
-Full default suite: 77 passed, 25 skipped
-Reference-bound full suite: 102 passed
+Provider + Registry + fake executor focused suite: 51 passed
+Full default suite: 78 passed, 25 skipped
+Reference-bound full suite: 103 passed
 ```
 
 All six production Providers now pass their required smoke and canonical
@@ -496,7 +496,10 @@ inferring ownership from a shared path's modification time. Regression tests cov
 disjoint concurrent namespaces, timeout cleanup, immediate EOF cleanup, unchanged
 sentinel isolation, pre-sentinel process-group cleanup, detached descendants,
 worker `atexit`, sanitized offline environment propagation, and recycled-PID
-rejection.
+rejection. Group membership is captured before any `poll()` or `wait()` can reap
+the leader; after reap, the PGID is scanned again only when an already-owned
+member still has the same stable identity. A mocked PGID-reuse regression proves
+that an unrelated replacement group is neither recorded nor signalled.
 
 The post-review nonce-isolation smoke reused the same read-only crop and returned
 `SUCCESS` with 41 Markdown characters. It created only sentinel lock/log state

@@ -603,3 +603,34 @@ def test_descendant_cleanup_does_not_signal_recycled_pid(
 
     assert signals == []
     worker.close()
+
+
+def test_post_reap_group_scan_rejects_recycled_pgid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catches an unrelated replacement process group being claimed after reap."""
+    from pdffast.providers.workers import JsonLineWorker, _ProcessIdentity
+
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code="",
+        dependency_probe_code="",
+    )
+    original = _ProcessIdentity(4243, "Tue Sep 22 09:00:00 2026", "owned-server")
+    replacement = _ProcessIdentity(5001, "Tue Sep 22 09:01:00 2026", "unrelated")
+    worker._process_group_id = 4242
+    worker._owned_group_members[original.pid] = original
+    monkeypatch.setattr(worker, "_current_identity", lambda pid: None)
+    monkeypatch.setattr(
+        worker,
+        "_process_group_members",
+        lambda pgid: (replacement,),
+    )
+    signals: list[tuple[int, int]] = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: signals.append((pid, sig)))
+
+    worker._capture_process_group(require_continuity=True)
+    worker._terminate_descendants()
+
+    assert replacement.pid not in worker._owned_descendants
+    assert signals == []
