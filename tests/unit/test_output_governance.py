@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from pdffast.config import ParserConfig
+from pdffast.application.parse_service import ParseService
 from pdffast.errors import ConfigurationError, ParseExecutionError
 from pdffast.parser import PDFFastParser
 from pdffast.pipeline.context import PipelineContext
@@ -45,22 +46,23 @@ def test_parser_accepts_parser_config_as_public_configuration(
         normalizer=normalizer,
     )
     captured: dict[str, object] = {}
+    expected = ParseResult(canonical={}, markdown="ok", audit={}, artifacts={})
 
-    def fake_run(context: PipelineContext, **kwargs: object) -> str:
+    def fake_run(context: PipelineContext, **kwargs: object) -> ParseResult:
         captured["context"] = context
         captured.update(kwargs)
-        return "parsed"
+        return expected
 
-    monkeypatch.setattr("pdffast.parser.run_core_pipeline", fake_run)
+    monkeypatch.setattr("pdffast.application.parse_service.run_core_pipeline", fake_run)
 
-    result = PDFFastParser(config=config).parse(
+    result = ParseService(config=config).parse(
         tmp_path / "input.pdf",
         run_id="configured-run",
     )
 
     context = captured["context"]
     assert isinstance(context, PipelineContext)
-    assert result == "parsed"
+    assert result is expected
     assert context.output_root == (tmp_path / "configured-outputs").resolve()
     assert context.output_mode == "diagnostic"
     assert context.capture_output is False
