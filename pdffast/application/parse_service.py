@@ -59,11 +59,6 @@ class ParseService:
             table_mode=config.table_mode,
             output_mode=config.output_mode,
             capture_output=config.capture_output,
-            templates_path=(
-                None
-                if bundled_configs is None
-                else Path(str(bundled_configs.joinpath("templates.json")))
-            ),
             providers_path=(
                 None
                 if bundled_configs is None

@@ -21,7 +21,6 @@ def test_artifact_paths_match_reference_layout(tmp_path: Path) -> None:
     expected = {
         "profile": run_dir / "01_stage1/page_profile.json",
         "snapshot": run_dir / "01_stage1/page_snapshot.jsonl",
-        "template_analysis": run_dir / "02_stage2/template_analysis.json",
         "section_alignment": run_dir / "03_stage3/section_alignment.json",
         "page_structure": run_dir / "04_stage4/page_structure.json",
         "table_result": run_dir / "05_stage5/result.json",

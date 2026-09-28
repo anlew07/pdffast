@@ -940,7 +940,7 @@ def neutralize_nested_markdown_headings(text: str) -> str:
     """Keep layout-parser content readable without creating document-level headings."""
     out: list[str] = []
     for line in str(text or "").splitlines():
-        # Canonical/template sections are the only document headings in Stage10.2.
+        # Only observed document sections become headings in Stage10.2.
         # Provider-emitted Markdown headings remain visible as body text.
         out.append(re.sub(r"^\s{0,3}#{1,6}\s+", "", line))
     return "\n".join(out)
@@ -1089,12 +1089,12 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     for sec in doc["sections"]:
         if not isinstance(sec, dict):
             continue
-        section_title = str(sec.get("section_title") or sec.get("section_id") or "未命名章节").strip()
+        section_title = str(sec.get("section_title") or "").strip()
         section_id = str(sec.get("section_id") or "")
-        # Only canonical/template-aligned sections become Markdown headings.
-        # Native paragraphs are never promoted to ## / ### based on numbering, length or typography.
-        append_block(chunks, f"# {section_title}")
-        rendered_section_count += 1
+        # Unresolved pages have no observed title and must not acquire one here.
+        if section_title:
+            append_block(chunks, f"# {section_title}")
+            rendered_section_count += 1
         current_page_marker = None
         first_native_paragraph_seen = False
 

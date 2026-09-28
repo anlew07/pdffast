@@ -12,7 +12,6 @@ class ArtifactPaths:
 
     profile: Path
     snapshot: Path
-    template_analysis: Path
     section_alignment: Path
     page_structure: Path
     table_result: Path
@@ -65,7 +64,6 @@ class ArtifactPaths:
         return cls(
             profile=run_dir / "01_stage1/page_profile.json",
             snapshot=run_dir / "01_stage1/page_snapshot.jsonl",
-            template_analysis=run_dir / "02_stage2/template_analysis.json",
             section_alignment=run_dir / "03_stage3/section_alignment.json",
             page_structure=run_dir / "04_stage4/page_structure.json",
             table_result=run_dir / "05_stage5/result.json",

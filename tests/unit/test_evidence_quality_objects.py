@@ -26,7 +26,6 @@ def test_evidence_object_flows_to_quality_without_manifest_json_and_matches_wrap
     paths = {
         "profile_path": tmp_path / "profile.json",
         "snapshot_path": tmp_path / "snapshot.jsonl",
-        "template_path": tmp_path / "template.json",
         "alignment_path": tmp_path / "alignment.json",
         "structure_path": tmp_path / "structure.json",
         "stage5_path": tmp_path / "stage5.json",
@@ -84,7 +83,6 @@ def test_evidence_uses_text_flow_object_without_stage6_json(tmp_path: Path, monk
     report = evidence.create_evidence_report(
         profile_path=tmp_path / "profile.json",
         snapshot_path=tmp_path / "snapshot.jsonl",
-        template_path=tmp_path / "template.json",
         alignment_path=tmp_path / "alignment.json",
         structure_path=tmp_path / "structure.json",
         stage5_path=tmp_path / "stage5.json",

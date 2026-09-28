@@ -1461,38 +1461,9 @@ def build_complexity_prior(
     它只表示后续 Stage 5 / OCR / Quality Gate / fallback
     对该区域应保持多高的复杂结构警惕。
     """
-    section_id = str(
-        section_page.get("section_id", "") or ""
-    )
     zone_type = str(
         section_page.get("zone_type", "") or ""
     )
-
-    if section_id == "attachments":
-        return {
-            "level": "very_high",
-            "level_cn": "很高",
-            "source": "section_prior",
-            "reason_code": "attachments_free_content",
-            "reason_cn": (
-                "附件内容类型不固定，默认允许扫描件、论文、证书、"
-                "复杂表格、图片、异常文本层等高复杂度内容。"
-            ),
-            "is_quality_failure": False,
-        }
-
-    if section_id == "feasibility_report":
-        return {
-            "level": "high",
-            "level_cn": "高",
-            "source": "section_prior",
-            "reason_code": "feasibility_report_complex_content",
-            "reason_cn": (
-                "可行性分析报告属于半自由长正文，可能混合正文、"
-                "图片、表格、公式和嵌入内容。"
-            ),
-            "is_quality_failure": False,
-        }
 
     if zone_type == "free":
         return {
@@ -1518,8 +1489,8 @@ def build_complexity_prior(
         "level": "normal",
         "level_cn": "常规",
         "source": "zone_prior",
-        "reason_code": "strong_template_or_regular",
-        "reason_cn": "常规模板或常规页面区域。",
+        "reason_code": "regular_page",
+        "reason_cn": "常规页面区域。",
         "is_quality_failure": False,
     }
 
@@ -4129,16 +4100,10 @@ def build_document_structure(
             "profiler_version": profile_result.get(
                 "profiler_version"
             ),
-            "template_analyzer_version": aligner_result.get(
-                "source_analyzer_version"
-            ),
             "section_aligner_version": aligner_result.get(
                 "aligner_version"
             ),
         },
-        "template_id": aligner_result.get(
-            "template_id"
-        ),
         "structure_mode": aligner_result.get(
             "structure_mode"
         ),
@@ -5383,9 +5348,6 @@ def display_zone_type(
     zone_type: Any,
 ) -> str:
     mapping = {
-        "strong_template":
-            "强模板区",
-
         "semi_free":
             "半自由区",
 
@@ -6043,4 +6005,3 @@ def run_page_structure(
         encoding="utf-8",
     )
     return result
-

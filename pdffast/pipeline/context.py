@@ -18,7 +18,6 @@ class PipelineContext:
     run_id: str
     case_id: str
     run_dir: Path
-    templates: Path
     providers: Path
     route_candidates: Path
     page_dpi: int
@@ -44,7 +43,6 @@ class PipelineContext:
         table_mode: str,
         output_mode: OutputMode = "minimal",
         capture_output: bool = True,
-        templates_path: Path | None = None,
         providers_path: Path | None = None,
         route_candidates_path: Path | None = None,
     ) -> "PipelineContext":
@@ -73,7 +71,6 @@ class PipelineContext:
             run_id=run_id,
             case_id=safe_case_id,
             run_dir=run_dir,
-            templates=Path(templates_path).resolve() if templates_path else root / "configs/templates.json",
             providers=Path(providers_path).resolve() if providers_path else root / "configs/providers.json",
             route_candidates=(Path(route_candidates_path).resolve() if route_candidates_path else root / "configs/frozen/stage9_route_candidates_prod_v001.json"),
             page_dpi=page_dpi,

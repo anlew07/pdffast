@@ -10,10 +10,6 @@ import pytest
     ("path", "expected"),
     [
         (
-            "configs/templates.json",
-            "a3c50aafa43c2afece508b27ff9204b47bdf6a0d145547beb22fb3fd4fb546b1",
-        ),
-        (
             "configs/providers.json",
             "9de971e198a849713fcc18db28142140f3a84b184cc3f608440bd14bc4b323da",
         ),

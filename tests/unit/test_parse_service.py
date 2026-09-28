@@ -44,6 +44,5 @@ def test_parse_service_loads_bundled_config_without_starting_providers(
 
     assert result is expected
     assert captured["context"].providers.is_file()
-    assert captured["context"].templates.is_file()
     assert len(captured["provider_configs"]) == 6
     assert captured["execute_providers"] is True

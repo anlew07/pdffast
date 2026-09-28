@@ -31,7 +31,6 @@ def test_context_resolves_paths_and_sanitizes_case_id(tmp_path: Path) -> None:
     assert ctx.case_id == "_case_007"
     assert ctx.pdf == pdf.resolve()
     assert ctx.run_dir == project.resolve() / "outputs/case_007_fixed"
-    assert ctx.templates == project.resolve() / "configs/templates.json"
     assert ctx.providers == project.resolve() / "configs/providers.json"
     assert ctx.route_candidates == (
         project.resolve()

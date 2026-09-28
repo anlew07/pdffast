@@ -4,7 +4,7 @@ import os
 import pytest
 
 
-@pytest.mark.parametrize("module_name", ["pdffast.native", "pdffast.template"])
+@pytest.mark.parametrize("module_name", ["pdffast.native"])
 def test_phase1a_namespaces_belong_to_current_repository(module_name: str) -> None:
     """Catches missing namespaces or accidental imports from the reference tree."""
     try:

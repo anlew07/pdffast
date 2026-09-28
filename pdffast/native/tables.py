@@ -892,7 +892,7 @@ SCHEMA_CONFIRM_THRESHOLD = 0.90
 SCHEMA_REJECT_THRESHOLD = 0.60
 
 # Stage 5.3.1 schema-transition fallback:
-# 不降低全局 0.90 阈值，只处理同一 strong_template 章节中
+# 不降低全局 0.90 阈值，只处理同一已观察章节中
 # 由 Stage5 补出来的 fallback candidate，且必须同时满足几何连续性。
 SCHEMA_TRANSITION_MIN_SIMILARITY = 0.70
 SCHEMA_TRANSITION_MIN_X_OVERLAP = 0.90
@@ -1876,13 +1876,13 @@ def discover_same_section_fallback_candidates(
     """
     补 Stage 4 的保守召回盲区。
 
-    某些模板表格虽然属于同一逻辑表，但上一页 table 并没有
+    某些跨页表格虽然属于同一逻辑表，但上一页 table 并没有
     真正贴住页面底部，所以 Stage 4 不一定生成 boundary candidate。
 
     fallback 仅在以下条件成立时补候选：
       1. 两页物理相邻；
       2. section_id 相同；
-      3. 两页 zone_type 都是 strong_template；
+      3. 两页属于同一已观察章节；
       4. 两页都有 table block；
       5. 只连接上一页最后一个 table 与下一页第一个 table；
       6. Stage 4 尚未生成同一对 block 的 candidate。
@@ -1937,14 +1937,6 @@ def discover_same_section_fallback_candidates(
             section_id is None
             or section_id
             != page_section_id(next_page)
-        ):
-            continue
-
-        if (
-            page_zone_type(page)
-            != "strong_template"
-            or page_zone_type(next_page)
-            != "strong_template"
         ):
             continue
 
@@ -4851,4 +4843,3 @@ def run_table_recovery(
         encoding="utf-8",
     )
     return document
-

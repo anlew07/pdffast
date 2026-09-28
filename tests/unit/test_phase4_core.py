@@ -51,6 +51,15 @@ def test_renderer_is_pure_and_matches_reference_markdown() -> None:
     assert manifest["validation"]["pass"] is True
 
 
+def test_renderer_does_not_invent_heading_for_unresolved_section() -> None:
+    doc = load(RUN / "10_1_canonical/canonical_document.json")
+    doc["sections"][0]["section_title"] = None
+    doc["sections"][0]["section_id"] = None
+    markdown, _ = build_rendered_document(doc)
+    assert not markdown.startswith("# 未命名章节")
+    assert not markdown.startswith("# None")
+
+
 def test_structure_audit_passes_on_reference_artifacts() -> None:
     result = audit(
         load(RUN / "06_stage6/normalized_text_flow.json"),

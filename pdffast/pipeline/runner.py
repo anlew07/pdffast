@@ -18,6 +18,7 @@ from pdffast.fallback.planner import create_fallback_plan, write_fallback_plan
 from pdffast.fallback.policy import create_provider_execution_plan, write_provider_execution_plan
 from pdffast.fallback.router import create_capability_plan, write_capability_plan
 from pdffast.native.profiler import run_profiler
+from pdffast.native.sections import run_section_discovery
 from pdffast.native.structure import run_page_structure
 from pdffast.native.tables import run_table_recovery
 from pdffast.native.text_flow import create_text_flow_result, write_text_flow_result
@@ -28,8 +29,6 @@ from pdffast.render.llm_ready import build_rendered_document
 from pdffast.runtime import capture_runtime_output
 from pdffast.errors import ParseExecutionError
 from pdffast.result import ParseResult
-from pdffast.template.aligner import run_section_alignment
-from pdffast.template.detector import run_template_analysis
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -134,13 +133,12 @@ def run_core_pipeline(
     try:
         with capture_runtime_output(a.pipeline_log, enabled=context.capture_output):
             run_profiler(pdf_path=context.pdf, profile_output=a.profile, snapshot_output=a.snapshot, table_mode=context.table_mode)
-            run_template_analysis(profile_path=a.profile, template_path=context.templates, output_path=a.template_analysis)
-            run_section_alignment(analysis_path=a.template_analysis, template_path=context.templates, snapshot_path=a.snapshot, output_path=a.section_alignment)
+            run_section_discovery(profile_path=a.profile, snapshot_path=a.snapshot, output_path=a.section_alignment)
             run_page_structure(snapshot_path=a.snapshot, profile_path=a.profile, alignment_path=a.section_alignment, output_path=a.page_structure)
             run_table_recovery(structure_path=a.page_structure, snapshot_path=a.snapshot, output_dir=a.table_result.parent)
             text_flow_result = create_text_flow_result(snapshot_path=a.snapshot, structure_path=a.page_structure, table_result_path=a.table_result)
             write_text_flow_result(text_flow_result, a.normalized_flow.parent)
-            evidence_report = create_evidence_report(profile_path=a.profile, snapshot_path=a.snapshot, template_path=context.templates, alignment_path=a.section_alignment, structure_path=a.page_structure, stage5_path=a.table_result, stage6_dir=a.normalized_flow.parent, text_flow=text_flow_result)
+            evidence_report = create_evidence_report(profile_path=a.profile, snapshot_path=a.snapshot, alignment_path=a.section_alignment, structure_path=a.page_structure, stage5_path=a.table_result, stage6_dir=a.normalized_flow.parent, text_flow=text_flow_result)
             write_evidence_report(evidence_report, a.evidence_manifest.parent)
             quality_report = evaluate_evidence_report(evidence_report, manifest_path=a.evidence_manifest, pdf_path=context.pdf, output_dir=a.quality_gate.parent, probe_dpi=context.region_dpi, save_probe_crops=True)
             write_quality_report(quality_report, a.quality_gate.parent)

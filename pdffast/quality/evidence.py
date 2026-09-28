@@ -1544,7 +1544,6 @@ def build_manifest(
     profile: dict[str, Any],
     snapshot_meta: dict[str, Any],
     snapshot_pages: dict[int, dict[str, Any]],
-    template: dict[str, Any],
     alignment: dict[str, Any],
     structure: dict[str, Any],
     stage5: dict[str, Any],
@@ -1559,7 +1558,6 @@ def build_manifest(
         snapshot_pages,
         {
             "profile": profile,
-            "template": template,
             "alignment": alignment,
             "structure": structure,
             "stage5": stage5,
@@ -1765,17 +1763,12 @@ def build_manifest(
             "page_scan_version": snapshot_meta.get("page_scan_version"),
             "snapshot_schema_version": snapshot_meta.get("snapshot_schema_version"),
             "profiler_version": profile.get("profiler_version"),
-            "template_analyzer_version": template.get("analyzer_version"),
             "section_aligner_version": alignment.get("aligner_version"),
             "stage4_builder_version": structure.get("builder_version"),
             "stage5_version": stage5.get("version"),
             "stage6_pipeline_version": normalized.get("pipeline_version") or paragraphs.get("pipeline_version"),
         },
         "document_context": {
-            "template_decision": template.get("template_decision"),
-            "template_id": alignment.get("template_id") or template.get("template_id"),
-            "template_name": alignment.get("template_name") or template.get("template_name"),
-            "template_confidence": alignment.get("template_confidence") or template.get("template_confidence"),
             "structure_mode": alignment.get("structure_mode") or structure.get("structure_mode"),
         },
         "pipeline_integrity_evidence": {
@@ -1936,7 +1929,6 @@ def create_evidence_report(
     *,
     profile_path: Path,
     snapshot_path: Path,
-    template_path: Path,
     alignment_path: Path,
     structure_path: Path,
     stage5_path: Path,
@@ -1952,7 +1944,6 @@ def create_evidence_report(
 
     profile = load_json(Path(profile_path))
     snapshot_meta, snapshot_pages = load_snapshot(Path(snapshot_path))
-    template = load_json(Path(template_path))
     alignment = load_json(Path(alignment_path))
     structure = load_json(Path(structure_path))
     stage5 = load_json(Path(stage5_path))
@@ -1964,7 +1955,6 @@ def create_evidence_report(
     input_paths = {
         "stage1_profile": str(profile_path),
         "stage1_snapshot": str(snapshot_path),
-        "stage2_template": str(template_path),
         "stage3_alignment": str(alignment_path),
         "stage4_structure": str(structure_path),
         "stage5_result": str(stage5_path),
@@ -1977,7 +1967,6 @@ def create_evidence_report(
         profile=profile,
         snapshot_meta=snapshot_meta,
         snapshot_pages=snapshot_pages,
-        template=template,
         alignment=alignment,
         structure=structure,
         stage5=stage5,
@@ -2008,7 +1997,6 @@ def run_evidence_manifest(
     *,
     profile_path: Path,
     snapshot_path: Path,
-    template_path: Path,
     alignment_path: Path,
     structure_path: Path,
     stage5_path: Path,
@@ -2019,7 +2007,6 @@ def run_evidence_manifest(
     report = create_evidence_report(
         profile_path=profile_path,
         snapshot_path=snapshot_path,
-        template_path=template_path,
         alignment_path=alignment_path,
         structure_path=structure_path,
         stage5_path=stage5_path,
