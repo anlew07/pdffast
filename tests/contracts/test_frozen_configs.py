@@ -42,7 +42,7 @@ def test_provider_registry_contains_exact_approved_scope() -> None:
 
 
 def test_retained_provider_objects_equal_explicit_reference_migration() -> None:
-    """Only the enable split and audited runtime-safety metadata may differ."""
+    """Only the audited enable, runtime path, and safety migrations may differ."""
     raw_root = os.environ.get("PDFFAST_REFERENCE_ROOT")
     if not raw_root:
         pytest.skip("PDFFAST_REFERENCE_ROOT is not set")
@@ -57,6 +57,11 @@ def test_retained_provider_objects_equal_explicit_reference_migration() -> None:
     )["providers"]
     expected = {}
     normalized_candidate = {}
+    migrated_python_paths = {
+        "docling_local": (".venv-docling/bin/python", "runtimes/docling/.venv/bin/python"),
+        "mineru_local": (".venv-mineru/bin/python", "runtimes/mineru/.venv/bin/python"),
+        "marker_local": (".venv-marker/bin/python", "runtimes/marker/.venv/bin/python"),
+    }
     for name in candidate:
         migrated = dict(reference[name])
         migrated["benchmark_enabled"] = bool(migrated.pop("enabled"))
@@ -70,6 +75,11 @@ def test_retained_provider_objects_equal_explicit_reference_migration() -> None:
         actual.pop("required_artifact_trees", None)
         actual.pop("process_sentinel_paths", None)
         actual.pop("force_child_process_group", None)
+        if name in migrated_python_paths:
+            old_path, new_path = migrated_python_paths[name]
+            assert migrated["python_executable"] == old_path
+            assert actual["python_executable"] == new_path
+            actual["python_executable"] = old_path
         for field in (
             "text_detection_model_dir",
             "text_recognition_model_dir",
