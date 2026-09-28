@@ -1,8 +1,10 @@
 from pathlib import Path
+import json
 
 import pytest
 
 from pdffast.providers.base import ProviderPreflight, ProviderTask, RawProviderResult
+from pdffast.fallback.router import CapabilityPlan
 
 
 def _canonical(task_id: str, provider: str, text: str, status: str = "SUCCESS"):
@@ -276,3 +278,108 @@ def test_executor_validates_complete_runtime_closure_before_resolving_or_writing
         )
 
     assert not output_dir.exists()
+
+
+def test_capability_plan_builds_execution_plan_without_provider_plan_json(
+    tmp_path: Path,
+) -> None:
+    from pdffast.fallback.policy import (
+        ProviderExecutionPlan,
+        create_provider_execution_plan,
+        run_runtime_policy,
+        write_provider_execution_plan,
+    )
+
+    task = _task("one", ["rapidocr_ch_light"])
+    task.update(status="ROUTED", route_hints={})
+    capability = CapabilityPlan({
+        "stage": 9, "name": "provider_router", "version": "0.2.1",
+        "status": "ROUTED_PROVIDER_UNBOUND", "source_file": "fixture.pdf",
+        "tasks": [task],
+    })
+    candidates = Path("configs/frozen/stage9_route_candidates_prod_v001.json")
+    plan_path = tmp_path / "provider_plan.json"
+    object_dir = tmp_path / "policy"
+    assert not plan_path.exists()
+
+    execution_plan = create_provider_execution_plan(capability, candidates)
+    assert isinstance(execution_plan, ProviderExecutionPlan)
+    assert execution_plan.data["tasks"][0]["provider_chain"][0]["provider"] == "rapidocr_ch_light"
+    write_provider_execution_plan(execution_plan, object_dir)
+    original = {
+        path.name: path.read_bytes()
+        for path in object_dir.iterdir() if path.is_file()
+    }
+    plan_path.write_text(json.dumps(capability.data), encoding="utf-8")
+    run_runtime_policy(
+        provider_plan_path=plan_path,
+        route_candidates_path=candidates,
+        output_dir=object_dir,
+    )
+    assert {path.name: path.read_bytes() for path in object_dir.iterdir() if path.is_file()} == original
+
+
+def test_object_executor_needs_neither_plan_nor_policy_json_and_matches_wrapper(
+    tmp_path: Path,
+) -> None:
+    from pdffast.fallback.executor import execute_fallback, execute_provider_plan
+    from pdffast.fallback.policy import ProviderExecutionPlan
+
+    task = _task("one", ["rapidocr_ch_light"])
+    plan = ProviderExecutionPlan({"source_file": "fixture.pdf", "tasks": [task]})
+    configs = {"rapidocr_ch_light": {"kind": "rapidocr", "runtime_enabled": True}}
+    output_dir = tmp_path / "execution"
+    provider = FakeProvider("rapidocr_ch_light", {"one": _canonical("one", "rapidocr_ch_light", "text")})
+    result = execute_provider_plan(
+        execution_plan=plan, provider_configs=configs,
+        registry=FakeRegistry({"rapidocr_ch_light": provider}),
+        normalizer=lambda raw, task: raw.payload, output_dir=output_dir,
+    )
+    assert result.manifest["summary"]["accepted_task_count"] == 1
+    assert provider.initialized == provider.closed == 1
+    assert provider.calls == ["one"]
+    assert not (tmp_path / "provider_plan.json").exists()
+    assert not (tmp_path / "runtime_policy.json").exists()
+    artifacts = {path.relative_to(output_dir): path.read_bytes() for path in output_dir.rglob("*.json")}
+
+    second = FakeProvider("rapidocr_ch_light", {"one": _canonical("one", "rapidocr_ch_light", "text")})
+    execute_fallback(
+        policy=plan.data, plan={"tasks": [task]}, provider_configs=configs,
+        registry=FakeRegistry({"rapidocr_ch_light": second}),
+        normalizer=lambda raw, task: raw.payload, output_dir=output_dir,
+    )
+    assert {path.relative_to(output_dir): path.read_bytes() for path in output_dir.rglob("*.json")} == artifacts
+
+
+def test_object_executor_preserves_escalation_and_unresolved_terminal(tmp_path: Path) -> None:
+    from pdffast.fallback.executor import execute_provider_plan
+    from pdffast.fallback.policy import ProviderExecutionPlan
+
+    first = FakeProvider("rapidocr_ch_light", {
+        "escalate": _canonical("escalate", "rapidocr_ch_light", ""),
+        "terminal": _canonical("terminal", "rapidocr_ch_light", ""),
+    })
+    second = FakeProvider("mineru_local", {
+        "escalate": _canonical("escalate", "mineru_local", "recovered"),
+    })
+    tasks = [
+        _task("escalate", ["rapidocr_ch_light", "mineru_local"]),
+        _task("terminal", ["rapidocr_ch_light"], terminal=True),
+    ]
+    result = execute_provider_plan(
+        execution_plan=ProviderExecutionPlan({"source_file": "fixture.pdf", "tasks": tasks}),
+        provider_configs={
+            "rapidocr_ch_light": {"kind": "rapidocr", "runtime_enabled": True},
+            "mineru_local": {"kind": "mineru_worker", "runtime_enabled": True},
+        },
+        registry=FakeRegistry({"rapidocr_ch_light": first, "mineru_local": second}),
+        normalizer=lambda raw, task: raw.payload,
+        output_dir=tmp_path,
+    )
+
+    assert result.manifest["summary"]["escalated_count"] == 1
+    assert result.manifest["summary"]["terminal_preserve_count"] == 1
+    assert result.manifest["summary"]["pipeline_failure_count"] == 0
+    assert result.selected_predictions[1]["terminal_fallback_action"] == "PRESERVE_SOURCE_REGION_UNRESOLVED"
+    assert first.initialized == first.closed == 1
+    assert second.initialized == second.closed == 1

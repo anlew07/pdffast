@@ -13,9 +13,9 @@ from typing import Any
 
 from pdffast.audit.structure_boundary import audit
 from pdffast.canonical.builder import build_document
-from pdffast.fallback.executor import execute_fallback
+from pdffast.fallback.executor import execute_provider_plan
 from pdffast.fallback.planner import create_fallback_plan, write_fallback_plan
-from pdffast.fallback.policy import run_runtime_policy
+from pdffast.fallback.policy import create_provider_execution_plan, write_provider_execution_plan
 from pdffast.fallback.router import create_capability_plan, write_capability_plan
 from pdffast.native.profiler import run_profiler
 from pdffast.native.structure import run_page_structure
@@ -146,17 +146,16 @@ def run_core_pipeline(
             write_fallback_plan(fallback_plan, a.fallback_manifest.parent)
             capability_plan = create_capability_plan(fallback_plan=fallback_plan, manifest_path=a.fallback_manifest)
             write_capability_plan(capability_plan, a.provider_plan.parent)
-            run_runtime_policy(provider_plan_path=a.provider_plan, route_candidates_path=context.route_candidates, output_dir=a.runtime_policy.parent)
+            execution_plan = create_provider_execution_plan(capability_plan, context.route_candidates)
+            write_provider_execution_plan(execution_plan, a.runtime_policy.parent)
 
             if not execute_providers:
                 raise RuntimeError("Stage 9 provider execution is disabled; pass execute_providers=True with explicit runtime dependencies")
             if provider_configs is None or registry is None or normalizer is None:
                 raise ValueError("provider_configs, registry, and normalizer are required when execute_providers=True")
-            policy = _load(a.runtime_policy)
-            plan = _load(a.provider_plan)
-            production = execute_fallback(policy=policy, plan=plan, provider_configs=provider_configs, registry=registry, normalizer=normalizer, output_dir=a.production_manifest.parent)
+            production = execute_provider_plan(execution_plan=execution_plan, provider_configs=provider_configs, registry=registry, normalizer=normalizer, output_dir=a.production_manifest.parent)
             final = run_stage10(context)
-            final["production_manifest"] = production
+            final["production_manifest"] = production.manifest
             return ParseResult.from_pipeline(context, final)
     except ParseExecutionError:
         raise

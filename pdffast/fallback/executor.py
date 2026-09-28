@@ -2,14 +2,23 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from pdffast.providers.base import Provider, ProviderTask, RawProviderResult
 from pdffast.providers.registry import validate_runtime_provider_closure
+from pdffast.fallback.policy import ProviderExecutionPlan
 
 
 SUCCESS_STATUSES = {"SUCCESS", "SUCCESS_WITH_WARNINGS"}
+
+
+@dataclass(frozen=True)
+class ProviderExecutionResult:
+    manifest: dict[str, Any]
+    selected_index: dict[str, Any]
+    selected_predictions: list[dict[str, Any]]
 
 
 def _provider_chain(task: dict[str, Any]) -> list[str]:
@@ -69,24 +78,22 @@ def _write_json(path: Path, value: Any) -> None:
     )
 
 
-def execute_fallback(
+def execute_provider_plan(
     *,
-    policy: dict[str, Any],
-    plan: dict[str, Any],
+    execution_plan: ProviderExecutionPlan,
     provider_configs: dict[str, dict[str, Any]],
     registry: Any,
     normalizer: Callable[..., dict[str, Any]],
     output_dir: Path,
-) -> dict[str, Any]:
-    """Execute the frozen provider chains as deterministic escalation waves."""
+) -> ProviderExecutionResult:
+    """Execute the supplied provider chains as deterministic escalation waves."""
+    policy = execution_plan.data
     tasks = policy.get("tasks")
-    plan_tasks = plan.get("tasks")
-    if not isinstance(tasks, list) or not isinstance(plan_tasks, list):
-        raise ValueError("policy and plan must contain tasks")
+    if not isinstance(tasks, list):
+        raise ValueError("execution plan must contain tasks")
     policy_ids = [str(task.get("task_id") or "") for task in tasks]
-    plan_ids = [str(task.get("task_id") or "") for task in plan_tasks]
-    if not all(policy_ids) or set(policy_ids) != set(plan_ids):
-        raise ValueError("policy/plan task_id 集不一致")
+    if not all(policy_ids):
+        raise ValueError("execution plan task_id 为空")
 
     validate_runtime_provider_closure(policy, provider_configs)
 
@@ -213,6 +220,7 @@ def execute_fallback(
     selected_counts: Counter[str] = Counter()
     attempt_counts: Counter[str] = Counter()
     selected_index: list[dict[str, Any]] = []
+    selected_predictions: list[dict[str, Any]] = []
     accepted_count = terminal_count = failure_count = escalated_count = 0
     for task_id in policy_ids:
         task = task_index[task_id]
@@ -250,6 +258,7 @@ def execute_fallback(
         }
         selected_path = selected_dir / f"{task_id}.json"
         _write_json(selected_path, wrapper)
+        selected_predictions.append(wrapper)
         selected_index.append(
             {
                 "task_id": task_id,
@@ -283,17 +292,42 @@ def execute_fallback(
         "selected_predictions": selected_index,
     }
     _write_json(output_dir / "production_execution_manifest.json", manifest)
-    _write_json(
-        output_dir / "selected_prediction_index.json",
-        {
-            "schema_version": "1.0",
-            "stage": 9,
-            "substage": "9.8",
-            "name": "selected_prediction_index",
-            "source_file": policy.get("source_file"),
-            "page_count": policy.get("page_count"),
-            "task_count": len(selected_index),
-            "items": selected_index,
-        },
-    )
-    return manifest
+    index = {
+        "schema_version": "1.0",
+        "stage": 9,
+        "substage": "9.8",
+        "name": "selected_prediction_index",
+        "source_file": policy.get("source_file"),
+        "page_count": policy.get("page_count"),
+        "task_count": len(selected_index),
+        "items": selected_index,
+    }
+    _write_json(output_dir / "selected_prediction_index.json", index)
+    return ProviderExecutionResult(manifest, index, selected_predictions)
+
+
+def execute_fallback(
+    *,
+    policy: dict[str, Any],
+    plan: dict[str, Any],
+    provider_configs: dict[str, dict[str, Any]],
+    registry: Any,
+    normalizer: Callable[..., dict[str, Any]],
+    output_dir: Path,
+) -> dict[str, Any]:
+    """Compatibility API validating the policy against the provider plan."""
+    tasks = policy.get("tasks")
+    plan_tasks = plan.get("tasks")
+    if not isinstance(tasks, list) or not isinstance(plan_tasks, list):
+        raise ValueError("policy and plan must contain tasks")
+    policy_ids = [str(task.get("task_id") or "") for task in tasks]
+    plan_ids = [str(task.get("task_id") or "") for task in plan_tasks]
+    if not all(policy_ids) or set(policy_ids) != set(plan_ids):
+        raise ValueError("policy/plan task_id 集不一致")
+    return execute_provider_plan(
+        execution_plan=ProviderExecutionPlan(policy),
+        provider_configs=provider_configs,
+        registry=registry,
+        normalizer=normalizer,
+        output_dir=output_dir,
+    ).manifest

@@ -34,8 +34,19 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from pdffast.fallback.router import CapabilityPlan
+
+
+@dataclass(frozen=True)
+class ProviderExecutionPlan:
+    """Provider tasks selected by the current frozen routing policy."""
+
+    data: dict[str, Any]
+
 
 VERSION = "0.1.2"
 SCHEMA_VERSION = "1.0"
@@ -694,6 +705,27 @@ def make_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def create_provider_execution_plan(
+    capability_plan: CapabilityPlan,
+    route_candidates_path: Path,
+) -> ProviderExecutionPlan:
+    """Apply the frozen policy to a CapabilityPlan in memory."""
+    candidates = load_json(Path(route_candidates_path))
+    validate_provider_plan(capability_plan.data)
+    validate_candidates(candidates)
+    return ProviderExecutionPlan(build_report(capability_plan.data, candidates))
+
+
+def write_provider_execution_plan(plan: ProviderExecutionPlan, output_dir: Path) -> None:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    write_json(output_dir / "runtime_escalation_policy.json", plan.data)
+    (output_dir / "runtime_escalation_policy.md").write_text(
+        make_markdown(plan.data),
+        encoding="utf-8",
+    )
+
+
 def run_runtime_policy(
     *,
     provider_plan_path: Path,
@@ -702,19 +734,9 @@ def run_runtime_policy(
 ) -> dict[str, Any]:
     """Run Stage 9.6.3 from the provider plan and frozen route candidates."""
     provider_plan_path = Path(provider_plan_path)
-    route_candidates_path = Path(route_candidates_path)
-    output_dir = Path(output_dir)
-    plan = load_json(provider_plan_path)
-    candidates = load_json(route_candidates_path)
-    validate_provider_plan(plan)
-    validate_candidates(candidates)
-    report = build_report(plan, candidates)
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    write_json(output_dir / "runtime_escalation_policy.json", report)
-    (output_dir / "runtime_escalation_policy.md").write_text(
-        make_markdown(report),
-        encoding="utf-8",
+    execution_plan = create_provider_execution_plan(
+        CapabilityPlan(load_json(provider_plan_path)),
+        route_candidates_path,
     )
-    return report
-
+    write_provider_execution_plan(execution_plan, output_dir)
+    return execution_plan.data
