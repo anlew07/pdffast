@@ -20,7 +20,7 @@ from pdffast.fallback.router import create_capability_plan, write_capability_pla
 from pdffast.native.profiler import run_profiler
 from pdffast.native.structure import run_page_structure
 from pdffast.native.tables import run_table_recovery
-from pdffast.native.text_flow import run_text_flow
+from pdffast.native.text_flow import create_text_flow_result, write_text_flow_result
 from pdffast.pipeline.context import PipelineContext
 from pdffast.quality.evidence import create_evidence_report, write_evidence_report
 from pdffast.quality.gate import evaluate_evidence_report, write_quality_report
@@ -138,8 +138,9 @@ def run_core_pipeline(
             run_section_alignment(analysis_path=a.template_analysis, template_path=context.templates, snapshot_path=a.snapshot, output_path=a.section_alignment)
             run_page_structure(snapshot_path=a.snapshot, profile_path=a.profile, alignment_path=a.section_alignment, output_path=a.page_structure)
             run_table_recovery(structure_path=a.page_structure, snapshot_path=a.snapshot, output_dir=a.table_result.parent)
-            run_text_flow(snapshot_path=a.snapshot, structure_path=a.page_structure, table_result_path=a.table_result, output_dir=a.normalized_flow.parent)
-            evidence_report = create_evidence_report(profile_path=a.profile, snapshot_path=a.snapshot, template_path=context.templates, alignment_path=a.section_alignment, structure_path=a.page_structure, stage5_path=a.table_result, stage6_dir=a.normalized_flow.parent)
+            text_flow_result = create_text_flow_result(snapshot_path=a.snapshot, structure_path=a.page_structure, table_result_path=a.table_result)
+            write_text_flow_result(text_flow_result, a.normalized_flow.parent)
+            evidence_report = create_evidence_report(profile_path=a.profile, snapshot_path=a.snapshot, template_path=context.templates, alignment_path=a.section_alignment, structure_path=a.page_structure, stage5_path=a.table_result, stage6_dir=a.normalized_flow.parent, text_flow=text_flow_result)
             write_evidence_report(evidence_report, a.evidence_manifest.parent)
             quality_report = evaluate_evidence_report(evidence_report, manifest_path=a.evidence_manifest, pdf_path=context.pdf, output_dir=a.quality_gate.parent, probe_dpi=context.region_dpi, save_probe_crops=True)
             write_quality_report(quality_report, a.quality_gate.parent)

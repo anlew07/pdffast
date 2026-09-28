@@ -104,13 +104,21 @@ def test_text_flow_artifacts_are_byte_identical(tmp_path: Path) -> None:
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
-    run_text_flow(
+    from pdffast.native.text_flow import create_text_flow_result, write_text_flow_result
+
+    flow_kwargs = dict(
         snapshot_path=snapshot,
         structure_path=structure,
         table_result_path=table_dir / "result.json",
-        output_dir=candidate_output,
     )
+    flow = create_text_flow_result(**flow_kwargs)
+    write_text_flow_result(flow, candidate_output)
+    object_artifacts = {
+        name: (candidate_output / name).read_bytes() for name in TEXT_FLOW_ARTIFACTS
+    }
+    assert run_text_flow(**flow_kwargs, output_dir=candidate_output) == flow.normalized_flow
     for name in TEXT_FLOW_ARTIFACTS:
+        assert (candidate_output / name).read_bytes() == object_artifacts[name]
         assert (candidate_output / name).read_bytes() == (
             reference_output / name
         ).read_bytes(), f"artifact drift: {name}"

@@ -103,9 +103,19 @@ import math
 import re
 import unicodedata
 from collections import defaultdict
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
+
+
+@dataclass(frozen=True)
+class TextFlowResult:
+    noise: dict[str, Any]
+    reading_order: dict[str, Any]
+    paragraphs: dict[str, Any]
+    cross_page_paragraphs: dict[str, Any]
+    normalized_flow: dict[str, Any]
 
 
 PIPELINE_VERSION = "0.6.15"
@@ -21000,14 +21010,13 @@ def print_summary(
     print("=" * 72)
 
 
-def run_text_flow(
+def create_text_flow_result(
     *,
     snapshot_path: Path,
     structure_path: Path,
     table_result_path: Path,
-    output_dir: Path,
-) -> dict[str, Any]:
-    """Run Stage 6 through the package API while preserving all artifacts."""
+) -> TextFlowResult:
+    """Compute the existing Stage 6 results before artifact serialization."""
     snapshot_meta, snapshot_pages = load_snapshot(Path(snapshot_path))
     structure = load_json(Path(structure_path))
     stage5_result = load_json(Path(table_result_path))
@@ -21043,17 +21052,28 @@ def run_text_flow(
         result,
     )
 
+    return TextFlowResult(
+        noise=result,
+        reading_order=reading_result,
+        paragraphs=paragraph_result,
+        cross_page_paragraphs=cross_page_result,
+        normalized_flow=normalized_result,
+    )
+
+
+def write_text_flow_result(flow: TextFlowResult, output_dir: Path) -> None:
+    """Write the historical Stage 6 JSON and Markdown artifacts."""
     output_dir = Path(output_dir)
     output_dir.mkdir(
         parents=True,
         exist_ok=True,
     )
     json_artifacts = {
-        "noise_candidates.json": result,
-        "reading_order.json": reading_result,
-        "paragraphs.json": paragraph_result,
-        "cross_page_paragraphs.json": cross_page_result,
-        "normalized_text_flow.json": normalized_result,
+        "noise_candidates.json": flow.noise,
+        "reading_order.json": flow.reading_order,
+        "paragraphs.json": flow.paragraphs,
+        "cross_page_paragraphs.json": flow.cross_page_paragraphs,
+        "normalized_text_flow.json": flow.normalized_flow,
     }
     for name, value in json_artifacts.items():
         with (output_dir / name).open("w", encoding="utf-8") as file:
@@ -21065,28 +21085,43 @@ def run_text_flow(
             )
 
     (output_dir / "noise_candidates.md").write_text(
-        render_markdown(result),
+        render_markdown(flow.noise),
         encoding="utf-8",
     )
     (output_dir / "reading_order.md").write_text(
-        render_reading_order_markdown(reading_result),
+        render_reading_order_markdown(flow.reading_order),
         encoding="utf-8",
     )
     (output_dir / "paragraphs.md").write_text(
-        render_paragraph_markdown(paragraph_result),
+        render_paragraph_markdown(flow.paragraphs),
         encoding="utf-8",
     )
     (output_dir / "cross_page_paragraphs.md").write_text(
-        render_cross_page_paragraph_markdown(cross_page_result),
+        render_cross_page_paragraph_markdown(flow.cross_page_paragraphs),
         encoding="utf-8",
     )
     (output_dir / "normalized_text_flow.md").write_text(
-        render_normalized_text_flow_markdown(normalized_result),
+        render_normalized_text_flow_markdown(flow.normalized_flow),
         encoding="utf-8",
     )
     (output_dir / "readable_final.md").write_text(
-        render_readable_final_markdown(normalized_result),
+        render_readable_final_markdown(flow.normalized_flow),
         encoding="utf-8",
     )
-    return normalized_result
 
+
+def run_text_flow(
+    *,
+    snapshot_path: Path,
+    structure_path: Path,
+    table_result_path: Path,
+    output_dir: Path,
+) -> dict[str, Any]:
+    """Compatibility API preserving Stage 6 artifacts and return value."""
+    flow = create_text_flow_result(
+        snapshot_path=snapshot_path,
+        structure_path=structure_path,
+        table_result_path=table_result_path,
+    )
+    write_text_flow_result(flow, output_dir)
+    return flow.normalized_flow

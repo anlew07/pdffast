@@ -78,12 +78,28 @@ def test_evidence_manifest_artifacts_are_byte_identical(tmp_path: Path) -> None:
         snapshot_path=snapshot,
         output_dir=table_dir,
     )
-    run_text_flow(
+    from pdffast.native.text_flow import create_text_flow_result, write_text_flow_result
+
+    flow = create_text_flow_result(
         snapshot_path=snapshot,
         structure_path=structure,
         table_result_path=table_dir / "result.json",
-        output_dir=text_flow_dir,
     )
+
+    evidence_kwargs = dict(
+        profile_path=profile,
+        snapshot_path=snapshot,
+        template_path=analysis,
+        alignment_path=alignment,
+        structure_path=structure,
+        stage5_path=table_dir / "result.json",
+        stage6_dir=text_flow_dir,
+    )
+    from pdffast.quality.evidence import create_evidence_report, write_evidence_report
+
+    report = create_evidence_report(**evidence_kwargs, text_flow=flow)
+    assert not (text_flow_dir / "normalized_text_flow.json").exists()
+    write_text_flow_result(flow, text_flow_dir)
 
     reference_output = tmp_path / "reference/evidence"
     candidate_output = tmp_path / "candidate/evidence"
@@ -114,18 +130,6 @@ def test_evidence_manifest_artifacts_are_byte_identical(tmp_path: Path) -> None:
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
-    from pdffast.quality.evidence import create_evidence_report, write_evidence_report
-
-    evidence_kwargs = dict(
-        profile_path=profile,
-        snapshot_path=snapshot,
-        template_path=analysis,
-        alignment_path=alignment,
-        structure_path=structure,
-        stage5_path=table_dir / "result.json",
-        stage6_dir=text_flow_dir,
-    )
-    report = create_evidence_report(**evidence_kwargs)
     write_evidence_report(report, candidate_output)
     object_artifacts = {
         name: (candidate_output / name).read_bytes() for name in EVIDENCE_ARTIFACTS

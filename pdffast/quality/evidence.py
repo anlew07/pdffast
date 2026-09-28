@@ -38,7 +38,10 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 from statistics import median
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
+
+if TYPE_CHECKING:
+    from pdffast.native.text_flow import TextFlowResult
 
 
 @dataclass(frozen=True)
@@ -1938,6 +1941,7 @@ def create_evidence_report(
     structure_path: Path,
     stage5_path: Path,
     stage6_dir: Path,
+    text_flow: TextFlowResult | None = None,
 ) -> EvidenceReport:
     """Compute Stage 7 accounting before writing its artifacts."""
     stage6_dir = Path(stage6_dir)
@@ -1952,10 +1956,10 @@ def create_evidence_report(
     alignment = load_json(Path(alignment_path))
     structure = load_json(Path(structure_path))
     stage5 = load_json(Path(stage5_path))
-    noise = load_json(noise_path)
-    reading = load_json(reading_path)
-    paragraphs = load_json(paragraphs_path)
-    normalized = load_json(normalized_path)
+    noise = text_flow.noise if text_flow is not None else load_json(noise_path)
+    reading = text_flow.reading_order if text_flow is not None else load_json(reading_path)
+    paragraphs = text_flow.paragraphs if text_flow is not None else load_json(paragraphs_path)
+    normalized = text_flow.normalized_flow if text_flow is not None else load_json(normalized_path)
 
     input_paths = {
         "stage1_profile": str(profile_path),
