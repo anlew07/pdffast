@@ -108,6 +108,95 @@ def _coherent_sequence(observed: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(reversed(selected))
 
 
+def _standalone_numbered_divider(page: dict[str, Any], heading: str) -> bool:
+    """Require layout evidence for a numbering restart, not just a new 一."""
+    lines = [line.strip() for line in str(page.get("native_text") or "").splitlines() if line.strip()]
+    words = page.get("words") or []
+    chars = page.get("chars") or []
+    width = float(page.get("width") or 0)
+    height = float(page.get("height") or 0)
+    if not lines or lines[0] != heading or len(lines) > 8 or len(page.get("native_text") or "") > 160:
+        return False
+    if not words or not chars or width <= 0 or height <= 0 or str(words[0].get("text") or "").strip() != heading:
+        return False
+    first = words[0]
+    center = (float(first.get("x0") or 0) + float(first.get("x1") or 0)) / 2
+    top = float(first.get("top") or 0)
+    title_sizes = [float(char.get("size") or 0) for char in chars if abs(float(char.get("top") or 0) - top) <= 3]
+    return (
+        abs(center - width / 2) <= width * 0.12
+        and height * 0.25 <= top <= height * 0.6
+        and bool(title_sizes)
+        and median(title_sizes) >= 18
+    )
+
+
+def _heading_candidates(*, page_count: int, snapshot_pages: dict[int, dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    numbered = []
+    for page_number in range(1, page_count + 1):
+        heading = _observed_heading(snapshot_pages.get(page_number, {}))
+        if heading:
+            numbered.append({"page_number": page_number, "heading": heading, "ordinal": _ordinal(heading)})
+
+    contexts: list[list[dict[str, Any]]] = [[]]
+    for candidate in numbered:
+        previous = contexts[-1][-1] if contexts[-1] else None
+        restart = (
+            previous is not None
+            and candidate["ordinal"] == 1
+            and previous["ordinal"] > 1
+            and _standalone_numbered_divider(snapshot_pages[candidate["page_number"]], candidate["heading"])
+        )
+        if restart:
+            contexts.append([])
+        candidate["sequence_context"] = len(contexts) - 1
+        candidate["document_boundary"] = restart
+        contexts[-1].append(candidate)
+
+    selected = []
+    diagnostics = []
+    for context in contexts:
+        accepted = {item["page_number"] for item in _coherent_sequence(context)}
+        for candidate in context:
+            is_accepted = candidate["page_number"] in accepted
+            if is_accepted:
+                selected.append(candidate)
+            reason = (
+                "numbering_restart_at_standalone_divider" if candidate["document_boundary"]
+                else "numbering_sequence" if is_accepted
+                else "numbering_reset_without_document_boundary" if candidate["ordinal"] == 1 and candidate["sequence_context"] == 0
+                else "not_in_coherent_sequence"
+            )
+            diagnostics.append({
+                "page": candidate["page_number"], "text": candidate["heading"],
+                "number": candidate["ordinal"], "visual_score": None,
+                "sequence_context": candidate["sequence_context"],
+                "accepted": is_accepted, "reason": reason,
+            })
+
+    numbered_pages = {item["page_number"] for item in selected}
+    for page_number in range(1, page_count + 1):
+        if page_number in numbered_pages:
+            continue
+        heading = _observed_visual_heading(snapshot_pages.get(page_number, {}))
+        if heading:
+            selected.append({"page_number": page_number, "heading": heading, "ordinal": None, "document_boundary": False})
+            diagnostics.append({
+                "page": page_number, "text": heading, "number": None,
+                "visual_score": "strong", "sequence_context": None,
+                "accepted": True, "reason": "observed_visual_heading",
+            })
+    selected.sort(key=lambda item: item["page_number"])
+    diagnostics.sort(key=lambda item: (item["page"], item["number"] is None))
+    return selected, diagnostics
+
+
+def diagnose_section_candidates(*, page_count: int, snapshot_pages: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return development diagnostics without changing the section artifact schema."""
+    _, diagnostics = _heading_candidates(page_count=page_count, snapshot_pages=snapshot_pages)
+    return diagnostics
+
+
 def load_snapshot_pages(path: Path) -> dict[int, dict[str, Any]]:
     pages = {}
     for line in Path(path).read_text(encoding="utf-8").splitlines():
@@ -120,20 +209,7 @@ def load_snapshot_pages(path: Path) -> dict[int, dict[str, Any]]:
 
 
 def discover_sections(*, source_file: str, page_count: int, snapshot_pages: dict[int, dict[str, Any]]) -> dict[str, Any]:
-    observed = []
-    for page_number in range(1, page_count + 1):
-        heading = _observed_heading(snapshot_pages.get(page_number, {}))
-        if heading:
-            observed.append({"page_number": page_number, "heading": heading, "ordinal": _ordinal(heading)})
-    observed = _coherent_sequence(observed)
-    numbered_pages = {item["page_number"] for item in observed}
-    for page_number in range(1, page_count + 1):
-        if page_number in numbered_pages:
-            continue
-        heading = _observed_visual_heading(snapshot_pages.get(page_number, {}))
-        if heading:
-            observed.append({"page_number": page_number, "heading": heading, "ordinal": None})
-    observed.sort(key=lambda item: item["page_number"])
+    observed, _ = _heading_candidates(page_count=page_count, snapshot_pages=snapshot_pages)
     sections = []
     unresolved = []
     if not observed:
@@ -143,16 +219,17 @@ def discover_sections(*, source_file: str, page_count: int, snapshot_pages: dict
         unresolved.append({"region_type": "generic_region", "start_page": 1, "end_page": observed[0]["page_number"] - 1, "reason": "首个已观察章节标题之前的页面没有可靠章节边界。"})
     for index, item in enumerate(observed):
         start = item["page_number"]
-        next_page = observed[index + 1]["page_number"] if index + 1 < len(observed) else None
+        next_item = observed[index + 1] if index + 1 < len(observed) else None
+        next_page = next_item["page_number"] if next_item is not None else None
         end = next_page - 1 if next_page is not None else page_count
-        if item["ordinal"] is None:
+        if item["ordinal"] is None or (next_item is not None and next_item["document_boundary"]):
             end = start
             if next_page is not None and next_page > start + 1:
                 unresolved.append({
                     "region_type": "generic_region",
                     "start_page": start + 1,
                     "end_page": next_page - 1,
-                    "reason": "视觉标题后的页面缺少可靠的章节延续证据。",
+                    "reason": "新文档边界之前的页面缺少可靠章节归属。" if next_item["document_boundary"] else "视觉标题后的页面缺少可靠的章节延续证据。",
                 })
         if next_page is None and start < page_count:
             end = start
