@@ -114,7 +114,9 @@ def test_evidence_manifest_artifacts_are_byte_identical(tmp_path: Path) -> None:
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
-    run_evidence_manifest(
+    from pdffast.quality.evidence import create_evidence_report, write_evidence_report
+
+    evidence_kwargs = dict(
         profile_path=profile,
         snapshot_path=snapshot,
         template_path=analysis,
@@ -122,9 +124,16 @@ def test_evidence_manifest_artifacts_are_byte_identical(tmp_path: Path) -> None:
         structure_path=structure,
         stage5_path=table_dir / "result.json",
         stage6_dir=text_flow_dir,
-        output_dir=candidate_output,
     )
+    report = create_evidence_report(**evidence_kwargs)
+    write_evidence_report(report, candidate_output)
+    object_artifacts = {
+        name: (candidate_output / name).read_bytes() for name in EVIDENCE_ARTIFACTS
+    }
+    assert report.data["summary"]["valid_raw_word_count"] == report.data["summary"]["accounted_word_count"] + report.data["summary"]["unaccounted_native_word_count"]
+    run_evidence_manifest(**evidence_kwargs, output_dir=candidate_output)
     for name in EVIDENCE_ARTIFACTS:
+        assert (candidate_output / name).read_bytes() == object_artifacts[name]
         assert (candidate_output / name).read_bytes() == (
             reference_output / name
         ).read_bytes(), f"artifact drift: {name}"

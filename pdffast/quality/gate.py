@@ -8,6 +8,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from pdffast.quality.evidence import EvidenceReport
 
 
 STAGE8_VERSION = "0.3.2"
@@ -1730,6 +1731,34 @@ def render_markdown(result: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def evaluate_evidence_report(
+    evidence_report: EvidenceReport,
+    *,
+    manifest_path: Path,
+    pdf_path: Path | None,
+    output_dir: Path,
+    probe_dpi: int = DEFAULT_PROBE_DPI,
+    save_probe_crops: bool = False,
+) -> QualityReport:
+    """Compute Stage 8 directly from Stage 7 evidence in memory."""
+    if probe_dpi < 96 or probe_dpi > 400:
+        raise ValueError("--probe-dpi 建议范围为 96~400。")
+
+    manifest_path = Path(manifest_path)
+    resolved_pdf = Path(pdf_path) if pdf_path is not None else None
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    debug_crop_dir = output_dir / "probe_crops" if save_probe_crops else None
+    result = build_quality_gate(
+        evidence_report.data,
+        manifest_path,
+        resolved_pdf,
+        probe_dpi,
+        debug_crop_dir,
+    )
+    return QualityReport(result)
+
+
 def create_quality_report(
     *,
     manifest_path: Path,
@@ -1738,24 +1767,17 @@ def create_quality_report(
     probe_dpi: int = DEFAULT_PROBE_DPI,
     save_probe_crops: bool = False,
 ) -> QualityReport:
-    """Compute Stage 8 without reading or writing its JSON artifact."""
+    """Compatibility compute API reading an existing Stage 7 JSON artifact."""
     if probe_dpi < 96 or probe_dpi > 400:
         raise ValueError("--probe-dpi 建议范围为 96~400。")
-
-    manifest_path = Path(manifest_path)
-    resolved_pdf = Path(pdf_path) if pdf_path is not None else None
-    output_dir = Path(output_dir)
-    manifest = load_json(manifest_path)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    debug_crop_dir = output_dir / "probe_crops" if save_probe_crops else None
-    result = build_quality_gate(
-        manifest,
-        manifest_path,
-        resolved_pdf,
-        probe_dpi,
-        debug_crop_dir,
+    return evaluate_evidence_report(
+        EvidenceReport(load_json(Path(manifest_path))),
+        manifest_path=manifest_path,
+        pdf_path=pdf_path,
+        output_dir=output_dir,
+        probe_dpi=probe_dpi,
+        save_probe_crops=save_probe_crops,
     )
-    return QualityReport(result)
 
 
 def write_quality_report(report: QualityReport, output_dir: Path) -> None:

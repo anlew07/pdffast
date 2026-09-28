@@ -34,10 +34,18 @@ import math
 import re
 import unicodedata
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 from statistics import median
 from typing import Any, Iterable
+
+
+@dataclass(frozen=True)
+class EvidenceReport:
+    """Stage 7 accounting and provenance for Quality Gate consumption."""
+
+    data: dict[str, Any]
 
 
 STAGE = 7
@@ -1921,7 +1929,7 @@ def print_summary(manifest: dict[str, Any], output_dir: Path) -> None:
 # =============================================================================
 
 
-def run_evidence_manifest(
+def create_evidence_report(
     *,
     profile_path: Path,
     snapshot_path: Path,
@@ -1930,9 +1938,8 @@ def run_evidence_manifest(
     structure_path: Path,
     stage5_path: Path,
     stage6_dir: Path,
-    output_dir: Path,
-) -> dict[str, Any]:
-    """Run Stage 7 through the package API while preserving both artifacts."""
+) -> EvidenceReport:
+    """Compute Stage 7 accounting before writing its artifacts."""
     stage6_dir = Path(stage6_dir)
     noise_path = stage6_dir / "noise_candidates.json"
     reading_path = stage6_dir / "reading_order.json"
@@ -1977,15 +1984,42 @@ def run_evidence_manifest(
         input_paths=input_paths,
     )
 
+    return EvidenceReport(manifest)
+
+
+def write_evidence_report(report: EvidenceReport, output_dir: Path) -> None:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "evidence_manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(report.data, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     (output_dir / "evidence_manifest.md").write_text(
-        render_markdown(manifest),
+        render_markdown(report.data),
         encoding="utf-8",
     )
-    return manifest
 
+
+def run_evidence_manifest(
+    *,
+    profile_path: Path,
+    snapshot_path: Path,
+    template_path: Path,
+    alignment_path: Path,
+    structure_path: Path,
+    stage5_path: Path,
+    stage6_dir: Path,
+    output_dir: Path,
+) -> dict[str, Any]:
+    """Compatibility API preserving Stage 7 JSON and Markdown artifacts."""
+    report = create_evidence_report(
+        profile_path=profile_path,
+        snapshot_path=snapshot_path,
+        template_path=template_path,
+        alignment_path=alignment_path,
+        structure_path=structure_path,
+        stage5_path=stage5_path,
+        stage6_dir=stage6_dir,
+    )
+    write_evidence_report(report, output_dir)
+    return report.data

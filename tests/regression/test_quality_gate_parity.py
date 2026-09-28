@@ -116,13 +116,26 @@ def test_quality_gate_artifacts_are_byte_identical(tmp_path: Path) -> None:
         if path.is_file()
     }
 
-    run_quality_gate(
+    from pdffast.quality.evidence import EvidenceReport
+    from pdffast.quality.gate import evaluate_evidence_report, write_quality_report
+
+    quality_kwargs = dict(
         manifest_path=evidence_dir / "evidence_manifest.json",
         pdf_path=sample_pdf,
         output_dir=output_dir,
         probe_dpi=200,
         save_probe_crops=True,
     )
+    report = evaluate_evidence_report(
+        EvidenceReport(json.loads((evidence_dir / "evidence_manifest.json").read_text(encoding="utf-8"))),
+        **quality_kwargs,
+    )
+    write_quality_report(report, output_dir)
+    object_artifacts = {
+        path.relative_to(output_dir): path.read_bytes()
+        for path in output_dir.rglob("*") if path.is_file()
+    }
+    run_quality_gate(**quality_kwargs)
     actual_paths = {
         path.relative_to(output_dir)
         for path in output_dir.rglob("*")
@@ -130,6 +143,7 @@ def test_quality_gate_artifacts_are_byte_identical(tmp_path: Path) -> None:
     }
     assert actual_paths == set(expected)
     for relative_path, expected_bytes in expected.items():
+        assert (output_dir / relative_path).read_bytes() == object_artifacts[relative_path]
         assert (output_dir / relative_path).read_bytes() == expected_bytes, (
             f"artifact drift: {relative_path}"
         )

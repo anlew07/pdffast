@@ -22,8 +22,8 @@ from pdffast.native.structure import run_page_structure
 from pdffast.native.tables import run_table_recovery
 from pdffast.native.text_flow import run_text_flow
 from pdffast.pipeline.context import PipelineContext
-from pdffast.quality.evidence import run_evidence_manifest
-from pdffast.quality.gate import create_quality_report, write_quality_report
+from pdffast.quality.evidence import create_evidence_report, write_evidence_report
+from pdffast.quality.gate import evaluate_evidence_report, write_quality_report
 from pdffast.render.llm_ready import build_rendered_document
 from pdffast.runtime import capture_runtime_output
 from pdffast.errors import ParseExecutionError
@@ -139,8 +139,9 @@ def run_core_pipeline(
             run_page_structure(snapshot_path=a.snapshot, profile_path=a.profile, alignment_path=a.section_alignment, output_path=a.page_structure)
             run_table_recovery(structure_path=a.page_structure, snapshot_path=a.snapshot, output_dir=a.table_result.parent)
             run_text_flow(snapshot_path=a.snapshot, structure_path=a.page_structure, table_result_path=a.table_result, output_dir=a.normalized_flow.parent)
-            run_evidence_manifest(profile_path=a.profile, snapshot_path=a.snapshot, template_path=context.templates, alignment_path=a.section_alignment, structure_path=a.page_structure, stage5_path=a.table_result, stage6_dir=a.normalized_flow.parent, output_dir=a.evidence_manifest.parent)
-            quality_report = create_quality_report(manifest_path=a.evidence_manifest, pdf_path=context.pdf, output_dir=a.quality_gate.parent, probe_dpi=context.region_dpi, save_probe_crops=True)
+            evidence_report = create_evidence_report(profile_path=a.profile, snapshot_path=a.snapshot, template_path=context.templates, alignment_path=a.section_alignment, structure_path=a.page_structure, stage5_path=a.table_result, stage6_dir=a.normalized_flow.parent)
+            write_evidence_report(evidence_report, a.evidence_manifest.parent)
+            quality_report = evaluate_evidence_report(evidence_report, manifest_path=a.evidence_manifest, pdf_path=context.pdf, output_dir=a.quality_gate.parent, probe_dpi=context.region_dpi, save_probe_crops=True)
             write_quality_report(quality_report, a.quality_gate.parent)
             fallback_plan = create_fallback_plan(quality_report=quality_report, quality_gate_path=a.quality_gate, pdf_path=context.pdf, output_dir=a.fallback_manifest.parent, page_dpi=context.page_dpi, region_dpi=context.region_dpi, render_inputs=True)
             write_fallback_plan(fallback_plan, a.fallback_manifest.parent)
