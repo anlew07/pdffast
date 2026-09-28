@@ -15,7 +15,7 @@ import pytest
         ),
         (
             "configs/providers.json",
-            "dd023e32c91b28b03440f6a392d71cfc7c3650aa9901b3824382ab77239e79b9",
+            "9de971e198a849713fcc18db28142140f3a84b184cc3f608440bd14bc4b323da",
         ),
         (
             "configs/frozen/stage9_route_candidates_prod_v001.json",

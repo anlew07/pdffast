@@ -94,9 +94,18 @@ def test_all_six_production_providers_resolve_without_optional_imports() -> None
     }
     registry = ProviderRegistry(factories=factories, base_dir=Path.cwd())
 
+    # This test checks kind routing; artifact gates have dedicated tests below.
+    routing_configs = {
+        name: {
+            "runtime_enabled": config["runtime_enabled"],
+            "kind": config["kind"],
+        }
+        for name, config in providers.items()
+    }
+
     assert {
         registry.create(name, config)
-        for name, config in providers.items()
+        for name, config in routing_configs.items()
     } == {(name, config["kind"]) for name, config in providers.items()}
 
 

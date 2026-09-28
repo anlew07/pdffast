@@ -1,11 +1,12 @@
 from pathlib import Path
 import re
+import os
 
 import pytest
 
 
-def test_package_is_loaded_from_v2_tree() -> None:
-    """Catches importing the reference package or omitting v2 package metadata."""
+def test_package_is_loaded_from_current_repository() -> None:
+    """Catches importing the reference package or omitting package metadata."""
     try:
         import pdffast
     except ModuleNotFoundError as exc:
@@ -13,7 +14,11 @@ def test_package_is_loaded_from_v2_tree() -> None:
 
     package_file = Path(pdffast.__file__).resolve()
     assert package_file.parts[-2:] == ("pdffast", "__init__.py")
-    assert "pdffast-v2" in package_file.parts
+    repo_root = Path(__file__).resolve().parents[2]
+    assert package_file == repo_root / "pdffast/__init__.py"
+    reference_root = os.environ.get("PDFFAST_REFERENCE_ROOT")
+    if reference_root and Path(reference_root).resolve() != repo_root:
+        assert not package_file.is_relative_to(Path(reference_root).resolve())
     assert pdffast.__version__ == "0.1.0"
 
 
