@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pdfplumber
+from pdffast.quality.gate import QualityReport
+
+
+@dataclass(frozen=True)
+class FallbackPlan:
+    data: dict[str, Any]
 
 STAGE = 9
 VERSION = "0.1.0"
@@ -257,20 +264,21 @@ def build_markdown(doc: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def run_fallback_planning(
+def create_fallback_plan(
     *,
+    quality_report: QualityReport,
     quality_gate_path: Path,
     pdf_path: Path,
     output_dir: Path,
     page_dpi: int = DEFAULT_PAGE_DPI,
     region_dpi: int = DEFAULT_REGION_DPI,
     render_inputs: bool = True,
-) -> dict[str, Any]:
-    """Run Stage 9.1 while preserving task IDs and rendered inputs."""
+) -> FallbackPlan:
+    """Build Stage 9.1 from a QualityReport without reading Stage 8 JSON."""
     quality_gate_path = Path(quality_gate_path)
     pdf_path = Path(pdf_path)
     output_dir = Path(output_dir)
-    qg = load_json(quality_gate_path)
+    qg = quality_report.data
     validate_stage8(qg)
 
     if render_inputs and not pdf_path.exists():
@@ -319,6 +327,13 @@ def run_fallback_planning(
         "summary": summary,
         "tasks": tasks,
     }
+    return FallbackPlan(doc)
+
+
+def write_fallback_plan(plan: FallbackPlan, output_dir: Path) -> None:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    doc = plan.data
     (output_dir / "fallback_execution_manifest.json").write_text(
         json.dumps(doc, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -327,5 +342,27 @@ def run_fallback_planning(
         build_markdown(doc),
         encoding="utf-8",
     )
-    return doc
 
+
+def run_fallback_planning(
+    *,
+    quality_gate_path: Path,
+    pdf_path: Path,
+    output_dir: Path,
+    page_dpi: int = DEFAULT_PAGE_DPI,
+    region_dpi: int = DEFAULT_REGION_DPI,
+    render_inputs: bool = True,
+) -> dict[str, Any]:
+    """Compatibility API reading Stage 8 JSON and writing Stage 9.1 artifacts."""
+    quality_gate_path = Path(quality_gate_path)
+    plan = create_fallback_plan(
+        quality_report=QualityReport(load_json(quality_gate_path)),
+        quality_gate_path=quality_gate_path,
+        pdf_path=pdf_path,
+        output_dir=output_dir,
+        page_dpi=page_dpi,
+        region_dpi=region_dpi,
+        render_inputs=render_inputs,
+    )
+    write_fallback_plan(plan, output_dir)
+    return plan.data

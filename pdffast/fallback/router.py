@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from pdffast.fallback.planner import FallbackPlan
+
+
+@dataclass(frozen=True)
+class CapabilityPlan:
+    data: dict[str, Any]
 
 STAGE = 9
 VERSION = "0.2.1"
@@ -288,15 +295,14 @@ def build_markdown(plan: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def run_capability_routing(
+def create_capability_plan(
     *,
+    fallback_plan: FallbackPlan,
     manifest_path: Path,
-    output_dir: Path,
-) -> dict[str, Any]:
-    """Run Stage 9.2 without binding or invoking providers."""
+) -> CapabilityPlan:
+    """Route Stage 9.1 tasks without reading the execution manifest."""
     manifest_path = Path(manifest_path)
-    output_dir = Path(output_dir)
-    doc = load_json(manifest_path)
+    doc = fallback_plan.data
     validate_execution_manifest(doc)
     routed = route_tasks(doc)
     summary = summarize(routed)
@@ -308,7 +314,6 @@ def run_capability_routing(
     ):
         raise ValueError("路由任务数与 execution manifest task_count 不一致")
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     plan = {
         "stage": STAGE,
         "name": "provider_router",
@@ -336,6 +341,13 @@ def run_capability_routing(
         "summary": summary,
         "tasks": routed,
     }
+    return CapabilityPlan(plan)
+
+
+def write_capability_plan(capability_plan: CapabilityPlan, output_dir: Path) -> None:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plan = capability_plan.data
     (output_dir / "provider_plan.json").write_text(
         json.dumps(plan, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -344,5 +356,17 @@ def run_capability_routing(
         build_markdown(plan),
         encoding="utf-8",
     )
-    return plan
 
+
+def run_capability_routing(
+    *,
+    manifest_path: Path,
+    output_dir: Path,
+) -> dict[str, Any]:
+    """Compatibility API reading Stage 9.1 JSON and writing Stage 9.2 artifacts."""
+    plan = create_capability_plan(
+        fallback_plan=FallbackPlan(load_json(Path(manifest_path))),
+        manifest_path=manifest_path,
+    )
+    write_capability_plan(plan, output_dir)
+    return plan.data

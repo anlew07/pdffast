@@ -5,12 +5,18 @@ from __future__ import annotations
 import json
 import math
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 
 STAGE8_VERSION = "0.3.2"
 QUALITY_GATE_SCHEMA_VERSION = "1.4"
+
+
+@dataclass(frozen=True)
+class QualityReport:
+    data: dict[str, Any]
 
 # Page-level thresholds: only routing evidence, never a scalar quality score.
 IMAGE_DOMINANT_LARGEST_RATIO = 0.50
@@ -1724,15 +1730,15 @@ def render_markdown(result: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def run_quality_gate(
+def create_quality_report(
     *,
     manifest_path: Path,
     pdf_path: Path | None,
     output_dir: Path,
     probe_dpi: int = DEFAULT_PROBE_DPI,
     save_probe_crops: bool = False,
-) -> dict[str, Any]:
-    """Run Stage 8 through the package API while preserving probe artifacts."""
+) -> QualityReport:
+    """Compute Stage 8 without reading or writing its JSON artifact."""
     if probe_dpi < 96 or probe_dpi > 400:
         raise ValueError("--probe-dpi 建议范围为 96~400。")
 
@@ -1749,12 +1755,37 @@ def run_quality_gate(
         probe_dpi,
         debug_crop_dir,
     )
+    return QualityReport(result)
+
+
+def write_quality_report(report: QualityReport, output_dir: Path) -> None:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "quality_gate.json").write_text(
-        json.dumps(result, ensure_ascii=False, indent=2),
+        json.dumps(report.data, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     (output_dir / "quality_gate.md").write_text(
-        render_markdown(result),
+        render_markdown(report.data),
         encoding="utf-8",
     )
-    return result
+
+
+def run_quality_gate(
+    *,
+    manifest_path: Path,
+    pdf_path: Path | None,
+    output_dir: Path,
+    probe_dpi: int = DEFAULT_PROBE_DPI,
+    save_probe_crops: bool = False,
+) -> dict[str, Any]:
+    """Compatibility API preserving Stage 8 JSON and Markdown artifacts."""
+    report = create_quality_report(
+        manifest_path=manifest_path,
+        pdf_path=pdf_path,
+        output_dir=output_dir,
+        probe_dpi=probe_dpi,
+        save_probe_crops=save_probe_crops,
+    )
+    write_quality_report(report, output_dir)
+    return report.data

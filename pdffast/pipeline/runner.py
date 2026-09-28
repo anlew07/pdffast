@@ -14,16 +14,16 @@ from typing import Any
 from pdffast.audit.structure_boundary import audit
 from pdffast.canonical.builder import build_document
 from pdffast.fallback.executor import execute_fallback
-from pdffast.fallback.planner import run_fallback_planning
+from pdffast.fallback.planner import create_fallback_plan, write_fallback_plan
 from pdffast.fallback.policy import run_runtime_policy
-from pdffast.fallback.router import run_capability_routing
+from pdffast.fallback.router import create_capability_plan, write_capability_plan
 from pdffast.native.profiler import run_profiler
 from pdffast.native.structure import run_page_structure
 from pdffast.native.tables import run_table_recovery
 from pdffast.native.text_flow import run_text_flow
 from pdffast.pipeline.context import PipelineContext
 from pdffast.quality.evidence import run_evidence_manifest
-from pdffast.quality.gate import run_quality_gate
+from pdffast.quality.gate import create_quality_report, write_quality_report
 from pdffast.render.llm_ready import build_rendered_document
 from pdffast.runtime import capture_runtime_output
 from pdffast.errors import ParseExecutionError
@@ -140,9 +140,12 @@ def run_core_pipeline(
             run_table_recovery(structure_path=a.page_structure, snapshot_path=a.snapshot, output_dir=a.table_result.parent)
             run_text_flow(snapshot_path=a.snapshot, structure_path=a.page_structure, table_result_path=a.table_result, output_dir=a.normalized_flow.parent)
             run_evidence_manifest(profile_path=a.profile, snapshot_path=a.snapshot, template_path=context.templates, alignment_path=a.section_alignment, structure_path=a.page_structure, stage5_path=a.table_result, stage6_dir=a.normalized_flow.parent, output_dir=a.evidence_manifest.parent)
-            run_quality_gate(manifest_path=a.evidence_manifest, pdf_path=context.pdf, output_dir=a.quality_gate.parent, probe_dpi=context.region_dpi, save_probe_crops=True)
-            run_fallback_planning(quality_gate_path=a.quality_gate, pdf_path=context.pdf, output_dir=a.fallback_manifest.parent, page_dpi=context.page_dpi, region_dpi=context.region_dpi, render_inputs=True)
-            run_capability_routing(manifest_path=a.fallback_manifest, output_dir=a.provider_plan.parent)
+            quality_report = create_quality_report(manifest_path=a.evidence_manifest, pdf_path=context.pdf, output_dir=a.quality_gate.parent, probe_dpi=context.region_dpi, save_probe_crops=True)
+            write_quality_report(quality_report, a.quality_gate.parent)
+            fallback_plan = create_fallback_plan(quality_report=quality_report, quality_gate_path=a.quality_gate, pdf_path=context.pdf, output_dir=a.fallback_manifest.parent, page_dpi=context.page_dpi, region_dpi=context.region_dpi, render_inputs=True)
+            write_fallback_plan(fallback_plan, a.fallback_manifest.parent)
+            capability_plan = create_capability_plan(fallback_plan=fallback_plan, manifest_path=a.fallback_manifest)
+            write_capability_plan(capability_plan, a.provider_plan.parent)
             run_runtime_policy(provider_plan_path=a.provider_plan, route_candidates_path=context.route_candidates, output_dir=a.runtime_policy.parent)
 
             if not execute_providers:
