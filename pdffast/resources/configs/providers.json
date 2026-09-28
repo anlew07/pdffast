@@ -1,0 +1,235 @@
+{
+  "schema_version": "2.0",
+  "purpose": "Production Provider registry. Runtime and benchmark selection are independent.",
+  "providers": {
+    "paddleocr_v5_mobile": {
+      "runtime_enabled": true,
+      "benchmark_enabled": true,
+      "kind": "paddleocr_text",
+      "ocr_version": "PP-OCRv5",
+      "lang": "ch",
+      "device": null,
+      "use_doc_orientation_classify": false,
+      "use_doc_unwarping": false,
+      "use_textline_orientation": false,
+      "text_detection_model_name": "PP-OCRv5_mobile_det",
+      "text_detection_model_dir": "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_det",
+      "text_recognition_model_name": "PP-OCRv5_mobile_rec",
+      "text_recognition_model_dir": "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_rec",
+      "required_artifacts": [
+        "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_det",
+        "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_rec"
+      ],
+      "required_artifact_trees": {
+        "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_det": [
+          "config.json",
+          "inference.json",
+          "inference.pdiparams",
+          "inference.yml"
+        ],
+        "${HOME}/.paddlex/official_models/PP-OCRv5_mobile_rec": [
+          "config.json",
+          "inference.json",
+          "inference.pdiparams",
+          "inference.yml"
+        ]
+      },
+      "init_options": {},
+      "predict_options": {}
+    },
+    "paddleocr_vl_16": {
+      "runtime_enabled": true,
+      "benchmark_enabled": true,
+      "kind": "paddleocr_vl",
+      "pipeline_version": "v1.6",
+      "device": null,
+      "engine": null,
+      "vl_rec_backend": null,
+      "vl_rec_server_url": null,
+      "vl_rec_api_model_name": null,
+      "vl_rec_api_key_env": "PADDLEOCR_VL_API_KEY",
+      "layout_detection_model_dir": "${HOME}/.paddlex/official_models/PP-DocLayoutV3",
+      "vl_rec_model_dir": "${HOME}/.paddlex/official_models/PaddleOCR-VL-1.6",
+      "required_artifacts": [
+        "${HOME}/.paddlex/official_models/PP-DocLayoutV3",
+        "${HOME}/.paddlex/official_models/PaddleOCR-VL-1.6"
+      ],
+      "required_artifact_trees": {
+        "${HOME}/.paddlex/official_models/PP-DocLayoutV3": [
+          "inference.json",
+          "inference.pdiparams",
+          "inference.yml"
+        ],
+        "${HOME}/.paddlex/official_models/PaddleOCR-VL-1.6": [
+          "added_tokens.json",
+          "chat_template.jinja",
+          "config.json",
+          "configuration_paddleocr_vl.py",
+          "generation_config.json",
+          "image_processing_paddleocr_vl.py",
+          "inference.yml",
+          "model.safetensors",
+          "modeling_paddleocr_vl.py",
+          "preprocessor_config.json",
+          "processing_paddleocr_vl.py",
+          "processor_config.json",
+          "special_tokens_map.json",
+          "tokenizer.json",
+          "tokenizer.model",
+          "tokenizer_config.json"
+        ]
+      },
+      "init_options": {},
+      "predict_options": {}
+    },
+    "rapidocr_ch_light": {
+      "runtime_enabled": true,
+      "benchmark_enabled": true,
+      "kind": "rapidocr",
+      "required_artifacts": [
+        ".venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx",
+        ".venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx",
+        ".venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx"
+      ],
+      "required_artifact_sha256": {
+        ".venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx": "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
+        ".venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+        ".venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c"
+      },
+      "params": {"Rec.lang_type": "ch"},
+      "predict_options": {"use_det": true, "use_cls": false, "use_rec": true}
+    },
+    "docling_local": {
+      "runtime_enabled": true,
+      "benchmark_enabled": true,
+      "kind": "docling_worker",
+      "python_executable": "runtimes/docling/.venv/bin/python",
+      "preflight_timeout_seconds": 60,
+      "worker_init_timeout_seconds": 180,
+      "predict_timeout_seconds": 300,
+      "required_artifacts": [
+        "${HOME}/.cache/huggingface/hub/models--docling-project--docling-models/snapshots/fc0f2d45e2218ea24bce5045f58a389aed16dc23",
+        "${HOME}/.cache/huggingface/hub/models--docling-project--docling-layout-heron/snapshots/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8",
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx",
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx",
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx"
+      ],
+      "required_artifact_sha256": {
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx": "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c"
+      },
+      "required_artifact_trees": {
+        "${HOME}/.cache/huggingface/hub/models--docling-project--docling-models/snapshots/fc0f2d45e2218ea24bce5045f58a389aed16dc23": [
+          "config.json",
+          "model_artifacts/tableformer/accurate/tableformer_accurate.safetensors",
+          "model_artifacts/tableformer/accurate/tm_config.json",
+          "model_artifacts/tableformer/fast/tableformer_fast.safetensors",
+          "model_artifacts/tableformer/fast/tm_config.json"
+        ],
+        "${HOME}/.cache/huggingface/hub/models--docling-project--docling-layout-heron/snapshots/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8": [
+          "config.json",
+          "model.safetensors",
+          "preprocessor_config.json"
+        ]
+      },
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "HF_HOME": "${HOME}/.cache/huggingface",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1"
+      }
+    },
+    "mineru_local": {
+      "runtime_enabled": true,
+      "benchmark_enabled": false,
+      "kind": "mineru_worker",
+      "python_executable": "runtimes/mineru/.venv/bin/python",
+      "backend": "pipeline",
+      "output_format": "markdown",
+      "preflight_timeout_seconds": 60,
+      "worker_init_timeout_seconds": 300,
+      "predict_timeout_seconds": 600,
+      "required_artifacts": [
+        "${HOME}/mineru.json",
+        "${HOME}/.cache/huggingface/hub/models--opendatalab--PDF-Extract-Kit-1.0/snapshots/ed6b654c018d742e65a17671e379c5e6ecc87ec9"
+      ],
+      "required_artifact_trees": {
+        "${HOME}/.cache/huggingface/hub/models--opendatalab--PDF-Extract-Kit-1.0/snapshots/ed6b654c018d742e65a17671e379c5e6ecc87ec9": [
+          "models/Layout/PP-DocLayoutV2/config.json",
+          "models/Layout/PP-DocLayoutV2/model.safetensors",
+          "models/Layout/PP-DocLayoutV2/preprocessor_config.json",
+          "models/MFR/unimernet_hf_small_2503/config.json",
+          "models/MFR/unimernet_hf_small_2503/generation_config.json",
+          "models/MFR/unimernet_hf_small_2503/model.safetensors",
+          "models/MFR/unimernet_hf_small_2503/special_tokens_map.json",
+          "models/MFR/unimernet_hf_small_2503/tokenizer.json",
+          "models/MFR/unimernet_hf_small_2503/tokenizer_config.json",
+          "models/OCR/paddleocr_torch/ch_PP-OCRv6_medium_rec_infer.safetensors",
+          "models/OCR/paddleocr_torch/ch_PP-OCRv6_small_det_infer.safetensors",
+          "models/OCR/paddleocr_torch/ch_PP-OCRv6_small_rec_infer.safetensors",
+          "models/OCR/paddleocr_torch/seal_PP-OCRv4_det_server_infer.pth",
+          "models/TabCls/paddle_table_cls/PP-LCNet_x1_0_table_cls.onnx",
+          "models/TabRec/SlanetPlus/slanet-plus.onnx",
+          "models/TabRec/UnetStructure/unet.onnx"
+        ]
+      },
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "MINERU_TOOLS_CONFIG_JSON": "${HOME}/mineru.json",
+        "MINERU_MODEL_SOURCE": "local",
+        "HF_HOME": "${HOME}/.cache/huggingface",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1"
+      }
+    },
+    "marker_local": {
+      "runtime_enabled": true,
+      "benchmark_enabled": false,
+      "kind": "marker_worker",
+      "python_executable": "runtimes/marker/.venv/bin/python",
+      "mode": "fast",
+      "output_format": "markdown",
+      "force_ocr": true,
+      "force_child_process_group": true,
+      "preflight_timeout_seconds": 60,
+      "worker_init_timeout_seconds": 300,
+      "predict_timeout_seconds": 600,
+      "required_artifacts": [
+        "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2.gguf",
+        "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2-mmproj.gguf",
+        "${HOME}/.cache/huggingface/hub/models--datalab-to--surya_layout2/snapshots/0aee81d5fd9275c0582e545bf3a56944b1e75679/rfdetr_layout.pth",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/.gitattributes",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/README.md",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/config.json",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/manifest.json",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/model.safetensors",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/special_tokens_map.json",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/tokenizer.json",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/tokenizer_config.json",
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/vocab.txt",
+        "${HOME}/.local/bin/llama-server"
+      ],
+      "process_sentinel_paths": [
+        "${HOME}/.cache/datalab/surya/fast_layout_server.json",
+        "${HOME}/.cache/datalab/surya/ocr_error_server.json",
+        "${HOME}/.cache/datalab/surya/llamacpp_server.json"
+      ],
+      "required_artifact_manifests": [
+        "${HOME}/Library/Caches/datalab/models/ocr_error_detection/2025_02_18/manifest.json"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "HOME": "${HOME}/Library/Caches/pdffast-v2/marker-workers/${PDFFAST_WORKER_ID}",
+        "HF_HOME": "${HOME}/.cache/huggingface",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "MODEL_CACHE_DIR": "${HOME}/Library/Caches/datalab/models",
+        "LLAMA_CPP_BINARY": "${HOME}/.local/bin/llama-server",
+        "SURYA_GGUF_LOCAL_MODEL_PATH": "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2.gguf",
+        "SURYA_GGUF_LOCAL_MMPROJ_PATH": "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2-mmproj.gguf",
+        "SURYA_INFERENCE_KEEP_ALIVE": "False"
+      }
+    }
+  }
+}

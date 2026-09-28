@@ -1,0 +1,32 @@
+services:
+
+  pdffast:
+    container_name: pdffast
+
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    ports:
+      - "8010:8010"
+
+    environment:
+      PDFFAST_PROJECT_ROOT: /app
+      PDFFAST_OUTPUT_ROOT: /data/outputs
+
+      HOME: /root
+
+      PADDLE_PDX_CACHE_HOME: /root/.paddlex
+      HF_HOME: /root/.cache/huggingface
+
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+
+    volumes:
+      - pdffast_outputs:/data/outputs
+
+    restart: unless-stopped
+
+
+volumes:
+  pdffast_outputs:

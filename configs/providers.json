@@ -103,21 +103,21 @@
       "runtime_enabled": true,
       "benchmark_enabled": true,
       "kind": "docling_worker",
-      "python_executable": ".venv-docling/bin/python",
+      "python_executable": "runtimes/docling/.venv/bin/python",
       "preflight_timeout_seconds": 60,
       "worker_init_timeout_seconds": 180,
       "predict_timeout_seconds": 300,
       "required_artifacts": [
         "${HOME}/.cache/huggingface/hub/models--docling-project--docling-models/snapshots/fc0f2d45e2218ea24bce5045f58a389aed16dc23",
         "${HOME}/.cache/huggingface/hub/models--docling-project--docling-layout-heron/snapshots/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8",
-        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx",
-        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx",
-        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx"
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx",
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx",
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx"
       ],
       "required_artifact_sha256": {
-        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx": "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
-        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
-        ".venv-docling/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c"
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_det_small.onnx": "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f",
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/PP-OCRv6_rec_small.onnx": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+        "runtimes/docling/.venv/lib/python3.12/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c"
       },
       "required_artifact_trees": {
         "${HOME}/.cache/huggingface/hub/models--docling-project--docling-models/snapshots/fc0f2d45e2218ea24bce5045f58a389aed16dc23": [
@@ -144,7 +144,7 @@
       "runtime_enabled": true,
       "benchmark_enabled": false,
       "kind": "mineru_worker",
-      "python_executable": ".venv-mineru/bin/python",
+      "python_executable": "runtimes/mineru/.venv/bin/python",
       "backend": "pipeline",
       "output_format": "markdown",
       "preflight_timeout_seconds": 60,
@@ -187,7 +187,7 @@
       "runtime_enabled": true,
       "benchmark_enabled": false,
       "kind": "marker_worker",
-      "python_executable": ".venv-marker/bin/python",
+      "python_executable": "runtimes/marker/.venv/bin/python",
       "mode": "fast",
       "output_format": "markdown",
       "force_ocr": true,

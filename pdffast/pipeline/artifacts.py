@@ -31,6 +31,30 @@ class ArtifactPaths:
     structure_audit: Path
     logs_dir: Path
 
+    @property
+    def result_dir(self) -> Path:
+        return self.canonical_document.parents[1] / "result"
+
+    @property
+    def result_document(self) -> Path:
+        return self.result_dir / "document.json"
+
+    @property
+    def result_markdown(self) -> Path:
+        return self.result_dir / "document.md"
+
+    @property
+    def result_audit(self) -> Path:
+        return self.result_dir / "audit.json"
+
+    @property
+    def result_manifest(self) -> Path:
+        return self.result_dir / "manifest.json"
+
+    @property
+    def pipeline_log(self) -> Path:
+        return self.logs_dir.parent / "diagnostics" / "logs" / "pipeline.log"
+
     @classmethod
     def for_run(cls, run_dir: Path) -> "ArtifactPaths":
         run_dir = Path(run_dir)

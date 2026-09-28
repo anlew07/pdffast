@@ -117,7 +117,14 @@ class ProviderRegistry:
         self._base_dir = Path(base_dir).resolve() if base_dir is not None else None
 
     def _resolve_path(self, raw_path: str, *, field: str) -> Path:
-        path = Path(os.path.expandvars(raw_path)).expanduser()
+        expanded = os.path.expandvars(raw_path)
+        if "$PDFFAST_PROJECT_ROOT" in expanded:
+            if self._base_dir is None:
+                raise ProviderConfigurationError(
+                    f"{field} requires a PDFFast project root: {raw_path}"
+                )
+            expanded = expanded.replace("$PDFFAST_PROJECT_ROOT", str(self._base_dir))
+        path = Path(expanded).expanduser()
         if not path.is_absolute():
             if self._base_dir is None:
                 raise ProviderConfigurationError(

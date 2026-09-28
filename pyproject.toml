@@ -6,12 +6,28 @@ build-backend = "hatchling.build"
 name = "pdffast"
 version = "0.1.0"
 requires-python = ">=3.12"
+
 dependencies = [
   "pdfplumber>=0.11.10",
 ]
 
 [project.optional-dependencies]
+
 dev = ["pytest>=8.0"]
+
+service = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "python-multipart>=0.0.20",
+]
+
+runtime-main = [
+  "rapidocr==3.9.2",
+  "onnxruntime==1.30.0",
+  "paddleocr==3.6.0",
+  "paddlepaddle==3.2.1",
+  "paddlex==3.6.1",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -21,3 +37,8 @@ markers = [
   "regression: old-vs-new artifact comparison requiring local samples",
   "provider: tests requiring an optional provider environment",
 ]
+
+[tool.hatch.build.targets.wheel.force-include]
+"pdffast/resources/configs/providers.json" = "pdffast/resources/configs/providers.json"
+"pdffast/resources/configs/templates.json" = "pdffast/resources/configs/templates.json"
+"pdffast/resources/configs/frozen/stage9_route_candidates_prod_v001.json" = "pdffast/resources/configs/frozen/stage9_route_candidates_prod_v001.json"

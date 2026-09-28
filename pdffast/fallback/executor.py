@@ -75,7 +75,7 @@ def execute_fallback(
     plan: dict[str, Any],
     provider_configs: dict[str, dict[str, Any]],
     registry: Any,
-    normalizer: Callable[[RawProviderResult, dict[str, Any]], dict[str, Any]],
+    normalizer: Callable[..., dict[str, Any]],
     output_dir: Path,
 ) -> dict[str, Any]:
     """Execute the frozen provider chains as deterministic escalation waves."""
@@ -159,7 +159,22 @@ def execute_fallback(
                                 metadata=task,
                             )
                         )
-                        canonical = normalizer(raw, task)
+                        raw_path = output_dir / "provider_raw" / f"{task_id}.json"
+                        manifest_path = output_dir / "provider_raw" / "runtime_manifest.json"
+                        try:
+                            canonical = normalizer(
+                                raw,
+                                task,
+                                result_path=raw_path,
+                                manifest_path=manifest_path,
+                            )
+                        except TypeError as exc:
+                            # Preserve the small legacy/fake normalizer contract used
+                            # by migration tests; runtime adapters should accept paths.
+                            try:
+                                canonical = normalizer(raw, task)
+                            except TypeError:
+                                raise exc
                     except Exception as exc:
                         canonical = {
                             "task_id": task_id,
@@ -214,12 +229,23 @@ def execute_fallback(
 
         wrapper = {
             "task_id": task_id,
+            "task_type": task.get("task_type"),
             "page_number": task.get("page_number"),
+            "source_id": task.get("source_id"),
             "capability_route": task.get("capability_route"),
+            "ground_truth_used": False,
             "selected_provider": selected_provider,
             "terminal_fallback_applied": bool(state["terminal"]),
+            "terminal_fallback_action": (
+                (task.get("terminal_fallback") or {}).get("action")
+                if state["terminal"] else None
+            ),
             "pipeline_failure": bool(state["failure"]),
             "attempts": state["attempts"],
+            # Stage 10 consumes the selected canonical prediction directly.
+            # Keep the historical alias below for readers of the Stage 9
+            # wrapper, but make the producer/consumer contract explicit.
+            "selected_canonical": state["selected_canonical"],
             "canonical_prediction": state["selected_canonical"],
         }
         selected_path = selected_dir / f"{task_id}.json"
@@ -259,6 +285,15 @@ def execute_fallback(
     _write_json(output_dir / "production_execution_manifest.json", manifest)
     _write_json(
         output_dir / "selected_prediction_index.json",
-        {"task_count": len(selected_index), "items": selected_index},
+        {
+            "schema_version": "1.0",
+            "stage": 9,
+            "substage": "9.8",
+            "name": "selected_prediction_index",
+            "source_file": policy.get("source_file"),
+            "page_count": policy.get("page_count"),
+            "task_count": len(selected_index),
+            "items": selected_index,
+        },
     )
     return manifest

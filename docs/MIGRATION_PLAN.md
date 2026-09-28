@@ -1,6 +1,6 @@
 # PDFFast v2 迁移方案
 
-状态：设计已批准；Phase 0–2 已完成并验证；Phase 3 尚未开始
+状态：Phase 0–4 Core 迁移已完成并验证；Provider runtime 已按生产闭包落地
 日期：2026-09-20
 旧工程（只读行为基线）：`/Users/admin/Workspace/pdffast`
 新工程：`/Users/admin/Workspace/pdffast-v2`
@@ -12,8 +12,8 @@
 | Phase 0：基线冻结与测试骨架 | 完成 | 默认套件 21 passed / 3 skipped；绑定 reference 的 contract 套件 7 passed |
 | Phase 1：Native Pipeline | 完成 | Stage 1–6 已迁移；真实样本十九项 Artifact 字节级一致 |
 | Phase 2：Quality 与 Fallback Planning | 完成 | Stage 7–9.6.3 已迁移；真实样本全文件等价，含 probe crop 与 fallback 输入 PNG |
-| Phase 3：Provider Runtime | 计划中 | 尚未迁移 Provider adapter |
-| Phase 4：Canonical、Renderer、Audit | 计划中 | 尚未迁移业务算法 |
+| Phase 3：Provider Runtime | 完成 | 生产闭包 6 个 Provider、Registry、worker、缓存复用与运行时校验已完成 |
+| Phase 4：Canonical、Renderer、Audit | 完成 | `PDFFastParser.parse()` 已串联 Stage 1–10；Canonical、Markdown、Structure Audit 已通过真实 PDF smoke |
 | Phase 5：性能优化 | 计划中 | 必须等待 Phase 1–4 等价回归通过 |
 
 ## 1. 目标与非目标

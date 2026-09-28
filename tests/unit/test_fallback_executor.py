@@ -129,6 +129,10 @@ def test_executor_accepts_and_escalates_by_wave(tmp_path: Path) -> None:
     assert p2.initialized == p2.closed == 1
     assert (tmp_path / "selected_predictions/accept.json").exists()
     assert (tmp_path / "selected_predictions/escalate.json").exists()
+    selected = __import__("json").loads(
+        (tmp_path / "selected_predictions/accept.json").read_text(encoding="utf-8")
+    )
+    assert selected["selected_canonical"]["text"]["content"] == "first"
 
 
 def test_executor_applies_terminal_or_pipeline_failure(tmp_path: Path) -> None:

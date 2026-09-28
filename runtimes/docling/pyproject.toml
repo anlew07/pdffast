@@ -1,0 +1,21 @@
+[project]
+name = "pdffast-runtime-docling"
+version = "0.1.0"
+
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+    "docling==2.127.0",
+
+    # Docling OCR 路径显式依赖 RapidOCR。
+    # RapidOCR wheel 会携带三个 ONNX 模型。
+    "rapidocr==3.9.2",
+    "onnxruntime==1.30.0",
+
+    "torch==2.14.0",
+    "transformers==5.17.0",
+]
+
+
+[tool.uv]
+package = false
