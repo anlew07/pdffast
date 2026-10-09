@@ -2185,6 +2185,8 @@ def scan_and_profile_pdf(
     pdf_path: Path,
     snapshot_output: Path,
     table_mode: str,
+    snapshot_pages: dict[int, dict[str, Any]] | None = None,
+    snapshot_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     单次打开 PDF、单次 page loop：
@@ -2192,7 +2194,8 @@ def scan_and_profile_pdf(
     1. 保存 Raw Evidence JSONL
     2. 同时计算 Page Profile
 
-    后续阶段只读这些产物，不再重复解析 PDF。
+    snapshot_pages 可选地收集同一批 page evidence，供 Section Discovery 直接使用。
+    其他后续阶段仍可读取原有产物，不会重复解析 PDF。
     """
     pages: list[
         dict[str, Any]
@@ -2270,6 +2273,9 @@ def scan_and_profile_pdf(
                 },
         }
 
+        if snapshot_meta is not None:
+            snapshot_meta.update(meta)
+
         snapshot_file.write(
             json.dumps(
                 meta,
@@ -2314,6 +2320,8 @@ def scan_and_profile_pdf(
                 )
                 + "\n"
             )
+            if snapshot_pages is not None:
+                snapshot_pages[int(evidence["page_number"])] = evidence
 
     return {
         "page_scan_version":
@@ -2588,6 +2596,8 @@ def run_profiler(
     profile_output: Path,
     snapshot_output: Path,
     table_mode: str = "auto",
+    snapshot_pages: dict[int, dict[str, Any]] | None = None,
+    snapshot_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create the production Page Profile and Raw Evidence Snapshot artifacts."""
 
@@ -2606,6 +2616,8 @@ def run_profiler(
         pdf_path=pdf_path,
         snapshot_output=snapshot_output,
         table_mode=table_mode,
+        snapshot_pages=snapshot_pages,
+        snapshot_meta=snapshot_meta,
     )
     profile_output.parent.mkdir(parents=True, exist_ok=True)
     profile_output.write_text(
@@ -2613,4 +2625,3 @@ def run_profiler(
         encoding="utf-8",
     )
     return result
-

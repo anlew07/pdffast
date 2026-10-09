@@ -3,11 +3,36 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from typing import Any
 
 from .base import RawProviderResult
 from .normalization import normalize_prediction
+
+
+def _wire_value(value: Any) -> Any:
+    """Match the legacy JSON value shape in memory without reopening the artifact."""
+    if isinstance(value, dict):
+        def key_text(key: Any) -> str:
+            if isinstance(key, str):
+                return key
+            if key is None:
+                return "null"
+            if key is True:
+                return "true"
+            if key is False:
+                return "false"
+            if isinstance(key, (int, float)):
+                return str(key)
+            raise TypeError(f"unsupported raw-result JSON key: {type(key).__name__}")
+
+        return {key_text(key): _wire_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_wire_value(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
 
 
 def _runtime_manifest(raw: RawProviderResult, task: dict[str, Any], result_path: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
@@ -55,15 +80,25 @@ def normalize_runtime_result(
             "warnings": list(raw.warnings),
         }
     )
+    if raw.supplemental_evidence is not None:
+        result["supplemental_evidence"] = raw.supplemental_evidence.to_dict()
+    result_json = json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n"
     result_path.parent.mkdir(parents=True, exist_ok=True)
-    result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+    result_path.write_text(result_json, encoding="utf-8")
     manifest, task_map = _runtime_manifest(raw, task, result_path)
+    manifest_json = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return normalize_prediction(
+    manifest_path.write_text(manifest_json, encoding="utf-8")
+    prediction = normalize_prediction(
         manifest=manifest,
         manifest_path=manifest_path,
         task_map=task_map,
         provider=raw.provider,
         result_path=result_path,
+        result_data=_wire_value(result),
+        known_hashes={
+            str(result_path): hashlib.sha256(result_json.encode("utf-8")).hexdigest(),
+            str(manifest_path): hashlib.sha256(manifest_json.encode("utf-8")).hexdigest(),
+        },
     )
+    return prediction

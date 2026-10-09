@@ -1934,6 +1934,12 @@ def create_evidence_report(
     stage5_path: Path,
     stage6_dir: Path,
     text_flow: TextFlowResult | None = None,
+    table_result: dict[str, Any] | None = None,
+    profile: dict[str, Any] | None = None,
+    snapshot_meta: dict[str, Any] | None = None,
+    snapshot_pages: dict[int, dict[str, Any]] | None = None,
+    section_alignment: dict[str, Any] | None = None,
+    page_structure: dict[str, Any] | None = None,
 ) -> EvidenceReport:
     """Compute Stage 7 accounting before writing its artifacts."""
     stage6_dir = Path(stage6_dir)
@@ -1942,11 +1948,14 @@ def create_evidence_report(
     paragraphs_path = stage6_dir / "paragraphs.json"
     normalized_path = stage6_dir / "normalized_text_flow.json"
 
-    profile = load_json(Path(profile_path))
-    snapshot_meta, snapshot_pages = load_snapshot(Path(snapshot_path))
-    alignment = load_json(Path(alignment_path))
-    structure = load_json(Path(structure_path))
-    stage5 = load_json(Path(stage5_path))
+    if (snapshot_meta is None) != (snapshot_pages is None):
+        raise ValueError("snapshot_meta and snapshot_pages must be provided together")
+    profile = profile if profile is not None else load_json(Path(profile_path))
+    if snapshot_meta is None:
+        snapshot_meta, snapshot_pages = load_snapshot(Path(snapshot_path))
+    alignment = section_alignment if section_alignment is not None else load_json(Path(alignment_path))
+    structure = page_structure if page_structure is not None else load_json(Path(structure_path))
+    stage5 = table_result if table_result is not None else load_json(Path(stage5_path))
     noise = text_flow.noise if text_flow is not None else load_json(noise_path)
     reading = text_flow.reading_order if text_flow is not None else load_json(reading_path)
     paragraphs = text_flow.paragraphs if text_flow is not None else load_json(paragraphs_path)

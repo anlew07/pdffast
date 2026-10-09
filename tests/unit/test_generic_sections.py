@@ -1,6 +1,6 @@
 """Sections must come from observed PDF text, never a configured template."""
 
-from pdffast.native.sections import diagnose_section_candidates, discover_sections
+from pdffast.native.sections import diagnose_page_ownership, diagnose_section_candidates, discover_sections
 
 
 def _page(number: int, text: str) -> dict:
@@ -14,6 +14,25 @@ def _divider(number: int, title: str) -> dict:
         "words": [{"text": title, "x0": 130, "x1": 470, "top": 300}],
         "chars": [{"text": char, "top": 300, "size": 30} for char in title],
     })
+    return page
+
+
+def _visual_page(number: int, title: str, footer: int) -> dict:
+    body = "这一页有连续的原生正文和足够的文字证据，可以比较相邻页面的版式与页码。"
+    page = _page(number, f"{title}\n{body}\n- {footer} -")
+    page.update({
+        "width": 600, "height": 840,
+        "words": [{"text": title, "x0": 190, "x1": 410, "top": 55}],
+        "chars": [{"text": char, "top": 55, "size": 22} for char in title]
+        + [{"text": char, "top": 120, "size": 12} for char in body],
+    })
+    return page
+
+
+def _body_page(number: int, footer: int | None = None) -> dict:
+    body = "这一页继续呈现同一份文档的正文，文字长度足以供原生版式与页码判断。"
+    page = _page(number, body + (f"\n- {footer} -" if footer is not None else ""))
+    page.update({"width": 600, "height": 840, "chars": [{"text": char, "top": 120, "size": 12} for char in body]})
     return page
 
 
@@ -187,3 +206,89 @@ def test_unresolved_pages_preserve_observed_candidates() -> None:
 def test_section_discovery_has_no_template_input() -> None:
     result = discover_sections(source_file="sample.pdf", page_count=1, snapshot_pages={1: _page(1, "一、实际标题")})
     assert [section["title"] for section in result["sections"]] == ["一、实际标题"]
+
+
+def test_visual_heading_can_continue_with_strong_evidence() -> None:
+    pages = {1: _visual_page(1, "实际观察到的标题", 1), 2: _body_page(2, 2), 3: _body_page(3, 3)}
+    result = discover_sections(source_file="sample.pdf", page_count=3, snapshot_pages=pages)
+    assert [(section["title"], section["start_page"], section["end_page"]) for section in result["sections"]] == [
+        ("实际观察到的标题", 1, 3),
+    ]
+    decisions = diagnose_page_ownership(page_count=3, snapshot_pages=pages)
+    assert [(item["page"], item["decision"]) for item in decisions] == [(1, "NEW_SECTION"), (2, "CONTINUE"), (3, "CONTINUE")]
+    assert "internal_page_number_consecutive" in decisions[1]["continuity_signals"]
+
+
+def test_visual_heading_does_not_absorb_unrelated_page() -> None:
+    cover = _page(2, "另一份文档的封面\n独立说明\n申请人信息")
+    cover.update({
+        "width": 600, "height": 840,
+        "words": [{"text": "另一份文档的封面", "x0": 180, "x1": 420, "top": 210}],
+        "chars": [{"text": "封", "top": 210, "size": 26}, {"text": "说", "top": 280, "size": 12}],
+    })
+    pages = {1: _visual_page(1, "实际观察到的标题", 1), 2: cover, 3: _body_page(3, 3)}
+    result = discover_sections(source_file="sample.pdf", page_count=3, snapshot_pages=pages)
+    assert result["sections"][0]["end_page"] == 1
+    assert [(r["start_page"], r["end_page"]) for r in result["unresolved_regions"]] == [(2, 3)]
+    decisions = diagnose_page_ownership(page_count=3, snapshot_pages=pages)
+    assert decisions[1]["decision"] == "UNRESOLVED"
+    assert "cover_like_page" in decisions[1]["boundary_signals"]
+
+
+def test_numbered_section_continuation_remains_stable() -> None:
+    pages = {1: _page(1, "一、正文\n一些内容\n1/3"), 2: _body_page(2), 3: _page(3, "二、下节\n正文\n3/3")}
+    pages[1]["width"] = pages[2]["width"] = pages[3]["width"] = 600
+    pages[1]["height"] = pages[2]["height"] = pages[3]["height"] = 840
+    pages[2]["native_text"] += "\n2/3"
+    result = discover_sections(source_file="sample.pdf", page_count=3, snapshot_pages=pages)
+    assert [(s["start_page"], s["end_page"]) for s in result["sections"]] == [(1, 2), (3, 3)]
+
+
+def test_numbered_section_can_continue_across_scanned_pages_with_internal_numbering() -> None:
+    pages = {1: _divider(1, "五、真实章节"), 2: _page(2, "5.1 这一页的条目说明有足够的原生文字\n- 2 -"), 3: _page(3, "5.2 下一页的条目说明也有足够的原生文字\n- 3 -")}
+    pages[1]["native_text"] = "五、真实章节\n- 1 -"
+    for page in (pages[2], pages[3]):
+        page.update({"width": 600, "height": 840, "images": [{"x0": 50, "x1": 550, "top": 100, "bottom": 700}]})
+    result = discover_sections(source_file="sample.pdf", page_count=3, snapshot_pages=pages)
+    assert result["sections"][0]["end_page"] == 3
+    assert all(page["section_id"] == "observed_section_001" for page in result["pages"])
+
+
+def test_consecutive_footer_alone_does_not_assign_other_numbered_document() -> None:
+    pages = {1: _divider(1, "五、真实章节"), 2: _page(2, "2.1 另一组文档的条目有足够原生文字\n- 2 -")}
+    pages[1]["native_text"] = "五、真实章节\n- 1 -"
+    pages[2].update({"width": 600, "height": 840})
+    result = discover_sections(source_file="sample.pdf", page_count=2, snapshot_pages=pages)
+    assert result["sections"][0]["end_page"] == 1
+    assert result["pages"][1]["section_id"] is None
+
+
+def test_new_heading_stops_previous_section() -> None:
+    pages = {1: _visual_page(1, "第一份标题", 1), 2: _body_page(2, 2), 3: _visual_page(3, "第二份标题", 1)}
+    result = discover_sections(source_file="sample.pdf", page_count=3, snapshot_pages=pages)
+    assert [(s["anchor_page"], s["end_page"]) for s in result["sections"]] == [(1, 2), (3, 3)]
+
+
+def test_unresolved_when_continuity_is_ambiguous() -> None:
+    pages = {1: _visual_page(1, "已观察标题", 1), 2: _body_page(2), 3: _body_page(3)}
+    result = discover_sections(source_file="sample.pdf", page_count=3, snapshot_pages=pages)
+    assert result["sections"][0]["end_page"] == 1
+    assert [(r["start_page"], r["end_page"]) for r in result["unresolved_regions"]] == [(2, 3)]
+
+
+def test_repeated_titles_keep_independent_ranges() -> None:
+    pages = {1: _visual_page(1, "同一个实际标题", 1), 2: _body_page(2, 2), 3: _visual_page(3, "同一个实际标题", 1), 4: _body_page(4, 2)}
+    result = discover_sections(source_file="sample.pdf", page_count=4, snapshot_pages=pages)
+    assert [(s["section_id"], s["title"], s["start_page"], s["end_page"]) for s in result["sections"]] == [
+        ("observed_section_001", "同一个实际标题", 1, 2),
+        ("observed_section_002", "同一个实际标题", 3, 4),
+    ]
+
+
+def test_no_invented_heading_or_page_ownership() -> None:
+    pages = {1: _visual_page(1, "真实标题", 1), 2: _page(2, "版\n式\n正\n2/4"), 3: _body_page(3, 3)}
+    pages[2].update({"width": 520, "height": 750, "images": [{"x0": 0, "x1": 520, "top": 0, "bottom": 750}]})
+    result = discover_sections(source_file="sample.pdf", page_count=3, snapshot_pages=pages)
+    assert [s["title"] for s in result["sections"]] == ["真实标题"]
+    assert result["pages"][1]["section_id"] is None
+    assert result["pages"][2]["section_id"] is None

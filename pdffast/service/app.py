@@ -22,6 +22,11 @@ PDFFast Core 不感知 FastAPI。
 from __future__ import annotations
 
 import os
+import asyncio
+import threading
+import logging
+import math
+from contextlib import asynccontextmanager
 import shutil
 import tempfile
 from pathlib import Path
@@ -34,6 +39,8 @@ from fastapi import (
     UploadFile,
 )
 from pydantic import BaseModel
+
+from pdffast.runtime import cancellable_parse
 
 from pdffast import (
     PDFFastError,
@@ -92,10 +99,40 @@ class ParseResponse(BaseModel):
 # App
 # ============================================================
 
+def _cleanup_budget() -> float:
+    budget = float(os.environ.get("PDFFAST_SHUTDOWN_CLEANUP_SECONDS", "30"))
+    if not math.isfinite(budget) or budget <= 0:
+        raise ValueError("PDFFAST_SHUTDOWN_CLEANUP_SECONDS must be finite and positive")
+    return budget
+
+
+@asynccontextmanager
+async def service_lifespan(application: FastAPI):
+    budget = _cleanup_budget()
+    try:
+        yield
+    finally:
+        # Uvicorn cancels HTTP tasks after its graceful window, then sends the
+        # lifespan shutdown event. Retain ownership until parse cleanup ends.
+        active = dict(application.state.parse_operations)
+        for cancelled, _ in active.values():
+            cancelled.set()
+        if active:
+            _, pending = await asyncio.wait(active, timeout=budget)
+            if pending:
+                logging.getLogger(__name__).error(
+                    "PDFFast shutdown cleanup incomplete after %ss; run_ids=%s. "
+                    "In-process native calls cannot be forcibly stopped safely.",
+                    budget, [active[task][1] for task in pending],
+                )
+
+
 app = FastAPI(
     title="PDFFast Service",
     version="0.1.0",
+    lifespan=service_lifespan,
 )
+app.state.parse_operations = {}
 
 
 # ============================================================
@@ -143,12 +180,9 @@ def health() -> HealthResponse:
 # ============================================================
 
 
-@app.post(
-    "/parse",
-    response_model=ParseResponse,
-)
-def parse_pdf(
-    file: UploadFile = File(...),
+def _parse_pdf_sync(
+    file: UploadFile,
+    run_id: str,
 ) -> ParseResponse:
     """
     上传 PDF 并执行一次完整 PDFFast 解析。
@@ -168,10 +202,6 @@ def parse_pdf(
             status_code=400,
             detail="仅支持 PDF 文件",
         )
-
-    run_id = (
-        f"api_{uuid4().hex}"
-    )
 
     # --------------------------------------------------------
     # HTTP UploadFile 不进入 Core。
@@ -259,3 +289,35 @@ def parse_pdf(
 
         finally:
             file.file.close()
+
+@app.post("/parse", response_model=ParseResponse)
+async def parse_pdf(file: UploadFile = File(...)) -> ParseResponse:
+    """Preserve the synchronous calculation, with scoped shutdown cancellation.
+
+    Uvicorn first grants requests its configured graceful shutdown window.
+    Cancellation after that window stops this parse at a safe checkpoint and
+    unblocks isolated Worker waits. In-process native calls must return before
+    they can observe cancellation; no unsafe Python-thread termination is used.
+    """
+    cancelled = threading.Event()
+    run_id = f"api_{uuid4().hex}"
+    with cancellable_parse(cancelled):
+        operation = asyncio.create_task(asyncio.to_thread(_parse_pdf_sync, file, run_id))
+        active = app.state.parse_operations
+        active[operation] = (cancelled, run_id)
+        def completed(task):
+            active.pop(task, None)
+            if not task.cancelled():
+                task.exception()  # Observe failures even if the HTTP task was cancelled twice.
+        operation.add_done_callback(completed)
+        try:
+            return await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            cancelled.set()
+            try:
+                await asyncio.shield(operation)
+            except BaseException:
+                # The interrupted parse logs its own failure and cleans up in
+                # finally. The HTTP task must preserve cancellation, not 200.
+                pass
+            raise

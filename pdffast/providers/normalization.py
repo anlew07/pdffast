@@ -33,7 +33,7 @@ import re
 import statistics
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 
 VERSION = "0.8.2"
@@ -81,6 +81,13 @@ def sha256_file(path: Path) -> str:
                 break
             h.update(chunk)
     return h.hexdigest()
+
+
+def source_sha256(path: Path, known_hashes: Mapping[str, str] | None = None) -> str:
+    """Use fresh artifact bytes already held by the runtime, or hash replay files."""
+    if known_hashes is not None and str(path) in known_hashes:
+        return known_hashes[str(path)]
+    return sha256_file(path)
 
 
 def selected_task_map(
@@ -938,6 +945,8 @@ def normalize_rapidocr(
     manifest_task: dict[str, Any],
     manifest_path: Path,
     result_path: Path,
+    *,
+    known_hashes: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     task_id = result.get("task_id")
     provider_obj = result.get("provider") or {}
@@ -1078,11 +1087,11 @@ def normalize_rapidocr(
         "source_artifacts": {
             "benchmark_manifest": str(manifest_path),
             "benchmark_manifest_sha256": (
-                sha256_file(manifest_path)
+                source_sha256(manifest_path, known_hashes)
             ),
             "task_result": str(result_path),
             "task_result_sha256": (
-                sha256_file(result_path)
+                source_sha256(result_path, known_hashes)
             ),
             "provider_raw_refs": (
                 result.get("provider_raw_refs") or []
@@ -1115,6 +1124,8 @@ def normalize_mineru(
     manifest_task: dict[str, Any],
     manifest_path: Path,
     result_path: Path,
+    *,
+    known_hashes: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     task_id = result.get("task_id")
     provider_obj = result.get("provider") or {}
@@ -1282,11 +1293,11 @@ def normalize_mineru(
         "source_artifacts": {
             "benchmark_manifest": str(manifest_path),
             "benchmark_manifest_sha256": (
-                sha256_file(manifest_path)
+                source_sha256(manifest_path, known_hashes)
             ),
             "task_result": str(result_path),
             "task_result_sha256": (
-                sha256_file(result_path)
+                source_sha256(result_path, known_hashes)
             ),
             "provider_raw_refs": (
                 result.get("provider_raw_refs") or []
@@ -1319,6 +1330,8 @@ def normalize_marker(
     manifest_task: dict[str, Any],
     manifest_path: Path,
     result_path: Path,
+    *,
+    known_hashes: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     Marker adapter v1.
@@ -1480,9 +1493,9 @@ def normalize_marker(
 
         "source_artifacts": {
             "benchmark_manifest": str(manifest_path),
-            "benchmark_manifest_sha256": sha256_file(manifest_path),
+            "benchmark_manifest_sha256": source_sha256(manifest_path, known_hashes),
             "task_result": str(result_path),
-            "task_result_sha256": sha256_file(result_path),
+            "task_result_sha256": source_sha256(result_path, known_hashes),
             "provider_raw_refs": result.get("provider_raw_refs") or [],
             "input_image": (
                 result.get("input_image")
@@ -1635,6 +1648,8 @@ def normalize_docling(
     manifest_task: dict[str, Any],
     manifest_path: Path,
     result_path: Path,
+    *,
+    known_hashes: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     Docling adapter v1.
@@ -1803,9 +1818,9 @@ def normalize_docling(
 
         "source_artifacts": {
             "benchmark_manifest": str(manifest_path),
-            "benchmark_manifest_sha256": sha256_file(manifest_path),
+            "benchmark_manifest_sha256": source_sha256(manifest_path, known_hashes),
             "task_result": str(result_path),
-            "task_result_sha256": sha256_file(result_path),
+            "task_result_sha256": source_sha256(result_path, known_hashes),
             "provider_raw_refs": result.get("provider_raw_refs") or [],
             "input_image": (
                 result.get("input_image")
@@ -2008,6 +2023,8 @@ def normalize_pp_structure_v3(
     manifest_task: dict[str, Any],
     manifest_path: Path,
     result_path: Path,
+    *,
+    known_hashes: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     PP-StructureV3-light adapter v1.
@@ -2169,9 +2186,9 @@ def normalize_pp_structure_v3(
 
         "source_artifacts": {
             "benchmark_manifest": str(manifest_path),
-            "benchmark_manifest_sha256": sha256_file(manifest_path),
+            "benchmark_manifest_sha256": source_sha256(manifest_path, known_hashes),
             "task_result": str(result_path),
-            "task_result_sha256": sha256_file(result_path),
+            "task_result_sha256": source_sha256(result_path, known_hashes),
             "provider_raw_refs": result.get("provider_raw_refs") or [],
             "input_image": (
                 result.get("input_image")
@@ -2202,6 +2219,8 @@ def normalize_paddleocr_v5_mobile(
     manifest_task: dict[str, Any],
     manifest_path: Path,
     result_path: Path,
+    *,
+    known_hashes: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     PP-OCRv5 mobile adapter v1.
@@ -2329,9 +2348,9 @@ def normalize_paddleocr_v5_mobile(
 
         "source_artifacts": {
             "benchmark_manifest": str(manifest_path),
-            "benchmark_manifest_sha256": sha256_file(manifest_path),
+            "benchmark_manifest_sha256": source_sha256(manifest_path, known_hashes),
             "task_result": str(result_path),
-            "task_result_sha256": sha256_file(result_path),
+            "task_result_sha256": source_sha256(result_path, known_hashes),
             "provider_raw_refs": result.get("provider_raw_refs") or [],
             "input_image": (
                 result.get("input_image")
@@ -2358,6 +2377,8 @@ def normalize_paddleocr_vl_16(
     manifest_task: dict[str, Any],
     manifest_path: Path,
     result_path: Path,
+    *,
+    known_hashes: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     PaddleOCR-VL v1.6 adapter v1.
@@ -2536,9 +2557,9 @@ def normalize_paddleocr_vl_16(
 
         "source_artifacts": {
             "benchmark_manifest": str(manifest_path),
-            "benchmark_manifest_sha256": sha256_file(manifest_path),
+            "benchmark_manifest_sha256": source_sha256(manifest_path, known_hashes),
             "task_result": str(result_path),
-            "task_result_sha256": sha256_file(result_path),
+            "task_result_sha256": source_sha256(result_path, known_hashes),
             "provider_raw_refs": result.get("provider_raw_refs") or [],
             "input_image": (
                 result.get("input_image")
@@ -2705,8 +2726,11 @@ def normalize_one(
     task_map: dict[str, dict[str, Any]],
     provider: str,
     result_path: Path,
+    *,
+    result_data: dict[str, Any] | None = None,
+    known_hashes: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    result = load_json(result_path)
+    result = result_data if result_data is not None else load_json(result_path)
 
     manifest_task = validate_task_result(
         result,
@@ -2720,6 +2744,7 @@ def normalize_one(
             manifest_task=manifest_task,
             manifest_path=manifest_path,
             result_path=result_path,
+            known_hashes=known_hashes,
         )
     elif provider == "mineru_local":
         pred = normalize_mineru(
@@ -2727,6 +2752,7 @@ def normalize_one(
             manifest_task=manifest_task,
             manifest_path=manifest_path,
             result_path=result_path,
+            known_hashes=known_hashes,
         )
     elif provider == "marker_local":
         pred = normalize_marker(
@@ -2734,6 +2760,7 @@ def normalize_one(
             manifest_task=manifest_task,
             manifest_path=manifest_path,
             result_path=result_path,
+            known_hashes=known_hashes,
         )
     elif provider == "docling_local":
         pred = normalize_docling(
@@ -2741,6 +2768,7 @@ def normalize_one(
             manifest_task=manifest_task,
             manifest_path=manifest_path,
             result_path=result_path,
+            known_hashes=known_hashes,
         )
     elif provider == "pp_structure_v3_light":
         pred = normalize_pp_structure_v3(
@@ -2748,6 +2776,7 @@ def normalize_one(
             manifest_task=manifest_task,
             manifest_path=manifest_path,
             result_path=result_path,
+            known_hashes=known_hashes,
         )
     elif provider == "paddleocr_v5_mobile":
         pred = normalize_paddleocr_v5_mobile(
@@ -2755,6 +2784,7 @@ def normalize_one(
             manifest_task=manifest_task,
             manifest_path=manifest_path,
             result_path=result_path,
+            known_hashes=known_hashes,
         )
     elif provider == "paddleocr_vl_16":
         pred = normalize_paddleocr_vl_16(
@@ -2762,12 +2792,19 @@ def normalize_one(
             manifest_task=manifest_task,
             manifest_path=manifest_path,
             result_path=result_path,
+            known_hashes=known_hashes,
         )
     else:
         raise ValueError(
             f"no adapter for provider={provider}"
         )
 
+    if result.get("supplemental_evidence") is not None:
+        from .supplemental import SupplementalEvidence
+
+        pred["supplemental_evidence"] = SupplementalEvidence.from_dict(
+            result["supplemental_evidence"]
+        ).to_dict()
     validate_canonical(pred)
     return pred
 
@@ -2779,6 +2816,8 @@ def normalize_prediction(
     task_map: dict[str, dict[str, Any]],
     provider: str,
     result_path: Path,
+    result_data: dict[str, Any] | None = None,
+    known_hashes: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Normalize one approved raw Provider result into CanonicalPrediction."""
     return normalize_one(
@@ -2787,4 +2826,6 @@ def normalize_prediction(
         task_map=task_map,
         provider=provider,
         result_path=Path(result_path),
+        result_data=result_data,
+        known_hashes=known_hashes,
     )

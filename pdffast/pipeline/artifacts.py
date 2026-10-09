@@ -7,8 +7,79 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
+class ResultArtifactPaths:
+    """Public results and their existing internal assembly snapshots."""
+
+    dir: Path
+    document_json: Path
+    document_md: Path
+    audit_json: Path
+    manifest_json: Path
+    canonical_snapshot: Path
+    rendered_snapshot: Path
+
+
+@dataclass(frozen=True)
+class NativeArtifactPaths:
+    """Native observations and recovered document structure."""
+
+    profile: Path
+    snapshot: Path
+    sections: Path
+    page_structure: Path
+    tables: Path
+    text_flow: Path
+
+
+@dataclass(frozen=True)
+class ObservabilityArtifactPaths:
+    """Evidence, decisions, execution plans, rendering, and audit records."""
+
+    evidence: Path
+    quality: Path
+    fallback_plan: Path
+    capability_plan: Path
+    execution_plan: Path
+    production_manifest: Path
+    render_manifest: Path
+    structure_audit: Path
+
+
+@dataclass(frozen=True)
+class DiagnosticArtifactPaths:
+    """Debug views, probes, task inputs, and the captured runtime log."""
+
+    text_flow_dir: Path
+    probe_crops_dir: Path
+    fallback_inputs_dir: Path
+    pipeline_log: Path
+
+
+@dataclass(frozen=True)
+class ProviderArtifactPaths:
+    """Persisted Provider evidence at the historical execution location."""
+
+    execution_dir: Path
+    raw_dir: Path
+    raw_manifest: Path
+    selected_dir: Path
+    selected_index: Path
+    production_manifest: Path
+
+    def raw_result(self, task_id: str) -> Path:
+        return self.raw_dir / f"{task_id}.json"
+
+    def selected_prediction(self, task_id: str) -> Path:
+        return self.selected_dir / f"{task_id}.json"
+
+    def normalized_prediction(self, task_id: str) -> Path:
+        """Normalized attempts are embedded in the selected wrapper, not a second file."""
+        return self.selected_prediction(task_id)
+
+
+@dataclass(frozen=True)
 class ArtifactPaths:
-    """All production artifact locations for one immutable run directory."""
+    """Existing physical paths; flat attributes remain compatibility aliases."""
 
     profile: Path
     snapshot: Path
@@ -53,6 +124,64 @@ class ArtifactPaths:
     @property
     def pipeline_log(self) -> Path:
         return self.logs_dir.parent / "diagnostics" / "logs" / "pipeline.log"
+
+    @property
+    def result(self) -> ResultArtifactPaths:
+        return ResultArtifactPaths(
+            dir=self.result_dir,
+            document_json=self.result_document,
+            document_md=self.result_markdown,
+            audit_json=self.result_audit,
+            manifest_json=self.result_manifest,
+            canonical_snapshot=self.canonical_document,
+            rendered_snapshot=self.llm_ready,
+        )
+
+    @property
+    def native(self) -> NativeArtifactPaths:
+        return NativeArtifactPaths(
+            profile=self.profile,
+            snapshot=self.snapshot,
+            sections=self.section_alignment,
+            page_structure=self.page_structure,
+            tables=self.table_result,
+            text_flow=self.normalized_flow,
+        )
+
+    @property
+    def observability(self) -> ObservabilityArtifactPaths:
+        return ObservabilityArtifactPaths(
+            evidence=self.evidence_manifest,
+            quality=self.quality_gate,
+            fallback_plan=self.fallback_manifest,
+            capability_plan=self.provider_plan,
+            execution_plan=self.runtime_policy,
+            production_manifest=self.production_manifest,
+            render_manifest=self.render_manifest,
+            structure_audit=self.structure_audit,
+        )
+
+    @property
+    def diagnostics(self) -> DiagnosticArtifactPaths:
+        return DiagnosticArtifactPaths(
+            text_flow_dir=self.normalized_flow.parent,
+            probe_crops_dir=self.quality_gate.parent / "probe_crops",
+            fallback_inputs_dir=self.fallback_manifest.parent / "inputs",
+            pipeline_log=self.pipeline_log,
+        )
+
+    @property
+    def providers(self) -> ProviderArtifactPaths:
+        execution_dir = self.production_manifest.parent
+        raw_dir = execution_dir / "provider_raw"
+        return ProviderArtifactPaths(
+            execution_dir=execution_dir,
+            raw_dir=raw_dir,
+            raw_manifest=raw_dir / "runtime_manifest.json",
+            selected_dir=self.selected_predictions_dir,
+            selected_index=self.selected_prediction_index,
+            production_manifest=self.production_manifest,
+        )
 
     @classmethod
     def for_run(cls, run_dir: Path) -> "ArtifactPaths":

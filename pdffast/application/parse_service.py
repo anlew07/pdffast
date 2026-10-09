@@ -11,8 +11,10 @@ from pdffast.errors import ConfigurationError
 from pdffast.providers.registry import ProviderRegistry
 from pdffast.providers.runtime_normalization import normalize_runtime_result
 from pdffast.pipeline.context import PipelineContext
+from pdffast.pipeline.artifacts import ArtifactPaths
 from pdffast.pipeline.runner import run_core_pipeline
 from pdffast.result import ParseResult
+from pdffast.runtime import observe_parse
 
 
 @dataclass
@@ -20,6 +22,14 @@ class ParseService:
     config: ParserConfig
 
     def parse(self, pdf_path: Path, *, run_id: str = "parse", case_id: str | None = None) -> ParseResult:
+        paths = ArtifactPaths.for_run(Path(self.config.output_root).resolve() / run_id)
+        with observe_parse(
+            run_id,
+            log_path=paths.diagnostics.pipeline_log if self.config.capture_output else None,
+        ):
+            return self._parse(pdf_path, run_id=run_id, case_id=case_id)
+
+    def _parse(self, pdf_path: Path, *, run_id: str, case_id: str | None) -> ParseResult:
         config = self.config
         project_root = Path(config.project_root or Path(__file__).resolve().parents[2])
         bundled_configs = None

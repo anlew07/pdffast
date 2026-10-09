@@ -38,8 +38,11 @@ def test_canonical_builder_matches_reference_artifact_shape() -> None:
         RUN / "09_8_production_fallback/selected_predictions",
     )
     expected = load(RUN / "10_1_canonical/canonical_document.json")
-    for key in ("records", "sections", "fallback_overlays", "summary", "status", "stage", "substage", "schema_version"):
+    for key in ("records", "sections", "fallback_overlays", "summary", "status", "stage", "substage"):
         assert semantic(doc[key]) == semantic(expected[key]), key
+    assert expected["schema_version"] == "1.0"
+    assert doc["schema_version"] == "1.1"
+    assert doc["document_units"] == []
 
 
 def test_renderer_is_pure_and_matches_reference_markdown() -> None:

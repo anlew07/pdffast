@@ -23,8 +23,10 @@ def audit(
     quality_gate: dict[str, Any],
     canonical: dict[str, Any],
     render_manifest: dict[str, Any],
+    *,
+    markdown: str | None = None,
 ) -> dict[str, Any]:
     """Audit stage boundaries using already-loaded artifacts."""
     return _load_implementation().audit(
-        native, quality_gate, canonical, render_manifest
+        native, quality_gate, canonical, render_manifest, markdown=markdown
     )

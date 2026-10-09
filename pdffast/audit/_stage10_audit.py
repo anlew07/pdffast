@@ -29,6 +29,7 @@ Inputs
 --quality-gate      Stage8 quality_gate.json
 --canonical         Stage10.1 canonical_document.json
 --render-manifest   Stage10.2 render_manifest.json
+--markdown          Stage10.2 llm_ready.md (optional when manifest names it)
 --output            Output directory
 
 Outputs
@@ -45,7 +46,9 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.1.5"
+from pdffast.audit.document_units import audit_document_units
+
+VERSION = "0.1.6"
 STAGE = "10.2.1"
 
 
@@ -178,7 +181,7 @@ def visible_text_signature(record: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def audit(native: dict[str, Any], qg: dict[str, Any], canonical: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any]:
+def audit(native: dict[str, Any], qg: dict[str, Any], canonical: dict[str, Any], manifest: dict[str, Any], *, markdown: str | None = None) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -204,6 +207,20 @@ def audit(native: dict[str, Any], qg: dict[str, Any], canonical: dict[str, Any],
     backbone_exact = native_ids == canonical_ids_raw
     if not backbone_exact:
         errors.append("Stage10.1 canonical record IDs/order differ from Stage6 native backbone")
+
+    changed_base_records = [
+        rid for rid in native_ids
+        if rid not in canonical_by_id or {
+            key: value for key, value in canonical_by_id[rid].items()
+            if key not in {"stage10_record_index", "stage10_resolution"}
+        } != native_by_id[rid]
+    ]
+    if changed_base_records:
+        errors.append(f"Stage10.1 changed {len(changed_base_records)} Stage6 base records")
+
+    section_backbone_exact = canonical.get("sections") == native.get("sections")
+    if not section_backbone_exact:
+        errors.append("Stage10.1 canonical sections differ from Stage6 native sections")
 
     corder = canonical_order(canonical)
     canonical_semantic_order_matches_native = corder == native_ids
@@ -526,6 +543,9 @@ def audit(native: dict[str, Any], qg: dict[str, Any], canonical: dict[str, Any],
             f"{unexpected_paragraph_resolution_records[:8]}"
         )
 
+    document_unit_audit = audit_document_units(canonical, markdown)
+    errors.extend(document_unit_audit["errors"])
+
     result = {
         "stage": STAGE,
         "version": VERSION,
@@ -535,6 +555,7 @@ def audit(native: dict[str, Any], qg: dict[str, Any], canonical: dict[str, Any],
         "summary": {
             "stage6_record_count": len(native_records),
             "canonical_record_count": len(canonical_records),
+            "changed_stage6_base_record_count": len(changed_base_records),
             "stage6_paragraph_count": len(paragraph_ids),
             "native_route_page_count": len(native_route_pages),
             "strict_native_page_count": len(strict_native_pages),
@@ -555,9 +576,13 @@ def audit(native: dict[str, Any], qg: dict[str, Any], canonical: dict[str, Any],
             "page_ocr_image_anchor_page_count": len(ocr_image_anchor_pages),
             "page_ocr_without_stage6_image_ref_page_count": len(ocr_pages_without_stage6_image_ref),
             "page_layout_fallback_record_count": len(page_layout_records),
+            "document_unit_count": document_unit_audit["units"],
+            "document_unit_marker_count": document_unit_audit["rendered_markers"],
         },
         "checks": {
             "canonical_backbone_exact_stage6_ids_and_order": backbone_exact,
+            "canonical_base_records_exact_stage6": not changed_base_records,
+            "canonical_sections_exact_stage6": section_backbone_exact,
             "canonical_semantic_order_matches_stage6": canonical_semantic_order_matches_native,
             "canonical_native_paragraph_authority_unchanged": len(changed_paragraphs) == 0,
             "stage10_2_native_paragraph_relative_order_preserved": paragraph_relative_order_preserved,
@@ -619,6 +644,7 @@ def audit(native: dict[str, Any], qg: dict[str, Any], canonical: dict[str, Any],
         "paragraph_resolution_mode_counts": dict(paragraph_modes),
         "paragraph_non_native_resolution_records": paragraph_fallback_mutations,
         "unexpected_paragraph_resolution_records": unexpected_paragraph_resolution_records,
+        "document_unit_audit": document_unit_audit,
         "validation": {
             "pass": not errors,
             "errors": errors,
@@ -644,6 +670,8 @@ def render_md(result: dict[str, Any]) -> str:
     ]
     labels = {
         "canonical_backbone_exact_stage6_ids_and_order": "Stage10.1 canonical keeps exact Stage6 record IDs/order",
+        "canonical_base_records_exact_stage6": "Stage10.1 canonical keeps exact Stage6 base record fields",
+        "canonical_sections_exact_stage6": "Stage10.1 canonical keeps exact Stage6 sections",
         "canonical_semantic_order_matches_stage6": "Canonical section semantic order matches Stage6",
         "canonical_native_paragraph_authority_unchanged": "Native paragraph text/provenance unchanged in canonical",
         "stage10_2_native_paragraph_relative_order_preserved": "Stage10.2 preserves native paragraph relative order",
@@ -678,6 +706,7 @@ def render_md(result: dict[str, Any]) -> str:
         f"- INLINE contexts: {s['inline_context_count']} | full-contained records={s['inline_full_contained_record_count']} | partial-overlap records={s['inline_partial_overlap_record_count']} | renderer-suppressed={s['inline_renderer_suppressed_record_count']}",
         f"- OCR_REQUIRED pages: {s['ocr_required_page_count']} | PAGE OCR fallback records={s['page_ocr_fallback_record_count']} | without Stage6 image_ref={s['page_ocr_without_stage6_image_ref_page_count']}",
         f"- LAYOUT_FALLBACK_REQUIRED pages: {s['layout_fallback_required_page_count']} | PAGE layout fallback records={s['page_layout_fallback_record_count']}",
+        f"- DocumentUnits: {s['document_unit_count']} | boundary markers={s['document_unit_marker_count']} | semantic audit={result['document_unit_audit']['status']}",
         "",
         "## Native paragraph dispositions",
         "",
@@ -712,6 +741,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--quality-gate", required=True)
     p.add_argument("--canonical", required=True)
     p.add_argument("--render-manifest", required=True)
+    p.add_argument("--markdown", help="Rendered Markdown; defaults to the path declared by render manifest")
     p.add_argument("--output", required=True)
     return p.parse_args()
 
@@ -720,11 +750,15 @@ def main() -> int:
     a = parse_args()
     out = Path(a.output)
     out.mkdir(parents=True, exist_ok=True)
+    manifest = load_json(Path(a.render_manifest))
+    markdown_path = a.markdown or (manifest.get("outputs") or {}).get("llm_ready_markdown")
+    markdown = Path(markdown_path).read_text(encoding="utf-8") if markdown_path and Path(markdown_path).is_file() else None
     result = audit(
         load_json(Path(a.native_flow)),
         load_json(Path(a.quality_gate)),
         load_json(Path(a.canonical)),
-        load_json(Path(a.render_manifest)),
+        manifest,
+        markdown=markdown,
     )
     (out / "structure_boundary_audit.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "structure_boundary_audit.md").write_text(render_md(result), encoding="utf-8")

@@ -13,7 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "httpx2>=2.13.1"]
 
 service = [
     "fastapi>=0.115",
@@ -40,5 +40,4 @@ markers = [
 
 [tool.hatch.build.targets.wheel.force-include]
 "pdffast/resources/configs/providers.json" = "pdffast/resources/configs/providers.json"
-"pdffast/resources/configs/templates.json" = "pdffast/resources/configs/templates.json"
 "pdffast/resources/configs/frozen/stage9_route_candidates_prod_v001.json" = "pdffast/resources/configs/frozen/stage9_route_candidates_prod_v001.json"

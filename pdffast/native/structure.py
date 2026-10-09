@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import unicodedata
+from contextlib import nullcontext
 from pathlib import Path
 from statistics import mean
 from typing import Any, Iterator, TextIO
@@ -3923,18 +3924,27 @@ def build_document_structure(
     snapshot_path: Path,
     profile_path: Path,
     aligner_path: Path,
+    *,
+    snapshot_meta: dict[str, Any] | None = None,
+    snapshot_pages: dict[int, dict[str, Any]] | None = None,
+    section_alignment: dict[str, Any] | None = None,
+    profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if not snapshot_path.exists():
+    if (snapshot_meta is None) != (snapshot_pages is None):
+        raise ValueError("snapshot_meta and snapshot_pages must be provided together")
+    if snapshot_pages is None and not snapshot_path.exists():
         raise FileNotFoundError(
             f"Raw Evidence JSONL 不存在: {snapshot_path}"
         )
 
-    profile_result = load_json(
-        profile_path
+    profile_result = (
+        profile if profile is not None
+        else load_json(profile_path)
     )
 
-    aligner_result = load_json(
-        aligner_path
+    aligner_result = (
+        section_alignment if section_alignment is not None
+        else load_json(aligner_path)
     )
 
     profile_pages = build_page_index(
@@ -3945,14 +3955,16 @@ def build_document_structure(
         aligner_result
     )
 
-    with snapshot_path.open(
-        "r",
-        encoding="utf-8",
-    ) as snapshot_file:
-        snapshot_meta = read_snapshot_meta(
-            snapshot_file,
-            snapshot_path,
-        )
+    snapshot_input = (
+        nullcontext(None) if snapshot_pages is not None
+        else snapshot_path.open("r", encoding="utf-8")
+    )
+    with snapshot_input as snapshot_file:
+        if snapshot_pages is None:
+            snapshot_meta = read_snapshot_meta(snapshot_file, snapshot_path)
+            raw_pages = iter_snapshot_pages(snapshot_file)
+        else:
+            raw_pages = snapshot_pages.values()
 
         (
             page_count,
@@ -3992,9 +4004,7 @@ def build_document_structure(
             int
         ] = set()
 
-        for raw_page in iter_snapshot_pages(
-            snapshot_file
-        ):
+        for raw_page in raw_pages:
             page_number = int(
                 raw_page["page_number"]
             )
@@ -5983,12 +5993,20 @@ def run_page_structure(
     profile_path: Path,
     alignment_path: Path,
     output_path: Path,
+    snapshot_meta: dict[str, Any] | None = None,
+    snapshot_pages: dict[int, dict[str, Any]] | None = None,
+    section_alignment: dict[str, Any] | None = None,
+    profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run Stage 4 through the package API while preserving its artifact format."""
     result = build_document_structure(
         snapshot_path=Path(snapshot_path),
         profile_path=Path(profile_path),
         aligner_path=Path(alignment_path),
+        snapshot_meta=snapshot_meta,
+        snapshot_pages=snapshot_pages,
+        section_alignment=section_alignment,
+        profile=profile,
     )
 
     output_path = Path(output_path)

@@ -9,12 +9,12 @@ import json
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Mapping
 
 STAGE = 10
 SUBSTAGE = "10.1"
-VERSION = "0.1.5"
-SCHEMA_VERSION = "1.0"
+VERSION = "0.1.6"
+SCHEMA_VERSION = "1.1"
 ARTIFACT_ROLE = "canonical_document_with_native_and_fallback_provenance"
 
 
@@ -36,6 +36,11 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def sha256_artifact_data(value: Mapping[str, Any]) -> str:
+    """Hash the exact JSON bytes emitted by Stage 6, Quality, and Capability writers."""
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, indent=2).encode("utf-8")).hexdigest()
 
 
 def safe_list(v: Any) -> list[Any]:
@@ -339,19 +344,34 @@ def build_document(
     plan_path: Path,
     selected_index_path: Path,
     selected_dir: Path,
+    *,
+    selected_index_data: Mapping[str, Any] | None = None,
+    selected_predictions: Iterable[Mapping[str, Any]] | None = None,
+    native_flow_data: Mapping[str, Any] | None = None,
+    quality_data: Mapping[str, Any] | None = None,
+    plan_data: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    native = load_json(native_path)
-    qg = load_json(qg_path)
-    plan = load_json(plan_path)
-    selected_index = load_json(selected_index_path)
+    native = native_flow_data if native_flow_data is not None else load_json(native_path)
+    qg = quality_data if quality_data is not None else load_json(qg_path)
+    plan = plan_data if plan_data is not None else load_json(plan_path)
+    if (selected_index_data is None) != (selected_predictions is None):
+        raise ValueError("selected_index_data and selected_predictions must be supplied together")
+    selected_index = selected_index_data if selected_index_data is not None else load_json(selected_index_path)
 
     selected_wrappers: dict[str, dict[str, Any]] = {}
-    for item in safe_list(selected_index.get("items")):
-        tid = str(item.get("task_id") or "")
-        p = selected_dir / f"{tid}.json"
-        if not p.exists():
-            raise FileNotFoundError(f"selected prediction 缺失：{p}")
-        selected_wrappers[tid] = load_json(p)
+    if selected_predictions is None:
+        for item in safe_list(selected_index.get("items")):
+            tid = str(item.get("task_id") or "")
+            p = selected_dir / f"{tid}.json"
+            if not p.exists():
+                raise FileNotFoundError(f"selected prediction 缺失：{p}")
+            selected_wrappers[tid] = load_json(p)
+    else:
+        for wrapper in selected_predictions:
+            tid = str(wrapper.get("task_id") or "")
+            if not tid or tid in selected_wrappers:
+                raise ValueError(f"selected prediction task_id 缺失或重复：{tid}")
+            selected_wrappers[tid] = wrapper
 
     validate_inputs(native, qg, plan, selected_index, selected_wrappers)
     qg_regions = build_qg_region_index(qg)
@@ -708,10 +728,13 @@ def build_document(
     )
     wrapper_count = len(selected_wrappers)
     source_files = {
-        "native_flow": {"path": str(native_path), "sha256": sha256_file(native_path), "version": native.get("version")},
-        "quality_gate": {"path": str(qg_path), "sha256": sha256_file(qg_path), "version": qg.get("version")},
-        "provider_plan": {"path": str(plan_path), "sha256": sha256_file(plan_path), "version": plan.get("version")},
-        "selected_prediction_index": {"path": str(selected_index_path), "sha256": sha256_file(selected_index_path)},
+        "native_flow": {"path": str(native_path), "sha256": sha256_file(native_path) if native_flow_data is None else sha256_artifact_data(native_flow_data), "version": native.get("version")},
+        "quality_gate": {"path": str(qg_path), "sha256": sha256_file(qg_path) if quality_data is None else sha256_artifact_data(quality_data), "version": qg.get("version")},
+        "provider_plan": {"path": str(plan_path), "sha256": sha256_file(plan_path) if plan_data is None else sha256_artifact_data(plan_data), "version": plan.get("version")},
+        "selected_prediction_index": {"path": str(selected_index_path), "sha256": (
+            sha256_file(selected_index_path) if selected_index_data is None else
+            hashlib.sha256((json.dumps(selected_index_data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")).hexdigest()
+        )},
         "selected_prediction_dir": str(selected_dir),
     }
 
@@ -765,6 +788,7 @@ def build_document(
         "sections": copy.deepcopy(native.get("sections")),
         "pages": pages,
         "records": records,
+        "document_units": [],
         "fallback_overlays": {
             "page_fallbacks": [page_fallbacks[p] for p in sorted(page_fallbacks)],
             "region_fallbacks": [region_fallbacks[k] for k in sorted(region_fallbacks, key=lambda x: (region_fallbacks[x]["page_number"], x))],

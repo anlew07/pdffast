@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,8 @@ from typing import Any, Callable
 from pdffast.providers.base import Provider, ProviderTask, RawProviderResult
 from pdffast.providers.registry import validate_runtime_provider_closure
 from pdffast.fallback.policy import ProviderExecutionPlan
+from pdffast.runtime import current_observation, check_parse_cancelled
+from pdffast.providers.supplemental import supplemental_diagnostics
 
 
 SUCCESS_STATUSES = {"SUCCESS", "SUCCESS_WITH_WARNINGS"}
@@ -95,6 +98,9 @@ def execute_provider_plan(
     if not all(policy_ids):
         raise ValueError("execution plan task_id 为空")
 
+    observation = current_observation()
+    if observation is not None:
+        observation.tasks_known(len(policy_ids))
     validate_runtime_provider_closure(policy, provider_configs)
 
     output_dir = Path(output_dir)
@@ -115,6 +121,7 @@ def execute_provider_plan(
     providers: dict[str, Provider] = {}
     batch_history: list[dict[str, Any]] = []
 
+    execution_error: BaseException | None = None
     try:
         wave = 0
         while not all(state["done"] for state in states.values()):
@@ -132,31 +139,42 @@ def execute_provider_plan(
                     else:
                         state["failure"] = True
                     state["done"] = True
+                    if observation is not None:
+                        observation.tasks_completed(sum(s["done"] for s in states.values()))
                     continue
                 groups[chain[state["next_index"]]].append(task_id)
 
             for provider_name in sorted(groups):
+                check_parse_cancelled()
                 provider = providers.get(provider_name)
                 if provider is None:
+                    if observation is not None:
+                        observation.provider_started(provider_name)
                     config = provider_configs.get(provider_name)
                     if not isinstance(config, dict):
                         raise ValueError(f"missing provider config: {provider_name}")
                     provider = registry.create(provider_name, config)
+                    providers[provider_name] = provider
                     preflight = provider.preflight()
                     if not preflight.available:
                         raise RuntimeError(
                             f"provider preflight failed: {provider_name}: {preflight.detail}"
                         )
                     provider.initialize()
-                    providers[provider_name] = provider
+                    if observation is not None:
+                        observation.progress("provider_initialized", "provider_execution")
 
                 task_ids = groups[provider_name]
                 batch_history.append(
                     {"wave": wave, "provider": provider_name, "task_ids": task_ids}
                 )
                 for task_id in task_ids:
+                    check_parse_cancelled()
                     task = task_index[task_id]
                     state = states[task_id]
+                    if observation is not None:
+                        observation.task_started(provider_name, task_id)
+                    raw = None
                     try:
                         raw = provider.execute(
                             ProviderTask(
@@ -183,6 +201,8 @@ def execute_provider_plan(
                             except TypeError:
                                 raise exc
                     except Exception as exc:
+                        if observation is not None:
+                            observation.failure("provider_task_failed", exc)
                         canonical = {
                             "task_id": task_id,
                             "provider": {"name": provider_name},
@@ -194,6 +214,18 @@ def execute_provider_plan(
                             "relations": {"availability": "NOT_EMITTED", "items": []},
                             "exception": f"{type(exc).__name__}: {exc}",
                         }
+                    diagnostic_task = dict(task, provider=provider_name)
+                    diagnostic = supplemental_diagnostics(
+                        raw, diagnostic_task,
+                        run_id=observation.run_id if observation is not None else None,
+                    )
+                    if canonical.get("exception") is not None:
+                        diagnostic["attempt_error"] = canonical["exception"]
+                    if observation is not None and (
+                        diagnostic["observed_retained_count"] or
+                        (provider_name == "mineru_local" and diagnostic["capture_status"] != "COMPLETE")
+                    ):
+                        observation.diagnostic("supplemental_evidence_observed", supplemental_diagnostics=diagnostic)
                     accepted, triggers = _evaluate(canonical, task)
                     state["attempts"].append(
                         {
@@ -202,6 +234,7 @@ def execute_provider_plan(
                             "accepted": accepted,
                             "escalation_triggers": triggers,
                             "canonical": canonical,
+                            "supplemental_diagnostics": diagnostic,
                         }
                     )
                     if accepted:
@@ -210,12 +243,34 @@ def execute_provider_plan(
                         state["done"] = True
                     else:
                         state["next_index"] += 1
+                    if observation is not None:
+                        observation.task_finished(
+                            accepted=accepted, completed=sum(s["done"] for s in states.values()),
+                            status=str(canonical.get("status") or ""),
+                        )
             wave += 1
             if wave > 10:
                 raise RuntimeError("provider escalation wave exceeded 10")
+    except BaseException as exc:
+        execution_error = exc
+        if observation is not None:
+            observation.failure("provider_execution_failed", exc)
+        raise
     finally:
-        for provider in providers.values():
-            provider.close()
+        cleanup_errors: list[BaseException] = []
+        for provider_name, provider in providers.items():
+            try:
+                provider.close()
+            except BaseException as exc:
+                cleanup_errors.append(exc)
+                if observation is not None:
+                    observation.failure("provider_cleanup_failed", exc, provider=provider_name)
+                else:
+                    logging.getLogger(__name__).error(
+                        "Provider cleanup failed: %s", provider_name, exc_info=True,
+                    )
+        if cleanup_errors and execution_error is None:
+            raise cleanup_errors[0]
 
     selected_counts: Counter[str] = Counter()
     attempt_counts: Counter[str] = Counter()
@@ -289,6 +344,10 @@ def execute_provider_plan(
         "source_file": policy.get("source_file"),
         "summary": summary,
         "batch_history": batch_history,
+        "supplemental_diagnostics": [
+            dict(attempt["supplemental_diagnostics"], accepted=attempt["accepted"])
+            for state in states.values() for attempt in state["attempts"]
+        ],
         "selected_predictions": selected_index,
     }
     _write_json(output_dir / "production_execution_manifest.json", manifest)
@@ -303,6 +362,8 @@ def execute_provider_plan(
         "items": selected_index,
     }
     _write_json(output_dir / "selected_prediction_index.json", index)
+    if observation is not None:
+        observation.providers_finished()
     return ProviderExecutionResult(manifest, index, selected_predictions)
 
 

@@ -1460,6 +1460,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "httpx2" },
     { name = "pytest" },
 ]
 runtime-main = [
@@ -1478,6 +1479,7 @@ service = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", marker = "extra == 'service'", specifier = ">=0.115" },
+    { name = "httpx2", marker = "extra == 'dev'", specifier = ">=2.13.1" },
     { name = "onnxruntime", marker = "extra == 'runtime-main'", specifier = "==1.30.0" },
     { name = "paddleocr", marker = "extra == 'runtime-main'", specifier = "==3.6.0" },
     { name = "paddlepaddle", marker = "extra == 'runtime-main'", specifier = "==3.2.1" },

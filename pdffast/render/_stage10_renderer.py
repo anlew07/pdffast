@@ -12,7 +12,7 @@ from typing import Any
 
 STAGE = 10
 SUBSTAGE = "10.2"
-VERSION = "0.1.10"
+VERSION = "0.1.11"
 SCHEMA_VERSION = "1.0"
 ARTIFACT_ROLE = "llm_ready_markdown_renderer"
 
@@ -174,6 +174,28 @@ def append_block(chunks: list[str], block: str) -> None:
         chunks.append("")
     chunks.append(block)
     chunks.append("")
+
+
+def render_document_unit_boundary(unit: dict[str, Any]) -> str:
+    """Present an admitted document anchor as metadata, never as a section heading."""
+    anchor = unit["anchor"]
+    page = int(anchor["page"])
+    span = unit["page_range"]
+    coverage = f"{span['start_page']}–{span['end_page']}页"
+    if unit["range_status"] == "PARTIAL":
+        extent = f"已确认覆盖：{coverage}；完整范围未确定"
+    else:
+        extent = f"当前证据确认覆盖：{coverage}（非独占）"
+    lines = [
+        f"<!-- pdffast-document-unit: {unit['document_id']}; anchor-page: {page} -->",
+        f"【PDFFast文档边界元数据｜锚点第{page}页｜页内具体边界未确定｜{extent}】",
+    ]
+    lines.extend(
+        f"标题原文 {index}：{part}"
+        for index, part in enumerate(anchor["title_parts"], start=1)
+    )
+    lines.append("【PDFFast文档边界结束】")
+    return "\n".join(lines)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -1019,6 +1041,34 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     page_overlays = list((doc.get("fallback_overlays") or {}).get("page_fallbacks") or [])
     page_overlay_by_task = {str(x.get("task_id") or ""): x for x in page_overlays if isinstance(x, dict)}
 
+    document_units_by_page: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
+    for unit in doc.get("document_units") or []:
+        document_units_by_page[int(unit["anchor"]["page"])].append(unit)
+
+    # A recovered title may follow other content on the same page. Use the first
+    # exact observed title line when it survives rendering; otherwise keep a
+    # conservative page-level marker without inferring record ownership.
+    anchor_units_by_record: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+    matched_document_unit_ids: set[str] = set()
+    for page_number, units in document_units_by_page.items():
+        for unit in units:
+            first_part = str((unit["anchor"].get("title_parts") or [""])[0])
+            if not first_part:
+                continue
+            for rid in ordered_ids:
+                record = records_by_id[rid]
+                if page_number not in record_pages(record) or rid in suppress_ids:
+                    continue
+                mode = record_mode(record)
+                if mode in {MODE_PAGE_FALLBACK, MODE_PAGE_LAYOUT_FALLBACK}:
+                    candidate = render_page_fallback(record, page_overlay_by_task)
+                else:
+                    continue
+                if first_part in candidate:
+                    anchor_units_by_record[rid].append(unit)
+                    matched_document_unit_ids.add(str(unit["document_id"]))
+                    break
+
     region_overlays = [
         x for x in ((doc.get("fallback_overlays") or {}).get("region_fallbacks") or [])
         if isinstance(x, dict)
@@ -1059,6 +1109,15 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     detached_region_rendered_task_ids: set[str] = set()
     detached_region_overlay_dispositions: dict[str, dict[str, Any]] = {}
     current_page_marker: tuple[int, ...] | None = None
+    emitted_document_unit_ids: set[str] = set()
+
+    def emit_document_units_for_page(page_number: int) -> None:
+        for unit in document_units_by_page.get(page_number, []):
+            document_id = str(unit["document_id"])
+            if document_id in emitted_document_unit_ids or document_id in matched_document_unit_ids:
+                continue
+            append_block(chunks, render_document_unit_boundary(unit))
+            emitted_document_unit_ids.add(document_id)
 
     def emit_detached_regions_for_page(page_number: int, section_id: str) -> None:
         nonlocal region_text_rendered, region_unresolved_rendered, detached_region_rendered_count
@@ -1091,6 +1150,9 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             continue
         section_title = str(sec.get("section_title") or "").strip()
         section_id = str(sec.get("section_id") or "")
+        section_pages = sec.get("page_numbers") or []
+        if section_pages:
+            emit_document_units_for_page(int(section_pages[0]))
         # Unresolved pages have no observed title and must not acquire one here.
         if section_title:
             append_block(chunks, f"# {section_title}")
@@ -1106,6 +1168,8 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
 
             pages_tuple = tuple(record_pages(record))
             if pages_tuple and pages_tuple != current_page_marker:
+                for source_page in pages_tuple:
+                    emit_document_units_for_page(source_page)
                 append_block(chunks, first_page_comment(record))
                 for source_page in pages_tuple:
                     emit_detached_regions_for_page(source_page, section_id)
@@ -1263,6 +1327,16 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
                     continue
 
             if rendered:
+                positions: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
+                for unit in anchor_units_by_record.get(rid, []):
+                    first_part = str(unit["anchor"]["title_parts"][0])
+                    match = rendered.find(first_part)
+                    line_start = rendered.rfind("\n", 0, match) + 1 if match >= 0 else 0
+                    positions[line_start].append(unit)
+                for position in sorted(positions, reverse=True):
+                    block = "\n".join(render_document_unit_boundary(unit) for unit in positions[position])
+                    rendered = rendered[:position] + block + "\n" + rendered[position:]
+                    emitted_document_unit_ids.update(str(unit["document_id"]) for unit in positions[position])
                 append_block(chunks, rendered)
                 rendered_record_count += 1
                 record_dispositions[rid] = {

@@ -255,6 +255,139 @@ for line in sys.stdin:
     }
 
 
+def test_json_line_worker_releases_pipes_after_close_and_timeout() -> None:
+    """A retained Popen handle must not keep the worker's pipe descriptors open."""
+    from pdffast.providers.workers import JsonLineWorker
+
+    code = r'''
+import json, sys, time
+print(json.dumps({"status": "READY"}), flush=True)
+for line in sys.stdin:
+    if json.loads(line).get("op") == "close":
+        print(json.dumps({"status": "BYE"}), flush=True)
+        break
+    time.sleep(60)
+'''
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code=code,
+        dependency_probe_code="print('probe=ok')",
+        init_timeout_seconds=1,
+    )
+    worker.start()
+    first = worker._process
+    assert first is not None and first.stdin is not None and first.stdout is not None
+    worker.close()
+    assert first.poll() is not None
+    assert first.stdin.closed and first.stdout.closed
+
+    worker.start()
+    second = worker._process
+    assert second is not None and second is not first
+    assert second.stdin is not None and second.stdout is not None
+    with pytest.raises(TimeoutError, match="response timeout"):
+        worker.request({"op": "parse"}, timeout_seconds=0.05)
+    assert second.poll() is not None
+    assert second.stdin.closed and second.stdout.closed
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS libproc fallback")
+def test_worker_discovers_child_identity_when_ps_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Blocked `ps` must not disable owned-child cleanup on macOS."""
+    from pdffast.providers.workers import JsonLineWorker
+
+    original_run = subprocess.run
+
+    def run_without_ps(*args, **kwargs):
+        if args and args[0] and args[0][0] == "ps":
+            raise PermissionError("ps is unavailable")
+        return original_run(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run_without_ps)
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        rows = JsonLineWorker._process_rows()
+        matches = [row for row in rows if row[0] == child.pid]
+        assert len(matches) == 1
+        assert matches[0][1] == os.getpid()
+        assert matches[0][3].started_at
+        assert JsonLineWorker._current_identity(child.pid) == matches[0][3]
+    finally:
+        child.kill()
+        child.wait(timeout=2)
+
+
+def test_json_line_worker_request_write_failure_closes_worker(tmp_path: Path) -> None:
+    """A worker that closes stdin must not survive the failed request write."""
+    from pdffast.providers.workers import JsonLineWorker
+
+    marker = tmp_path / "stdin-closed"
+    code = f'''
+import json, os, time
+from pathlib import Path
+print(json.dumps({{"status": "READY"}}), flush=True)
+os.close(0)
+Path({str(marker)!r}).write_text("closed", encoding="utf-8")
+time.sleep(60)
+'''
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code=code,
+        dependency_probe_code="print('probe=ok')",
+        init_timeout_seconds=1,
+    )
+    worker.start()
+    process = worker._process
+    assert process is not None and process.stdin is not None and process.stdout is not None
+    deadline = time.monotonic() + 2
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert marker.exists()
+    try:
+        with pytest.raises(BrokenPipeError):
+            worker.request({"op": "parse"}, timeout_seconds=1)
+        assert worker._process is None
+        assert process.poll() is not None
+        assert process.stdin.closed and process.stdout.closed
+    finally:
+        worker.close()
+
+
+def test_json_line_worker_start_interruption_closes_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancellation during READY wait must not leave the spawned worker alive."""
+    from pdffast.providers.workers import JsonLineWorker
+
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code="import time; time.sleep(60)",
+        dependency_probe_code="print('probe=ok')",
+        init_timeout_seconds=1,
+    )
+    spawned = []
+    original = worker._read_response
+
+    def interrupt(_timeout: float):
+        spawned.append(worker._process)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(worker, "_read_response", interrupt)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            worker.start()
+        process = spawned[0]
+        assert process is not None and process.stdin is not None and process.stdout is not None
+        assert worker._process is None
+        assert process.poll() is not None
+        assert process.stdin.closed and process.stdout.closed
+    finally:
+        monkeypatch.setattr(worker, "_read_response", original)
+        worker.close()
+
+
 def test_json_line_worker_close_allows_worker_atexit_cleanup(tmp_path: Path) -> None:
     from pdffast.providers.workers import JsonLineWorker
 

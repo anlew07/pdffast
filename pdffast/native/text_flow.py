@@ -21015,11 +21015,18 @@ def create_text_flow_result(
     snapshot_path: Path,
     structure_path: Path,
     table_result_path: Path,
+    table_result: dict[str, Any] | None = None,
+    snapshot_meta: dict[str, Any] | None = None,
+    snapshot_pages: dict[int, dict[str, Any]] | None = None,
+    page_structure: dict[str, Any] | None = None,
 ) -> TextFlowResult:
     """Compute the existing Stage 6 results before artifact serialization."""
-    snapshot_meta, snapshot_pages = load_snapshot(Path(snapshot_path))
-    structure = load_json(Path(structure_path))
-    stage5_result = load_json(Path(table_result_path))
+    if (snapshot_meta is None) != (snapshot_pages is None):
+        raise ValueError("snapshot_meta and snapshot_pages must be provided together")
+    if snapshot_meta is None:
+        snapshot_meta, snapshot_pages = load_snapshot(Path(snapshot_path))
+    structure = page_structure if page_structure is not None else load_json(Path(structure_path))
+    stage5_result = table_result if table_result is not None else load_json(Path(table_result_path))
 
     result = build_result(
         snapshot_meta,

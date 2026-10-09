@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
+from .supplemental import SupplementalEvidence
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class RawProviderResult:
     markdown: str | None = None
     elapsed_seconds: float | None = None
     warnings: tuple[str, ...] = ()
+    supplemental_evidence: SupplementalEvidence | None = None
 
 
 class Provider(Protocol):

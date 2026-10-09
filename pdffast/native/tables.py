@@ -4800,10 +4800,18 @@ def run_table_recovery(
     structure_path: Path,
     snapshot_path: Path,
     output_dir: Path,
+    page_structure: dict[str, Any] | None = None,
+    snapshot_pages: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run Stage 5 through the package API while preserving all artifacts."""
-    structure = load_json(Path(structure_path))
-    snapshot_pages = load_snapshot(Path(snapshot_path))
+    structure = (
+        page_structure if page_structure is not None
+        else load_json(Path(structure_path))
+    )
+    snapshot_pages = (
+        snapshot_pages if snapshot_pages is not None
+        else load_snapshot(Path(snapshot_path))
+    )
     document = build_document(
         structure,
         snapshot_pages,
