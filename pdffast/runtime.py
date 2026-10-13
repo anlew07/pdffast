@@ -6,6 +6,8 @@ import contextlib
 from contextvars import ContextVar
 from datetime import datetime, timezone
 import json
+import itertools
+import os
 import logging
 import sys
 import threading
@@ -14,7 +16,7 @@ from pathlib import Path
 from typing import Any, Iterator, TextIO
 
 from pdffast.errors import ParseExecutionError
-from pdffast.runtime_format import ChineseRuntimeFormatter
+from pdffast.runtime_format import ChineseRuntimeFormatter, CompactRuntimeFormatter, ConsoleRuntimeFilter, log_mode
 
 
 class ParseCancelledError(BaseException):
@@ -123,10 +125,15 @@ def capture_runtime_output(log_path: Path, *, enabled: bool = True) -> Iterator[
                     _host_handlers.clear()
 
 
+_console_ids = itertools.count(1)
+
+
 class _LiveEventHandler(logging.Handler):
-    def __init__(self) -> None:
+    def __init__(self, *, mode: str | None = None) -> None:
         super().__init__()
-        self.setFormatter(ChineseRuntimeFormatter())
+        mode = log_mode() if mode is None else mode
+        self.addFilter(ConsoleRuntimeFilter(mode))
+        self.setFormatter(ChineseRuntimeFormatter() if mode == "debug" else CompactRuntimeFormatter())
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -152,6 +159,7 @@ class ParseObservation:
         if heartbeat_interval <= 0:
             raise ValueError("heartbeat_interval must be greater than zero")
         self.run_id = run_id
+        self._console_id = f"{os.getpid()}:r{next(_console_ids)}"
         self._started = self._last_progress = time.monotonic()
         self._phase = "parse_preparation"
         self._provider: str | None = None
@@ -199,6 +207,7 @@ class ParseObservation:
             (type(exc), exc, exc.__traceback__) if exc is not None else None,
             extra=payload,
         )
+        record.console_run_id = self._console_id
         # Observability sinks must not turn a recovered provider error into a
         # pipeline failure, or replace the original exception during teardown.
         try:

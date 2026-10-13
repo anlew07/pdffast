@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 
 EVENT_LABELS = {
@@ -136,3 +137,63 @@ class ChineseRuntimeFormatter(logging.Formatter):
         if record.exc_info:
             text += '\n' + self.formatException(record.exc_info)
         return text
+
+
+def log_mode() -> str:
+    """Read once when configuring a service handler or Worker."""
+    value = os.environ.get('PDFFAST_LOG_MODE', 'normal').strip().lower()
+    if value not in {'quiet', 'normal', 'debug'}:
+        raise ValueError('PDFFAST_LOG_MODE must be quiet, normal or debug')
+    return value
+
+
+class ConsoleRuntimeFilter(logging.Filter):
+    SUMMARY = {'parse_started', 'parse_finished', 'parse_heartbeat',
+               'native_analysis_finished', 'evidence_completed', 'quality_completed',
+               'fallback_planning_completed', 'provider_execution_started',
+               'provider_execution_finished', 'canonical_completed',
+               'renderer_completed', 'audit_completed', 'supplemental_evidence_observed'}
+
+    def __init__(self, mode: str):
+        super().__init__()
+        if mode not in {"quiet", "normal", "debug"}:
+            raise ValueError("PDFFAST_LOG_MODE must be quiet, normal or debug")
+        self.mode = mode
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        event = getattr(record, 'event', '')
+        diagnostic = getattr(record, 'supplemental_diagnostics', {})
+        if diagnostic.get('capture_status') in {'FAILED', 'PARTIAL', 'UNAVAILABLE', 'MISSING', 'EXPORT_FAILED', 'NOT_CALLED'}:
+            return True
+        if (record.levelno >= logging.WARNING or record.exc_info
+                or event.endswith('_failed')
+                or getattr(record, 'status', None) in {'FAILED', 'SUCCESS_WITH_WARNINGS'}):
+            return True
+        if self.mode == 'debug':
+            return True
+        if self.mode == 'quiet':
+            return event in {'parse_started', 'parse_finished', 'parse_heartbeat'}
+        return event in self.SUMMARY
+
+
+class CompactRuntimeFormatter(ChineseRuntimeFormatter):
+    def format(self, record: logging.LogRecord) -> str:
+        text = super().format(record)
+        event = getattr(record, 'event', '')
+        diagnostic = getattr(record, 'supplemental_diagnostics', {})
+        capture_problem = diagnostic.get('capture_status') in {'FAILED', 'PARTIAL', 'UNAVAILABLE', 'MISSING', 'EXPORT_FAILED', 'NOT_CALLED'}
+        full = (capture_problem or event in {'parse_started', 'parse_finished', 'parse_failed'}
+                or record.levelno >= logging.WARNING or record.exc_info
+                or event.endswith('_failed') or getattr(record, 'status', None) in {'FAILED', 'SUCCESS_WITH_WARNINGS'})
+        if full:
+            short = getattr(record, "console_run_id", None)
+            if short is not None:
+                text = text.replace(f'运行编号：{getattr(record, "run_id", "未知")}',
+                                    f'运行编号：{getattr(record, "run_id", "未知")}（运行：{short}）', 1)
+            return text
+        parts = text.split(' | ')
+        short = getattr(record, 'console_run_id', None)
+        if short is not None:
+            parts[1] = f'运行：{short}'
+        parts = [part for part in parts if not part.startswith(('阶段：', '任务编号：', '原始状态：'))]
+        return ' | '.join(parts)

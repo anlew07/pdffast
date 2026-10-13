@@ -134,6 +134,8 @@ def run_stage10(
             "audit": str(result_paths.audit_json),
         },
     }
+    if context.input_metadata:
+        public_manifest["input"] = context.input_metadata
     if context.output_mode in {"diagnostic", "full"}:
         public_manifest["diagnostics"] = {"log": str(diagnostics.pipeline_log)}
     result_paths.manifest_json.write_text(

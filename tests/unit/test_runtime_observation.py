@@ -37,7 +37,8 @@ def records():
     logger.removeHandler(handler)
 
 
-def test_progress_events_are_live_and_written_to_existing_log(tmp_path, records, capsys):
+def test_progress_events_are_live_and_written_to_existing_log(tmp_path, records, capsys, monkeypatch):
+    monkeypatch.setattr(runtime._events, "handlers", [h for h in runtime._events.handlers if not isinstance(h, runtime._LiveEventHandler)] + [runtime._LiveEventHandler(mode="debug")])
     path = tmp_path / "pipeline.log"
     with observe("live", log_path=path) as run:
         run.progress("native_analysis_started", "native_analysis")

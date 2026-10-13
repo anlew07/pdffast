@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from pdffast.pipeline.artifacts import ArtifactPaths
@@ -27,6 +27,7 @@ class PipelineContext:
     artifacts: ArtifactPaths
     output_mode: OutputMode = "minimal"
     capture_output: bool = True
+    input_metadata: dict = field(default_factory=dict)
 
     @classmethod
     def create(

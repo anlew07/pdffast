@@ -115,7 +115,8 @@ def test_default_interval_and_initialization_heartbeat_semantics():
     assert '正在初始化 Marker' in text and '任务编号' not in text and '已完成任务' not in text
 
 
-def test_concurrent_console_lines_keep_run_provider_task_together(capsys):
+def test_concurrent_console_lines_keep_run_provider_task_together(capsys, monkeypatch):
+    monkeypatch.setattr(runtime._events, "handlers", [runtime._LiveEventHandler(mode="debug")])
     from concurrent.futures import ThreadPoolExecutor
     import threading
     barrier=threading.Barrier(2)
