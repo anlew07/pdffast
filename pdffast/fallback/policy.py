@@ -105,8 +105,27 @@ def validate_provider_plan(plan: dict[str, Any]) -> None:
         )
 
     tasks = plan.get("tasks")
-    if not isinstance(tasks, list) or not tasks:
-        raise ValueError("Provider plan tasks missing/empty")
+    if not isinstance(tasks, list):
+        raise ValueError("Provider plan tasks missing or not a list")
+    if not tasks:
+        # Stage 8 may fully account for native text without any fallback work.
+        # Accept only an explicitly consistent zero-task routing report, never
+        # missing data or a truncated plan. Stage 10 still builds/audits output
+        # from the actual native evidence; this is not a default parse success.
+        summary = plan.get("summary")
+        zero_counts = (
+            "task_count", "routed_task_count", "unrouted_task_count",
+            "provider_bound_count", "provider_unbound_count", "duplicate_task_id_count",
+        )
+        if (
+            type(plan.get("page_count")) is not int
+            or plan["page_count"] <= 0
+            or not isinstance(summary, dict)
+            or any(type(summary.get(key)) is not int or summary[key] != 0 for key in zero_counts)
+            or summary.get("task_type_counts") != {}
+            or summary.get("capability_route_counts") != {}
+        ):
+            raise ValueError("Empty provider plan requires positive page_count and consistent zero-task summary")
 
     seen = set()
     for task in tasks:
