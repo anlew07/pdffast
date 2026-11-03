@@ -1,7 +1,7 @@
-"""Core orchestration for the final Phase 4 artifacts.
+"""PDFFast core pipeline orchestration and final artifact rendering.
 
-Stage 1-9 remain owned by their existing migration APIs. This runner deliberately starts
-at the Stage 10 boundary so service adapters can call the same pure Core functions later.
+`run_core_pipeline` coordinates Native, Evidence, Quality, Fallback and the final
+Stage 10 artifacts. `run_stage10` is the dedicated rendering/audit boundary.
 """
 
 from __future__ import annotations
