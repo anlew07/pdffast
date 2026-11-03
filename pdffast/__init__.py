@@ -1,4 +1,4 @@
-"""PDFFast v2 package."""
+"""PDFFast V3 public Python package API."""
 
 __version__ = "0.1.0"
 from .parser import PDFFastParser
