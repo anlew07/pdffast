@@ -3,9 +3,14 @@
 PDFFast v3 是本地 PDF 解析工具。通过原生文本与版面证据发现文档结构，按需调用
 Provider 恢复内容，输出 Markdown、Canonical JSON 和 Audit。
 
-当前 v3 候选基线位于 [`refactor/v3`](https://github.com/anlew07/pdffast/tree/refactor/v3)。
-章节发现不依赖固定申报书模板。正式 Runtime 以 Python 对象传递计算结果，JSON 等
-Artifact 用于诊断和回放，不作为同次运行的内部数据总线。
+当前 V3 维护主线为 [`main`](https://github.com/anlew07/pdffast/tree/main)，
+`refactor/v3` 为此前重构阶段使用的开发分支。章节发现不依赖固定申报书模板。
+正式 Runtime 以 Python 对象传递计算结果，JSON 等 Artifact 用于诊断和回放，
+不作为同次运行的内部数据总线。
+
+**JudgeAI 集成说明：** JudgeAI 原生安装脚本使用固定 Git 提交部署 PDFFast。
+本仓库后续提交不会自动改变已部署的 JudgeAI 解析器；升级需在 JudgeAI
+明确更新锁定版本并重新进行解析与接口回归验证。
 
 ## 环境准备
 
