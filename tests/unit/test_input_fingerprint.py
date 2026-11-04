@@ -3,6 +3,7 @@ import json
 
 import pytest
 
+from pdffast.application.input_fingerprint import fingerprint_input
 from pdffast.application.parse_service import ParseService
 from pdffast.config import ParserConfig
 
@@ -68,3 +69,29 @@ def test_final_manifest_preserves_runtime_input_metadata(tmp_path, monkeypatch):
     assert json.loads(context.artifacts.result.manifest_json.read_text())["input"] == metadata
     assert result["markdown"] == "unchanged"
     assert result["canonical"] == {"unchanged": True}
+
+
+def test_fingerprint_helper_reads_exact_bytes_without_pipeline(tmp_path):
+    pdf = tmp_path / "source.pdf"
+    payload = b"%PDF-1.4\n" + b"byte sample" * 31
+    pdf.write_bytes(payload)
+
+    metadata = fingerprint_input(pdf)
+
+    assert metadata == {
+        "algorithm": "sha256",
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "byte_size": len(payload),
+        "filename": "source.pdf",
+        "status": "COMPLETE",
+    }
+
+
+def test_fingerprint_helper_preserves_missing_file_status(tmp_path):
+    metadata = fingerprint_input(tmp_path / "not-found.pdf")
+
+    assert metadata["status"] == "FAILED"
+    assert metadata["sha256"] is None
+    assert metadata["byte_size"] is None
+    assert metadata["filename"] == "not-found.pdf"
+    assert "FileNotFoundError" in metadata["error"]
