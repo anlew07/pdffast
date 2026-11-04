@@ -1,12 +1,12 @@
 # PDFFast V3 Core Pipeline
 
-`PDFFastParser.parse()` 为每次解析使用独立 `run_id` 输出目录，保存最终 Markdown、Canonical JSON、Audit、输入 Manifest，以及可选的过程诊断和 Provider 原始产物。
+`PDFFastParser.parse()` 为每次解析使用独立 `run_id` 输出目录，内部路径按 `native/quality/fallback/providers/canonical/render/audit` 分组，保存最终 Markdown、Canonical JSON、Audit、输入 Manifest，以及可选的过程诊断和 Provider 原始产物。对外 `result/` 路径不变。
 
 ## 对象化执行
 
 `run_core_pipeline()` 统一协调 Native → Evidence → Quality Gate → Fallback Planning → Capability Routing → Provider Policy → Provider Executor → Canonical Builder → Renderer → Audit。
 
-同一次正式解析的计算结果主要通过 Python 对象传递。中间 JSON、Provider 文件和结构化事件保留取证/回放价值，但不是 Core 的 File Bus。历史编号（例如部分函数名或 Manifest 的 `stage` 字段）仍保留以兼容既有工具，不应再用于描述架构分层。
+同一次正式解析的计算结果主要通过 Python 对象传递。中间 JSON、Provider 文件和结构化事件保留取证/回放价值，但不是 Core 的 File Bus。新的实现模块、最终化函数及运行目录使用语义名称；旧 Manifest 的 `stage`/`substage` 等契约字段仍保留兼容，不应再用于描述架构分层。
 
 当前正式入口始终传入 `execute_providers=True` 及 Provider 配置、Registry、Normalizer。直接调用 `run_core_pipeline(..., execute_providers=False)` 可能先生成规划产物，但**当前实现会明确抛出异常**，不是受支持的纯规划成功模式。
 

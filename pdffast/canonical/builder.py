@@ -1,4 +1,4 @@
-"""Stage 10.1 canonical document builder, shipped with PDFFast Core."""
+"""Canonical document builder for the PDFFast V3 object-based Pipeline."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from pdffast.structure_reconciliation.coverage import DocumentCoverageResult
 
 
 def _load_implementation() -> ModuleType:
-    path = Path(__file__).with_name("_stage10_builder.py")
-    spec = importlib.util.spec_from_file_location("pdffast_stage10_builder", path)
+    path = Path(__file__).with_name("_document_builder_impl.py")
+    spec = importlib.util.spec_from_file_location("pdffast_document_builder", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"无法加载内置规范文档构建器：{path}")
     module = importlib.util.module_from_spec(spec)

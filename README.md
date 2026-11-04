@@ -35,6 +35,10 @@ V3 默认保留六个经验证的生产 Provider：RapidOCR、PaddleOCR 文本�
 
 完整的配置结构、Provider/Normalizer 合同和示例见 [Provider 插件接入说明](docs/PROVIDER_PLUGINS_ZH.md)。MiniCPM-OCR 目前只是待验证候选，尚未内置实现。
 
+## V3 运行产物目录
+
+新解析任务的内部诊断产物按组件职责保存：`native/`、`quality/`、`fallback/`、`providers/`、`canonical/`、`render/` 和 `audit/`，不再生成带编号的 Stage 目录。对外稳定结果仍位于 `result/` 下。此前保存的带编号运行目录属于旧版快照，仅作为显式传入的回归/回放材料，不会被迁移或删除；内部 JSON 的旧字段仍暂时保留兼容。
+
 ## Python 使用
 
 从仓库根目录运行：
