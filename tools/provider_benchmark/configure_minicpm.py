@@ -26,6 +26,8 @@ def with_minicpm(
     base_url: str = "http://127.0.0.1:18499/v1",
     model: str = "minicpm-ocr",
     max_tokens: int = 2048,
+    model_variant: str = "UNREPORTED",
+    backend_revision: str = "UNREPORTED",
 ) -> dict[str, Any]:
     if not isinstance(config, dict) or not isinstance(config.get("providers"), dict):
         raise ValueError("base Provider config must contain providers{}")
@@ -44,6 +46,8 @@ def with_minicpm(
         "benchmark_input": "image",
         "base_url": base_url,
         "model": model,
+        "model_variant": model_variant,
+        "backend_revision": backend_revision,
         "prompt": "Text Recognition:",
         "max_tokens": max_tokens,
         "timeout_seconds": 300,
@@ -61,11 +65,14 @@ def main() -> int:
     ap.add_argument("--base-url", default="http://127.0.0.1:18499/v1")
     ap.add_argument("--model", default="minicpm-ocr")
     ap.add_argument("--max-tokens", type=int, default=2048)
+    ap.add_argument("--model-variant", default="UNREPORTED", help="Actual GGUF quantization, e.g. Q8_0")
+    ap.add_argument("--backend-revision", default="UNREPORTED", help="llama.cpp version or commit")
     args = ap.parse_args()
     base_config = json.loads(args.base.read_text(encoding="utf-8"))
     config = with_minicpm(
         base_config, base_url=args.base_url,
         model=args.model, max_tokens=args.max_tokens,
+        model_variant=args.model_variant, backend_revision=args.backend_revision,
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
