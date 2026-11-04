@@ -46,11 +46,11 @@ def test_pipeline_entry_uses_semantic_paths(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr(runner, "run_profiler", stop_after_profiler)
     with pytest.raises(ParseExecutionError, match="stop after profiler wiring"):
         runner.run_core_pipeline(context)
-    assert seen["profile_output"] == tmp_path / "semantic-entry/native/profile/page_profile.json"
-    assert seen["snapshot_output"] == tmp_path / "semantic-entry/native/profile/page_snapshot.jsonl"
+    assert seen["profile_output"] == tmp_path / "semantic-entry/01_stage1/page_profile.json"
+    assert seen["snapshot_output"] == tmp_path / "semantic-entry/01_stage1/page_snapshot.jsonl"
 
 
-def test_finalization_uses_semantic_paths_for_real_case_002_objects(tmp_path: Path) -> None:
+def test_stage10_uses_semantic_paths_for_real_case_002_objects(tmp_path: Path) -> None:
     source = ROOT / "outputs/final_structure_regression/case_002"
     files = {
         "section_alignment": source / "03_stage3/section_alignment.json",
@@ -68,11 +68,11 @@ def test_finalization_uses_semantic_paths_for_real_case_002_objects(tmp_path: Pa
     flow = TextFlowResult({}, {}, {}, {}, read(files["normalized_flow"]))
     context = PipelineContext.create(
         project_root=ROOT, pdf=tmp_path / "case_002.pdf", output_root=tmp_path,
-        run_id="semantic-finalization", case_id="case_002", page_dpi=200, region_dpi=300,
+        run_id="semantic-stage10", case_id="case_002", page_dpi=200, region_dpi=300,
         rapidocr_workers=1, table_mode="auto", capture_output=False,
     )
     context = replace(context, artifacts=SemanticOnlyPaths(replace(context.artifacts, **files)))
-    result = runner.finalize_document(
+    result = runner.run_stage10(
         context,
         selection=ProviderExecutionResult({}, index, wrappers),
         section_alignment=read(files["section_alignment"]),
@@ -80,6 +80,6 @@ def test_finalization_uses_semantic_paths_for_real_case_002_objects(tmp_path: Pa
         quality_report=QualityReport(read(files["quality_gate"])),
         capability_plan=CapabilityPlan(read(files["provider_plan"])),
     )
-    assert result["canonical"] == read(tmp_path / "semantic-finalization/result/document.json")
-    assert result["markdown"] == (tmp_path / "semantic-finalization/result/document.md").read_text(encoding="utf-8")
-    assert result["structure_audit"] == read(tmp_path / "semantic-finalization/result/audit.json")
+    assert result["canonical"] == read(tmp_path / "semantic-stage10/result/document.json")
+    assert result["markdown"] == (tmp_path / "semantic-stage10/result/document.md").read_text(encoding="utf-8")
+    assert result["structure_audit"] == read(tmp_path / "semantic-stage10/result/audit.json")

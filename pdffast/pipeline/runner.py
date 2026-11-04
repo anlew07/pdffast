@@ -1,8 +1,8 @@
 """PDFFast core pipeline orchestration and final artifact rendering.
 
 `run_core_pipeline` coordinates object-based Native, Evidence, Quality, Fallback,
-Provider execution and final Canonical/Renderer/Audit outputs. `finalize_document`
-owns the final document, Markdown and audit boundary.
+Provider execution and final Canonical/Renderer/Audit outputs. `run_stage10`
+is a retained internal function name for the final output boundary.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def _load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def finalize_document(
+def run_stage10(
     context: PipelineContext, *, selection: ProviderExecutionResult | None = None,
     section_alignment: dict[str, Any] | None = None,
     text_flow: TextFlowResult | None = None,
@@ -242,12 +242,12 @@ def run_core_pipeline(
             write_provider_execution_plan(execution_plan, observable.execution_plan.parent)
 
             if not execute_providers:
-                raise RuntimeError("Provider execution is disabled; pass execute_providers=True with explicit runtime dependencies")
+                raise RuntimeError("Stage 9 provider execution is disabled; pass execute_providers=True with explicit runtime dependencies")
             if provider_configs is None or registry is None or normalizer is None:
                 raise ValueError("provider_configs, registry, and normalizer are required when execute_providers=True")
             runtime_progress("provider_execution_started", "provider_execution")
             production = execute_provider_plan(execution_plan=execution_plan, provider_configs=provider_configs, registry=registry, normalizer=normalizer, output_dir=providers.execution_dir)
-            final = finalize_document(
+            final = run_stage10(
                 context, selection=production, section_alignment=section_alignment,
                 text_flow=text_flow_result, quality_report=quality_report,
                 capability_plan=capability_plan,

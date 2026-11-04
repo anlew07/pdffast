@@ -1,4 +1,4 @@
-"""Markdown renderer for the PDFFast V3 object-based Pipeline."""
+"""Stage 10.2 renderer, shipped with PDFFast Core."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from typing import Any
 
 
 def _load_implementation() -> ModuleType:
-    path = Path(__file__).with_name("_markdown_renderer_impl.py")
-    spec = importlib.util.spec_from_file_location("pdffast_markdown_renderer", path)
+    path = Path(__file__).with_name("_stage10_renderer.py")
+    spec = importlib.util.spec_from_file_location("pdffast_stage10_renderer", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"无法加载内置 Markdown 渲染器：{path}")
     module = importlib.util.module_from_spec(spec)

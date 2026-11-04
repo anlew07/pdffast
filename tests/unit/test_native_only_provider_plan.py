@@ -206,14 +206,14 @@ def test_real_http_parse_native_pdf_exports_native_text_and_json(tmp_path, monke
     data = response.json()
     assert "sensor sampling" in data["markdown"]
     run = tmp_path / data["run_id"]
-    quality = json.loads((run / "quality/gate/quality_gate.json").read_text())
+    quality = json.loads((run / "08_stage8/quality_gate.json").read_text())
     assert quality["summary"]["document_status"] == "NATIVE_COMPLETE"
     assert quality["page_count"] == 2
     assert (run / "result/document.md").read_text() == data["markdown"]
     assert json.loads((run / "result/document.json").read_text()) == data["canonical"]
     execution = json.loads(
         (
-            run / "providers/execution/production_execution_manifest.json"
+            run / "09_8_production_fallback/production_execution_manifest.json"
         ).read_text()
     )
     assert execution["summary"]["task_count"] == 0

@@ -1,4 +1,4 @@
-"""The fresh document finalization path shares the execution selection without reloading it."""
+"""The fresh Stage 10 path shares the execution selection without reloading it."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 
 from pdffast.fallback.executor import ProviderExecutionResult
 from pdffast.pipeline.context import PipelineContext
-from pdffast.pipeline.runner import finalize_document
+from pdffast.pipeline.runner import run_stage10
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,7 +39,7 @@ def _inputs(case: int):
 
 
 @pytest.mark.parametrize("case", [2, 3, 4])
-def test_selected_predictions_pass_directly_to_finalization_with_file_parity(
+def test_selected_predictions_pass_directly_to_stage10_with_file_parity(
     case: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     files, selection = _inputs(case)
@@ -51,11 +51,11 @@ def test_selected_predictions_pass_directly_to_finalization_with_file_parity(
     before_hashes = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in selected_paths}
     context = PipelineContext.create(
         project_root=ROOT, pdf=tmp_path / f"case_{case:03d}.pdf",
-        output_root=tmp_path, run_id="finalization-parity", case_id=f"case_{case:03d}",
+        output_root=tmp_path, run_id="stage10-parity", case_id=f"case_{case:03d}",
         page_dpi=200, region_dpi=300, rapidocr_workers=1, table_mode="auto",
     )
     context = replace(context, artifacts=replace(context.artifacts, **files))
-    file_result = finalize_document(context)
+    file_result = run_stage10(context)
     outputs = (context.artifacts.result_document, context.artifacts.result_markdown,
                context.artifacts.render_manifest, context.artifacts.result_audit)
     file_bytes = tuple(path.read_bytes() for path in outputs)
@@ -66,18 +66,18 @@ def test_selected_predictions_pass_directly_to_finalization_with_file_parity(
 
     def guard_read_text(path: Path, *args, **kwargs):
         if path.resolve() in forbidden:
-            raise AssertionError(f"fresh document finalization reloaded selected artifact: {path}")
+            raise AssertionError(f"fresh Stage 10 reloaded selected artifact: {path}")
         return original_read_text(path, *args, **kwargs)
 
     def guard_open(path: Path, mode="r", *args, **kwargs):
         if path.resolve() in forbidden and "r" in mode:
-            raise AssertionError(f"fresh document finalization reopened selected artifact: {path}")
+            raise AssertionError(f"fresh Stage 10 reopened selected artifact: {path}")
         return original_open(path, mode, *args, **kwargs)
 
     with monkeypatch.context() as patcher:
         patcher.setattr(Path, "read_text", guard_read_text)
         patcher.setattr(Path, "open", guard_open)
-        object_result = finalize_document(context, selection=selection)
+        object_result = run_stage10(context, selection=selection)
 
     assert tuple(path.read_bytes() for path in outputs) == file_bytes
     assert object_result["canonical"] == file_result["canonical"]
@@ -93,20 +93,20 @@ def test_object_path_preserves_task_closure_and_terminal_unresolved(tmp_path: Pa
     files, selection = _inputs(3)
     context = PipelineContext.create(
         project_root=ROOT, pdf=tmp_path / "case_003.pdf", output_root=tmp_path,
-        run_id="finalization-closure", case_id="case_003", page_dpi=200,
+        run_id="stage10-closure", case_id="case_003", page_dpi=200,
         region_dpi=300, rapidocr_workers=1, table_mode="auto",
     )
     context = replace(context, artifacts=replace(context.artifacts, **files))
-    result = finalize_document(context, selection=selection)
+    result = run_stage10(context, selection=selection)
     assert result["canonical"]["summary"]["terminal_preserve_count"] == 2
     assert result["canonical"]["summary"]["fallback_task_count"] == 54
 
     missing = ProviderExecutionResult({}, selection.selected_index, selection.selected_predictions[:-1])
     with pytest.raises((ValueError, FileNotFoundError), match="task|prediction|selected"):
-        finalize_document(context, selection=missing)
+        run_stage10(context, selection=missing)
 
 
-def test_production_runner_passes_execution_selection_to_finalization(
+def test_production_runner_passes_execution_selection_to_stage10(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from pdffast.pipeline import runner
@@ -136,15 +136,15 @@ def test_production_runner_passes_execution_selection_to_finalization(
     monkeypatch.setattr(runner, "write_provider_execution_plan", lambda *args: None)
     monkeypatch.setattr(runner, "execute_provider_plan", lambda **kwargs: selection)
 
-    def capture_finalization(actual_context, *, selection, section_alignment, text_flow, quality_report, capability_plan):
+    def capture_stage10(actual_context, *, selection, section_alignment, text_flow, quality_report, capability_plan):
         assert actual_context is context
         assert selection is expected
         assert section_alignment == {}
-        raise RuntimeError("selection reached document finalization")
+        raise RuntimeError("selection reached Stage 10")
 
     expected = selection
-    monkeypatch.setattr(runner, "finalize_document", capture_finalization)
-    with pytest.raises(ParseExecutionError, match="selection reached document finalization"):
+    monkeypatch.setattr(runner, "run_stage10", capture_stage10)
+    with pytest.raises(ParseExecutionError, match="selection reached Stage 10"):
         runner.run_core_pipeline(
             context, provider_configs={}, registry=object(),
             normalizer=lambda *args: {}, execute_providers=True,

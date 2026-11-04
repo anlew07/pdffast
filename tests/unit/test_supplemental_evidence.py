@@ -100,7 +100,7 @@ def test_worker_handoff_and_normalizer_does_not_change_body_or_acceptance(tmp_pa
     assert {k:v for k,v in result.items() if k not in ('source_artifacts','supplemental_evidence')}=={k:v for k,v in old.items() if k!='source_artifacts'}
     assert _evaluate(result,task)==_evaluate(old,task)==(True,[])
     assert result['text']['content']=='Title\n\nBody text'
-    from pdffast.canonical._document_builder_impl import compact_canonical
+    from pdffast.canonical._stage10_builder import compact_canonical
     assert compact_canonical(result)==compact_canonical(old)
     # File replay consumes serialized evidence but does not alter authoritative channels.
     manifest=json.loads((tmp_path/'manifest.json').read_text())

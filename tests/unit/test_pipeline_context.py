@@ -37,7 +37,7 @@ def test_context_resolves_paths_and_sanitizes_case_id(tmp_path: Path) -> None:
         / "configs/frozen/stage9_route_candidates_prod_v001.json"
     )
     assert ctx.artifacts.llm_ready == (
-        ctx.run_dir / "render/llm_ready.md"
+        ctx.run_dir / "10_2_llm_ready/llm_ready.md"
     )
 
 

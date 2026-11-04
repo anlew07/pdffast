@@ -1,4 +1,4 @@
-"""Fresh document finalization consumes existing runtime objects; file entry remains available."""
+"""Fresh Stage 10 consumes existing runtime objects; file entry remains available."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from pdffast.fallback.router import CapabilityPlan
 from pdffast.native.text_flow import TextFlowResult
 from pdffast.pipeline.context import PipelineContext
 from pdffast.pipeline import runner
-from pdffast.pipeline.runner import finalize_document
+from pdffast.pipeline.runner import run_stage10
 from pdffast.quality.gate import QualityReport
 
 
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.parametrize("case", [2, 3, 4])
-def test_finalization_remaining_objects_match_file_path_without_runtime_reloads(
+def test_stage10_remaining_objects_match_file_path_without_runtime_reloads(
     case: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = ROOT / f"outputs/final_structure_regression/case_{case:03d}"
@@ -54,11 +54,11 @@ def test_finalization_remaining_objects_match_file_path_without_runtime_reloads(
 
     context = PipelineContext.create(
         project_root=ROOT, pdf=tmp_path / f"case_{case:03d}.pdf", output_root=tmp_path,
-        run_id="finalization-remaining", case_id=f"case_{case:03d}", page_dpi=200,
+        run_id="stage10-remaining", case_id=f"case_{case:03d}", page_dpi=200,
         region_dpi=300, rapidocr_workers=1, table_mode="auto",
     )
     context = replace(context, artifacts=replace(context.artifacts, **files))
-    legacy = finalize_document(context)
+    legacy = run_stage10(context)
     outputs = (context.artifacts.result_document, context.artifacts.result_markdown,
                context.artifacts.render_manifest, context.artifacts.result_audit)
     expected_bytes = tuple(path.read_bytes() for path in outputs)
@@ -79,7 +79,7 @@ def test_finalization_remaining_objects_match_file_path_without_runtime_reloads(
         target = path.resolve()
         if target not in guarded:
             return
-        raise AssertionError(f"fresh document finalization reloaded runtime artifact: {path}")
+        raise AssertionError(f"fresh Stage 10 reloaded runtime artifact: {path}")
 
     def guard_read_text(path: Path, *args, **kwargs):
         check_read(path)
@@ -94,7 +94,7 @@ def test_finalization_remaining_objects_match_file_path_without_runtime_reloads(
         patcher.setattr(Path, "read_text", guard_read_text)
         patcher.setattr(Path, "open", guard_open)
         patcher.setattr(runner, "audit", check_audit)
-        fresh = finalize_document(
+        fresh = run_stage10(
             context, selection=selection, section_alignment=alignment,
             text_flow=flow, quality_report=quality, capability_plan=capability,
         )

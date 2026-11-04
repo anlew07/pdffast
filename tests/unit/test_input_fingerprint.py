@@ -52,7 +52,7 @@ def test_final_manifest_preserves_runtime_input_metadata(tmp_path, monkeypatch):
     from dataclasses import replace
     from types import SimpleNamespace
     from pdffast.pipeline.context import PipelineContext
-    from pdffast.pipeline.runner import finalize_document
+    from pdffast.pipeline.runner import run_stage10
     context = PipelineContext.create(project_root=tmp_path, pdf=tmp_path / "input.pdf",
         output_root=tmp_path, run_id="final", case_id=None, page_dpi=200,
         region_dpi=300, rapidocr_workers=1, table_mode="auto")
@@ -64,7 +64,7 @@ def test_final_manifest_preserves_runtime_input_metadata(tmp_path, monkeypatch):
     monkeypatch.setattr("pdffast.pipeline.runner.build_document", lambda *a, **k: {"unchanged": True})
     monkeypatch.setattr("pdffast.pipeline.runner.build_rendered_document", lambda *a: ("unchanged", {}))
     monkeypatch.setattr("pdffast.pipeline.runner.audit", lambda *a, **k: {"validation": {"pass": True}})
-    result = finalize_document(context, text_flow=SimpleNamespace(normalized_flow={}),
+    result = run_stage10(context, text_flow=SimpleNamespace(normalized_flow={}),
                          quality_report=SimpleNamespace(data={}))
     assert json.loads(context.artifacts.result.manifest_json.read_text())["input"] == metadata
     assert result["markdown"] == "unchanged"

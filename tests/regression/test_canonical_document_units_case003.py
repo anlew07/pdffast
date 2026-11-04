@@ -10,7 +10,7 @@ import pytest
 from pdffast.canonical.builder import build_document
 from pdffast.canonical.document_units import resolve_document_units_from_artifacts
 from pdffast.pipeline.context import PipelineContext
-from pdffast.pipeline.runner import finalize_document
+from pdffast.pipeline.runner import run_stage10
 from pdffast.render.llm_ready import build_rendered_document
 
 
@@ -83,7 +83,7 @@ def test_case003_runner_publishes_markers_without_changing_original_body(tmp_pat
         page_dpi=200, region_dpi=300, rapidocr_workers=1, table_mode="auto",
     )
     context = replace(context, artifacts=replace(context.artifacts, **files))
-    finalize_document(context)
+    run_stage10(context)
     canonical = json.loads(context.artifacts.result_document.read_text(encoding="utf-8"))
     assert [unit["anchor"]["page"] for unit in canonical["document_units"]] == [27, 29, 30, 36, 66]
     rendered = context.artifacts.result_markdown.read_text(encoding="utf-8")

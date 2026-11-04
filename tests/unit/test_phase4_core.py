@@ -10,7 +10,7 @@ from pdffast.audit.structure_boundary import audit
 from pdffast.canonical.builder import build_document
 from pdffast.render.llm_ready import build_rendered_document, validate_canonical
 from pdffast.pipeline.context import PipelineContext
-from pdffast.pipeline.runner import finalize_document
+from pdffast.pipeline.runner import run_stage10
 
 
 REFERENCE = Path("/Users/admin/Workspace/pdffast")
@@ -73,7 +73,7 @@ def test_structure_audit_passes_on_reference_artifacts() -> None:
     assert result["validation"]["pass"] is True
 
 
-def test_canonical_core_works_when_installed_outside_legacy_workspace(
+def test_stage10_core_works_when_installed_outside_legacy_workspace(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -84,8 +84,8 @@ def test_canonical_core_works_when_installed_outside_legacy_workspace(
     isolated_package_file.parent.mkdir(parents=True)
     isolated_package_file.touch()
     shutil.copyfile(
-        Path(builder.__file__).with_name("_document_builder_impl.py"),
-        isolated_package_file.with_name("_document_builder_impl.py"),
+        Path(builder.__file__).with_name("_stage10_builder.py"),
+        isolated_package_file.with_name("_stage10_builder.py"),
     )
     monkeypatch.setattr(builder, "__file__", str(isolated_package_file))
 
@@ -101,7 +101,7 @@ def test_canonical_core_works_when_installed_outside_legacy_workspace(
     assert document["summary"]["native_record_count"] > 0
 
 
-def test_finalization_writes_only_declared_artifacts(tmp_path: Path) -> None:
+def test_stage10_runner_writes_only_declared_artifacts(tmp_path: Path) -> None:
     context = PipelineContext.create(
         project_root=REFERENCE,
         pdf=REFERENCE / "benchmark/samples/real/case_002.pdf",
@@ -124,7 +124,7 @@ def test_finalization_writes_only_declared_artifacts(tmp_path: Path) -> None:
         "selected_predictions_dir": RUN / "09_8_production_fallback/selected_predictions",
     }
     context = dataclasses.replace(context, artifacts=dataclasses.replace(a, **mapping))
-    result = finalize_document(context)
+    result = run_stage10(context)
     assert result["structure_audit"]["validation"]["pass"] is True
     assert context.artifacts.llm_ready.is_file()
     public_manifest = load(context.artifacts.result_manifest)
