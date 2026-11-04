@@ -45,6 +45,8 @@ Profile 加载时检查四个 Capability Route 均有非空候选链、引用的
 
 保留上一次私有 Pilot 包内的 `dataset/pilot_pages.jsonl`、`dataset/ground_truth.template.jsonl`；将原始 5 份 PDF 放在私有目录 `/private/pdfs`。制作 200 DPI 双格式视觉输入：
 
+数据准备需要额外安装 PyMuPDF，长文本 CER 可选用 RapidFuzz 加速：`uv pip install pymupdf rapidfuzz`。这两个包仅服务 Benchmark；不要求所有生产 Provider 环境安装它们。
+
 ```bash
 uv run python -m tools.provider_benchmark.prepare \
   --pages /private/pilot/dataset/pilot_pages.jsonl \

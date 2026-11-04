@@ -169,12 +169,16 @@ def run_benchmark(
                     else "INLINE_CONTEXT_FALLBACK" if route == "INLINE_CONTEXT_PARSE"
                     else "REGION_FALLBACK"
                 )
+                extra_metadata = row.get("metadata") or {}
+                if not isinstance(extra_metadata, dict):
+                    raise ValueError(f"{page_id}: metadata must be an object")
                 metadata = {
+                    **extra_metadata,
+                    # Harness-owned fields cannot be overridden by dataset rows.
                     "task_id": task_id, "task_type": task_type,
                     "page_number": row.get("page_number", 1),
                     "source_id": page_id, "capability_route": route,
                     "input_image": str(path), "route_hints": {},
-                    **dict(row.get("metadata") or {}),
                     # Always isolate temporary Worker files for this attempt.
                     "raw_output_dir": str(slot),
                 }
