@@ -2,7 +2,7 @@
 
 ## 1. 范围与原则
 
-本文描述 V3 在当前生产闭包之外新增 Provider 的最小接入机制，不重构 Stage 1–10、Gate、Router 或 Stage 10 的语义。默认六引擎、冻结路由候选、已有 `CanonicalPrediction` 合同和 JudgeAI 固定版本均不变。
+本文描述 V3 在当前生产闭包之外新增 Provider 的最小接入机制。V3 已采用对象传递的核心 Pipeline；本次只增加 Provider 的注册、标准化和候选链配置入口，**不改变 Native、Quality Gate、Capability Router、Canonical 构建及 Audit 的现有语义**。默认六引擎、冻结路由候选、已有 `CanonicalPrediction` 合同和 JudgeAI 固定版本均不变。历史 `stage` 字段仍供诊断和兼容使用，不表示按阶段文件流转。
 
 - `ProviderRegistry` 只接受六个内置 Provider，或从可信本地配置**显式注册**的插件；不进行自动发现。
 - 每个插件必须声明唯一名称、`kind`、Adapter 的 `factory` 和 Normalizer 的 `normalizer`（格式均为 `模块路径:可调用对象`）。不得覆盖六个内置生产名称。
@@ -55,7 +55,7 @@ class MiniCPMOCRProvider:
     def close(self) -> None: ...
 ```
 
-Adapter 应处理其独立 Worker/SDK 的加载、推理、关闭，输出 `RawProviderResult`。不应从 Provider 内修改 Gate、Router、Stage 10，也不应在返回结果中臆造结构关系。
+Adapter 应处理其独立 Worker/SDK 的加载、推理、关闭，输出 `RawProviderResult`。不应从 Provider 内修改 Gate、Router、Canonical 构建或 Audit，也不应在返回结果中臆造结构关系。
 
 ## 4. Normalizer 合同
 
@@ -79,7 +79,7 @@ def normalize_minicpm(*, result, manifest_task, manifest_path, result_path, know
 | REGION_MULTIMODAL_PARSE | REGION_TEXT_FIRST / REGION_COMPLEX_GAP_AWARE / REGION_GENERIC_GAP_AWARE |
 | INLINE_CONTEXT_PARSE | INLINE_MATH_CONTEXT |
 
-每条链是 1–10 个不重复的 Provider 名称，越靠前越优先。当前策略仍按原有 Acceptance 合同接受或升级；这不是按照模型质量自动排名。覆盖只改变候选顺序，不改变 Stage 8 是否要求增强、区域保留或 Canonical 渲染语义。报告会记录实际覆盖设置。
+每条链是 1–10 个不重复的 Provider 名称，越靠前越优先。当前策略仍按原有 Acceptance 合同接受或升级；这不是按照模型质量自动排名。覆盖只改变候选顺序，不改变 Quality Gate 是否要求增强、区域保留或 Canonical 渲染语义。报告会记录实际覆盖设置。
 
 ## 6. 安全与验证
 
