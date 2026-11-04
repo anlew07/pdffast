@@ -175,6 +175,8 @@ def run_benchmark(
                     "source_id": page_id, "capability_route": route,
                     "input_image": str(path), "route_hints": {},
                     **dict(row.get("metadata") or {}),
+                    # Always isolate temporary Worker files for this attempt.
+                    "raw_output_dir": str(slot),
                 }
                 task = ProviderTask(
                     task_id=task_id, capability_route=route, input_image=path,
@@ -204,9 +206,16 @@ def run_benchmark(
                     )
                     txt = canonical.get("text")
                     record["text"] = txt.get("content") if isinstance(txt, dict) else None
+                    canonical_status = str(canonical.get("status") or "")
+                    record["canonical_status"] = canonical_status
                     record["status"] = (
-                        raw.status if raw.status in OK_STATUSES else "FAILED"
+                        canonical_status if raw.status in OK_STATUSES
+                        and canonical_status in OK_STATUSES else "FAILED"
                     )
+                    if record["status"] == "FAILED":
+                        record["reason"] = (
+                            f"raw_status={raw.status!r} canonical_status={canonical_status!r}"
+                        )
                     record["canonical_path"] = str(slot / "canonical.json")
                 except Exception as exc:
                     record["elapsed_seconds"] = round(time.perf_counter() - started, 6)

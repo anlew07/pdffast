@@ -41,7 +41,7 @@ class FakeRegistry:
 
 
 def fake_normalizer(raw, task, **kwargs):
-    return {"text": {"content": raw.markdown}}
+    return {"status": "SUCCESS", "text": {"content": raw.markdown}}
 
 
 def test_benchmark_runs_real_provider_contract_and_keeps_prod_disabled(tmp_path):
@@ -60,6 +60,7 @@ def test_benchmark_runs_real_provider_contract_and_keeps_prod_disabled(tmp_path)
     assert original["mock"]["runtime_enabled"] is False
     assert registry.created[0].config["runtime_enabled"] is True
     assert registry.created[0].closed
+    assert registry.created[0].calls == 1
     assert (tmp_path / "out/predictions.jsonl").is_file()
     assert (tmp_path / "out/run_manifest.json").is_file()
 
