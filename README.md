@@ -35,6 +35,10 @@ V3 默认保留六个经验证的生产 Provider：RapidOCR、PaddleOCR 文本�
 
 完整的配置结构、Provider/Normalizer 合同和示例见 [Provider 插件接入说明](docs/PROVIDER_PLUGINS_ZH.md)。MiniCPM-OCR 目前只是待验证候选，尚未内置实现。
 
+## MiniCPM-OCR（第 7 个候选，仅供独立 Benchmark）
+
+新增可选 `minicpm_ocr_local` 插件，使用本地 llama.cpp 服务，不自动安装或启动模型，不进入默认生产路由；配置生成及三页/27 页测试方法见 [MiniCPM-OCR Benchmark 指南](docs/MINICPM_OCR_BENCHMARK_ZH.md)。Jev 是独立质量评估模型，不作为 OCR Provider 注册。
+
 ## Provider Benchmark 与生产配置档
 
 生产候选链可通过 `configs/profiles/production.candidate.json` 这样的 JSON Profile 完整覆盖四条能力路由，实现新任务的 2–4 个 Provider 组合切换。默认不指定 Profile 时保留原冻结策略。**示例组合尚未经过实测选型。**

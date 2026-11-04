@@ -127,3 +127,9 @@ PaddleOCR 官方 [中文 OCR 数据集索引](https://www.paddleocr.ai/v3.6.0/da
 ## 5. 当前验收状态
 
 新增配置档与 Benchmark 脚本已经提交到 Draft PR。未在本机真实 Provider 模型环境跑通六模型推理、完整 pytest 或端到端 JudgeAI；**目前没有任何真实 Provider 排名**。公开数据集也未批量下载或提交到公开仓库。合并前应先用测试和本地模型环境验收。
+
+## 6. 第七个候选 MiniCPM-OCR 与 Jev
+
+首版 MiniCPM-OCR 1.0 已作为**可选本地插件**接入，不增加默认生产 Provider 个数。Jev 是独立 OCR 质量判别模型，不是第八个解析工具。详细安装、单页识别与 27 页量化实验命令参见 [MiniCPM-OCR Benchmark 使用指南](MINICPM_OCR_BENCHMARK_ZH.md)。
+
+MiniCPM 插件当前使用官方 OpenAI 兼容 Chat Completions 的 `Text Recognition:`（单图识别），不是官方 SDK 完整文档版面解析模式。不同模式的分数要分开报告。
