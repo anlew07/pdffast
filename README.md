@@ -5,8 +5,8 @@ Provider 恢复内容，输出 Markdown、Canonical JSON 和 Audit。现支持�
 
 当前 V3 维护主线为 [`main`](https://github.com/anlew07/pdffast/tree/main)，
 `refactor/v3` 为此前重构阶段使用的开发分支。章节发现不依赖固定申报书模板。
-正式 Runtime 以 Python 对象传递计算结果，JSON 等 Artifact 用于诊断和回放，
-不作为同次运行的内部数据总线。
+V3 的正式 Runtime 由 Pipeline 统一编排，通过 Python 对象传递 Native、Evidence、Quality、Fallback 和 Canonical 等计算结果；JSON 等 Artifact 用于诊断和回放，
+**不作为同次运行的内部数据总线**。源码中的部分 `stage` 编号属于历史标识和产物兼容字段，不代表恢复了旧版文件串联架构。
 
 **JudgeAI 集成说明：** JudgeAI 原生安装脚本使用固定 Git 提交部署 PDFFast。
 本仓库后续提交不会自动改变已部署的 JudgeAI 解析器；升级需在 JudgeAI
@@ -29,7 +29,7 @@ MinerU、Marker、Docling 使用独立 Worker 环境。上述安装命令不代�
 
 V3 默认保留六个经验证的生产 Provider：RapidOCR、PaddleOCR 文本、PaddleOCR-VL、MinerU、Marker、Docling。Registry、执行器、独立 Worker 与 Canonical Normalizer 已分层；新引擎通过**本地显式注册**启用，不自动扫描第三方插件，也不会自动进入 JudgeAI 已锁定的生产版本。
 
-新增引擎不需要修改 Stage 1–10 的主流程或中央 Provider 名称分支。实际步骤是：编写遵守 `Provider` 协议的 Adapter，编写输出 `CanonicalPrediction` 的 Normalizer，在 `configs/providers.json` 声明 `plugins` 与对应 `providers` 配置；完成测试后，再用 `provider_chain_overrides` 显式选择参与的路由及候选顺序。没有 override 时，原有冻结生产策略保持不变。
+新增引擎不需要修改 V3 核心 Pipeline 或中央 Provider 名称分支。实际步骤是：编写遵守 `Provider` 协议的 Adapter，编写输出 `CanonicalPrediction` 的 Normalizer，在 `configs/providers.json` 声明 `plugins` 与对应 `providers` 配置；完成测试后，再用 `provider_chain_overrides` 显式选择参与的路由及候选顺序。没有 override 时，原有冻结生产策略保持不变。
 
 **引擎注册成功不代表内容准确、性能合格或生产准入。** 解析前仍需 Provider 环境和模型准备，且同一路由的后备候选需要全部可解析。插件入口点会执行本地 Python 代码，配置必须来自可信来源。
 
@@ -90,8 +90,8 @@ PDFFAST_HOST=127.0.0.1 PDFFAST_PORT=8020 PDFFAST_LOG_MODE=normal \
 | 模式 | 控制台 |
 |---|---|
 | quiet | 解析开始/结束、错误和运行心跳；关闭 Uvicorn 访问日志 |
-| normal | 主要阶段、增强规划、关键诊断、错误和运行心跳 |
-| debug | 详细阶段、Provider 初始化、任务与尝试日志 |
+| normal | 核心处理环节、增强规划、关键诊断、错误和运行心跳 |
+| debug | 详细执行过程、Provider 初始化、任务与尝试日志 |
 
 30 秒心跳表示运行仍在执行，不代表真实进展或解析成功。结构化事件和 Provider
 Attempt/Production Manifest 保持完整。normal/quiet 在 MinerU Worker 内降低 Loguru 和
