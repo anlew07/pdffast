@@ -66,3 +66,50 @@ def test_profile_keeps_existing_frozen_policy_when_not_selected():
     from pdffast.config import ParserConfig
     assert ParserConfig().provider_profile is None
     assert ParserConfig().provider_chain_overrides is None
+
+
+def test_parse_service_applies_profile_without_touching_original_registry(tmp_path, monkeypatch):
+    from pdffast.application.parse_service import ParseService
+    from pdffast.config import ParserConfig
+
+    profile_path = tmp_path / "production.json"
+    profile_path.write_text(json.dumps(_profile()), encoding="utf-8")
+    original = {name: {"kind": "dummy", "runtime_enabled": True} for name in ("a", "b", "c", "unused")}
+    seen = {}
+
+    def fake_pipeline(context, **kwargs):
+        seen.update(kwargs)
+        return "pipeline-call-stub"
+
+    monkeypatch.setattr("pdffast.application.parse_service.run_core_pipeline", fake_pipeline)
+    pdf = tmp_path / "sample.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    result = ParseService(ParserConfig(
+        project_root=tmp_path, output_root=tmp_path / "out",
+        provider_configs=original, registry=object(),
+        normalizer=lambda *args, **kwargs: {},
+        provider_profile=profile_path,
+    )).parse(pdf)
+    assert result == "pipeline-call-stub"
+    assert seen["provider_chain_overrides"] == _profile()["chains"]
+    assert seen["provider_configs"]["unused"]["runtime_enabled"] is False
+    assert original["unused"]["runtime_enabled"] is True
+
+
+def test_parse_service_rejects_profile_and_explicit_overrides(tmp_path):
+    from pdffast.application.parse_service import ParseService
+    from pdffast.config import ParserConfig
+    from pdffast.errors import ConfigurationError
+
+    p = tmp_path / "prod.json"
+    p.write_text(json.dumps(_profile()), encoding="utf-8")
+    pdf = tmp_path / "sample.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    with pytest.raises(ConfigurationError, match="cannot be combined"):
+        ParseService(ParserConfig(
+            project_root=tmp_path, output_root=tmp_path / "out",
+            provider_configs={name: {} for name in ("a", "b", "c")},
+            registry=object(), normalizer=lambda *args, **kwargs: {},
+            provider_chain_overrides={"PAGE_DOCUMENT_OCR": ["a"]},
+            provider_profile=p,
+        )).parse(pdf)
