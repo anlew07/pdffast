@@ -10,7 +10,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import platform
 import re
+import sys
 import time
 from collections import Counter
 from datetime import datetime, timezone
@@ -254,8 +256,21 @@ def run_benchmark(
                 "task_count": len(rows),
                 "status_counts": dict(Counter(x["status"] for x in results)),
                 "allow_unapproved": allow_unapproved,
+                "dataset_fingerprint_sha256": hashlib.sha256(
+                    json.dumps(rows, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+                ).hexdigest(),
+                "provider_config_fingerprint_sha256": hashlib.sha256(
+                    json.dumps({name: provider_configs[name] for name in names},
+                               ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+                ).hexdigest(),
+                "runtime": {
+                    "python": sys.version.split()[0],
+                    "platform": platform.platform(),
+                    "machine": platform.machine(),
+                },
                 "quality_metrics": "NOT_SCORED_NEEDS_GROUND_TRUTH",
                 "latency_scope": "execute wall-time excluding preflight/initialization",
+                "warmup": "first inference included; compare repeated runs to separate cold/warm effects",
             }, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
