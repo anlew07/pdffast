@@ -100,10 +100,10 @@ uv run python -m tools.provider_benchmark.prepare_omnidocbench \
   --annotations /private/OmniDocBench/OmniDocBench.json \
   --images-root /private/OmniDocBench/images \
   --out /private/provider_bench/omnidocbench_30 \
-  --limit 30 --seed 42 --language chinese
+  --limit 30 --seed 42 --language simplified_chinese
 ```
 
-这个适配脚本只提取图像和写单页 PDF，保留官方标注文件原样；**暂未将 OmniDocBench 标注转成本项目的通用 GT**。高质量比较应使用官方评测器；可将本项目输出的每页 Markdown 与官方同名页映射后另行评估，不可混用结构分数。
+官方该语言标签为 `simplified_chinese`（中英混合是 `en_ch_mixed`），不要写成 `chinese`。这个适配脚本只提取图像和写单页 PDF，保留官方标注文件原样；**暂未将 OmniDocBench 标注转成本项目的通用 GT**。高质量比较应使用官方评测器；其部分公式/CDM 指标还涉及额外系统依赖，若不允许 Docker，需要自行准备受支持的独立环境。可将本项目输出的每页 Markdown 与官方同名页映射后另行评估，不可混用结构分数。
 
 ### DocLayNet：页面布局
 
