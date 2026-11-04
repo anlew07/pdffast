@@ -35,6 +35,12 @@ V3 默认保留六个经验证的生产 Provider：RapidOCR、PaddleOCR 文本�
 
 完整的配置结构、Provider/Normalizer 合同和示例见 [Provider 插件接入说明](docs/PROVIDER_PLUGINS_ZH.md)。MiniCPM-OCR 目前只是待验证候选，尚未内置实现。
 
+## Provider Benchmark 与生产配置档
+
+生产候选链可通过 `configs/profiles/production.candidate.json` 这样的 JSON Profile 完整覆盖四条能力路由，实现新任务的 2–4 个 Provider 组合切换。默认不指定 Profile 时保留原冻结策略。**示例组合尚未经过实测选型。**
+
+独立 Benchmark 工具位于 `tools/provider_benchmark/`，支持私有 PDF 样本、单页视觉对比、多个 Provider 的原始输出/Canonical/耗时采集、人工 GT 文字 CER 评分，以及研究用途的 OmniDocBench 抽样输入。详见 [Provider Benchmark 与配置切换指南](docs/PROVIDER_BENCHMARK_ZH.md)。不附带原始数据和模型，也不代表已经完成真实模型评测。
+
 ## Python 使用
 
 从仓库根目录运行：
