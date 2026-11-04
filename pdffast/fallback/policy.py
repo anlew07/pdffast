@@ -653,6 +653,56 @@ def build_report(
     }
 
 
+def apply_provider_chain_overrides(
+    report: dict[str, Any],
+    overrides: dict[str, list[str]] | None,
+) -> dict[str, Any]:
+    """Explicit per-route / per-policy chain selection; never consult Ground Truth."""
+    if overrides is None or overrides == {}:
+        return report
+    if not isinstance(overrides, dict):
+        raise ValueError("provider_chain_overrides must be an object")
+    valid_selectors = SUPPORTED_ROUTES | {
+        "PAGE_FAST_OCR_ESCALATION", "PAGE_LAYOUT_PARSE_ESCALATION",
+        "REGION_TEXT_FIRST", "REGION_COMPLEX_GAP_AWARE",
+        "REGION_GENERIC_GAP_AWARE", "INLINE_MATH_CONTEXT",
+    }
+    for selector, chain in overrides.items():
+        if selector not in valid_selectors:
+            raise ValueError(f"unsupported provider chain selector: {selector!r}")
+        if (
+            not isinstance(chain, list) or not 1 <= len(chain) <= 10
+            or any(not isinstance(name, str) or not name.strip() for name in chain)
+            or len(set(chain)) != len(chain)
+        ):
+            raise ValueError(f"{selector}: provider chain must have 1-10 distinct names")
+
+    changed: set[str] = set()
+    for task in report["tasks"]:
+        policy_class = task["policy_class"]
+        route = task["capability_route"]
+        selector = policy_class if policy_class in overrides else route
+        if selector not in overrides:
+            continue
+        task["provider_chain"] = [
+            provider_chain_entry(name, "EXPLICIT_CONFIGURED_CHAIN", "explicit local Provider override")
+            for name in overrides[selector]
+        ]
+        task["chain_override_selector"] = selector
+        changed.add(selector)
+    report["provider_chain_overrides"] = {key: list(value) for key, value in overrides.items()}
+    report["revision_notes"].append(
+        "Provider candidate chains explicitly overridden by local configuration; "
+        "frozen route frontier is not a quality justification for these changes."
+    )
+    report["summary"]["first_provider_counts"] = dict(sorted(Counter(
+        task["provider_chain"][0]["provider"]
+        for task in report["tasks"] if task.get("provider_chain")
+    ).items()))
+    report["overridden_selectors_used"] = sorted(changed)
+    return report
+
+
 def make_markdown(report: dict[str, Any]) -> str:
     s = report["summary"]
 
@@ -721,18 +771,26 @@ def make_markdown(report: dict[str, Any]) -> str:
         ),
         "",
     ]
+    if report.get("provider_chain_overrides"):
+        lines += ["## Explicit Provider chain overrides", ""]
+        for selector, names in report["provider_chain_overrides"].items():
+            lines.append(f"- {selector}: {' -> '.join(names)}")
+        lines.append("")
     return "\n".join(lines)
 
 
 def create_provider_execution_plan(
     capability_plan: CapabilityPlan,
     route_candidates_path: Path,
+    *,
+    provider_chain_overrides: dict[str, list[str]] | None = None,
 ) -> ProviderExecutionPlan:
     """Apply the frozen policy to a CapabilityPlan in memory."""
     candidates = load_json(Path(route_candidates_path))
     validate_provider_plan(capability_plan.data)
     validate_candidates(candidates)
-    return ProviderExecutionPlan(build_report(capability_plan.data, candidates))
+    report = build_report(capability_plan.data, candidates)
+    return ProviderExecutionPlan(apply_provider_chain_overrides(report, provider_chain_overrides))
 
 
 def write_provider_execution_plan(plan: ProviderExecutionPlan, output_dir: Path) -> None:

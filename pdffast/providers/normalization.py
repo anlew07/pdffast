@@ -27,6 +27,7 @@ v0.8.0
 from __future__ import annotations
 
 import hashlib
+import importlib
 import html
 import json
 import re
@@ -2729,6 +2730,7 @@ def normalize_one(
     *,
     result_data: dict[str, Any] | None = None,
     known_hashes: Mapping[str, str] | None = None,
+    plugin_normalizer_paths: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     result = result_data if result_data is not None else load_json(result_path)
 
@@ -2738,7 +2740,22 @@ def normalize_one(
         provider,
     )
 
-    if provider == "rapidocr_ch_light":
+    plugin_path = (plugin_normalizer_paths or {}).get(provider)
+    if plugin_path is not None:
+        module_name, sep, attribute = plugin_path.partition(":")
+        if not sep or not module_name or not attribute:
+            raise ValueError(f"invalid plugin normalizer entrypoint: {plugin_path!r}")
+        normalizer = getattr(importlib.import_module(module_name), attribute)
+        if not callable(normalizer):
+            raise TypeError(f"plugin normalizer is not callable: {plugin_path}")
+        pred = normalizer(
+            result=result,
+            manifest_task=manifest_task,
+            manifest_path=manifest_path,
+            result_path=result_path,
+            known_hashes=known_hashes,
+        )
+    elif provider == "rapidocr_ch_light":
         pred = normalize_rapidocr(
             result=result,
             manifest_task=manifest_task,
@@ -2818,6 +2835,7 @@ def normalize_prediction(
     result_path: Path,
     result_data: dict[str, Any] | None = None,
     known_hashes: Mapping[str, str] | None = None,
+    plugin_normalizer_paths: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Normalize one approved raw Provider result into CanonicalPrediction."""
     return normalize_one(
@@ -2828,4 +2846,5 @@ def normalize_prediction(
         result_path=Path(result_path),
         result_data=result_data,
         known_hashes=known_hashes,
+        plugin_normalizer_paths=plugin_normalizer_paths,
     )

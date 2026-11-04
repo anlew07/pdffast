@@ -162,6 +162,7 @@ def run_core_pipeline(
     provider_configs: dict[str, dict[str, Any]] | None = None,
     registry: Any | None = None,
     normalizer: Any | None = None,
+    provider_chain_overrides: dict[str, list[str]] | None = None,
     execute_providers: bool = False,
 ) -> dict[str, Any]:
     """Run the migrated Core stages from PDF through Stage 10.
@@ -233,7 +234,10 @@ def run_core_pipeline(
             capability_plan = create_capability_plan(fallback_plan=fallback_plan, manifest_path=observable.fallback_plan)
             write_capability_plan(capability_plan, observable.capability_plan.parent)
             runtime_progress("capability_routing_completed", "provider_policy")
-            execution_plan = create_provider_execution_plan(capability_plan, context.route_candidates)
+            execution_plan = create_provider_execution_plan(
+                capability_plan, context.route_candidates,
+                provider_chain_overrides=provider_chain_overrides,
+            )
             write_provider_execution_plan(execution_plan, observable.execution_plan.parent)
 
             if not execute_providers:

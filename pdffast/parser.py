@@ -23,6 +23,8 @@ class PDFFastParser:
     provider_configs: dict[str, dict[str, Any]] | None = None
     registry: Any | None = None
     normalizer: Any | None = None
+    provider_plugins: dict[str, dict[str, str]] | None = None
+    provider_chain_overrides: dict[str, list[str]] | None = None
 
     def parse(self, pdf_path: Path, *, run_id: str = "parse", case_id: str | None = None) -> ParseResult:
         config = self.config
@@ -35,5 +37,7 @@ class PDFFastParser:
                 provider_configs=self.provider_configs,
                 registry=self.registry,
                 normalizer=self.normalizer,
+                provider_plugins=self.provider_plugins,
+                provider_chain_overrides=self.provider_chain_overrides,
             )
         return ParseService(config=config).parse(pdf_path, run_id=run_id, case_id=case_id)

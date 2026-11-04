@@ -1,7 +1,7 @@
 # PDFFast
 
 PDFFast v3 是本地 PDF 解析工具。通过原生文本与版面证据发现文档结构，按需调用
-Provider 恢复内容，输出 Markdown、Canonical JSON 和 Audit。
+Provider 恢复内容，输出 Markdown、Canonical JSON 和 Audit。现支持在不修改主解析流水线的前提下显式注册扩展 Provider。
 
 当前 V3 维护主线为 [`main`](https://github.com/anlew07/pdffast/tree/main)，
 `refactor/v3` 为此前重构阶段使用的开发分支。章节发现不依赖固定申报书模板。
@@ -24,6 +24,16 @@ uv sync --extra dev --extra service
 [Provider 运行环境说明](docs/PROVIDER_RUNTIME_ENVIRONMENTS.md)。主环境运行 RapidOCR/Paddle，
 MinerU、Marker、Docling 使用独立 Worker 环境。上述安装命令不代表模型已经就绪，
 也不代表 Linux CPU 离线部署已经完成验收。
+
+## Provider 可插拔（显式启用）
+
+V3 默认保留六个经验证的生产 Provider：RapidOCR、PaddleOCR 文本、PaddleOCR-VL、MinerU、Marker、Docling。Registry、执行器、独立 Worker 与 Canonical Normalizer 已分层；新引擎通过**本地显式注册**启用，不自动扫描第三方插件，也不会自动进入 JudgeAI 已锁定的生产版本。
+
+新增引擎不需要修改 Stage 1–10 的主流程或中央 Provider 名称分支。实际步骤是：编写遵守 `Provider` 协议的 Adapter，编写输出 `CanonicalPrediction` 的 Normalizer，在 `configs/providers.json` 声明 `plugins` 与对应 `providers` 配置；完成测试后，再用 `provider_chain_overrides` 显式选择参与的路由及候选顺序。没有 override 时，原有冻结生产策略保持不变。
+
+**引擎注册成功不代表内容准确、性能合格或生产准入。** 解析前仍需 Provider 环境和模型准备，且同一路由的后备候选需要全部可解析。插件入口点会执行本地 Python 代码，配置必须来自可信来源。
+
+完整的配置结构、Provider/Normalizer 合同和示例见 [Provider 插件接入说明](docs/PROVIDER_PLUGINS_ZH.md)。MiniCPM-OCR 目前只是待验证候选，尚未内置实现。
 
 ## Python 使用
 

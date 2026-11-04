@@ -26,6 +26,8 @@ class ParserConfig:
     provider_configs: dict[str, dict[str, Any]] | None = field(default=None)
     registry: Any | None = None
     normalizer: Any | None = None
+    provider_plugins: dict[str, dict[str, str]] | None = None
+    provider_chain_overrides: dict[str, list[str]] | None = None
 
     def __post_init__(self) -> None:
         if self.output_mode not in {"minimal", "diagnostic", "full"}:

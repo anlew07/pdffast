@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from functools import partial
 import json
 from pathlib import Path
 
@@ -47,6 +48,7 @@ class ParseService:
         provider_configs = config.provider_configs
         registry = config.registry
         normalizer = config.normalizer
+        provider_chain_overrides = config.provider_chain_overrides
         if provider_configs is None or registry is None or normalizer is None:
             try:
                 if config.project_root is not None:
@@ -58,9 +60,16 @@ class ParseService:
                         .joinpath("providers.json")
                         .read_text(encoding="utf-8")
                     )
-                provider_configs = payload["providers"]
-                registry = ProviderRegistry(base_dir=project_root)
-                normalizer = normalize_runtime_result
+                if provider_configs is None:
+                    provider_configs = payload["providers"]
+                if registry is None:
+                    plugins = config.provider_plugins if config.provider_plugins is not None else payload.get("plugins", {})
+                    registry = ProviderRegistry(base_dir=project_root, plugins=plugins)
+                if normalizer is None:
+                    paths = registry.plugin_normalizers if isinstance(registry, ProviderRegistry) else {}
+                    normalizer = partial(normalize_runtime_result, plugin_normalizer_paths=paths)
+                if provider_chain_overrides is None:
+                    provider_chain_overrides = payload.get("provider_chain_overrides")
             except (OSError, KeyError, TypeError, ValueError) as exc:
                 location = str(config_path) if config.project_root is not None else "PDFFast 内置资源 providers.json"
                 raise ConfigurationError(f"无法加载 Provider 配置：{location}: {exc}") from exc
@@ -99,5 +108,6 @@ class ParseService:
             provider_configs=provider_configs,
             registry=registry,
             normalizer=normalizer,
+            provider_chain_overrides=provider_chain_overrides,
             execute_providers=True,
         )
