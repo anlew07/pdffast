@@ -11,6 +11,7 @@ from pdffast.application.input_fingerprint import fingerprint_input as _fingerpr
 from pdffast.config import ParserConfig
 from pdffast.errors import ConfigurationError
 from pdffast.providers.registry import ProviderRegistry
+from pdffast.providers.profiles import ProviderProfileError, apply_production_profile, load_provider_profile
 from pdffast.providers.runtime_normalization import normalize_runtime_result
 from pdffast.pipeline.context import PipelineContext
 from pdffast.pipeline.artifacts import ArtifactPaths
@@ -73,6 +74,18 @@ class ParseService:
             except (OSError, KeyError, TypeError, ValueError) as exc:
                 location = str(config_path) if config.project_root is not None else "PDFFast 内置资源 providers.json"
                 raise ConfigurationError(f"无法加载 Provider 配置：{location}: {exc}") from exc
+        if config.provider_profile is not None:
+            if provider_chain_overrides is not None:
+                raise ConfigurationError(
+                    "provider_profile cannot be combined with provider_chain_overrides"
+                )
+            try:
+                profile = load_provider_profile(Path(config.provider_profile))
+                provider_configs, provider_chain_overrides = apply_production_profile(
+                    provider_configs, profile
+                )
+            except ProviderProfileError as exc:
+                raise ConfigurationError(f"Provider profile 无效：{exc}") from exc
         context = PipelineContext.create(
             project_root=config.project_root or project_root,
             pdf=Path(pdf_path),

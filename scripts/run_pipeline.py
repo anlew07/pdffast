@@ -9,8 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pdffast import PDFFastParser
-from pdffast.providers.runtime_normalization import normalize_runtime_result
-from pdffast.providers.registry import ProviderRegistry
 
 
 def main() -> int:
@@ -21,6 +19,7 @@ def main() -> int:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--case-id", default=None)
     parser.add_argument("--provider-config", type=Path, default=None)
+    parser.add_argument("--provider-profile", type=Path, default=None, help="Local production profile JSON; complete four-route override")
     args = parser.parse_args()
     if not args.pdf.is_file():
         parser.error(
@@ -33,14 +32,14 @@ def main() -> int:
     provider_configs = config.get("providers")
     if not isinstance(provider_configs, dict):
         parser.error(f"provider config missing providers object: {config_path}")
-    registry = ProviderRegistry(base_dir=args.project_root)
 
     result = PDFFastParser(
         project_root=args.project_root,
         output_root=args.output_root,
         provider_configs=provider_configs,
-        registry=registry,
-        normalizer=normalize_runtime_result,
+        provider_plugins=config.get("plugins"),
+        provider_chain_overrides=None if args.provider_profile else config.get("provider_chain_overrides"),
+        provider_profile=args.provider_profile,
     ).parse(args.pdf, run_id=run_id, case_id=args.case_id)
     print(f"Canonical: {result['canonical']}")
     print(f"Markdown: {result['markdown']}")
