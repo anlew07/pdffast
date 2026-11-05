@@ -102,6 +102,13 @@ def html_report(pages: list[dict], providers: list[str], cells: dict, summary: l
 <title>PDFFast 同页七模型对照</title><style>
 body{background:#f3f6fa;color:#16253b;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1700px;margin:auto;padding:24px}
 .panel,.provider{background:white;border:1px solid #dbe2ec;border-radius:12px;padding:16px;margin-bottom:14px}
+.pair-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pair-columns pre{min-height:140px;max-height:650px}
+mark.only-a{background:#ffe6d9;color:#8a321d}mark.only-b{background:#dbf3e6;color:#165d3a}
+.pair-head{font-weight:650;margin:8px 0}
+.pair-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pair-controls select{width:auto;min-width:170px}
+
 .note{color:#576778;line-height:1.65;font-size:13px}
 table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:left;border-bottom:1px solid #e8edf3}
 th{background:#f7f9fc}.page{display:none}.page.active{display:block}
@@ -110,20 +117,33 @@ th{background:#f7f9fc}.page{display:none}.page.active{display:block}
 img{width:100%;max-height:650px;object-fit:contain;background:#f7f9fc}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;max-height:490px;line-height:1.7;font:13px ui-monospace,Menlo,monospace;padding:10px;background:#f6f8fb;border-radius:6px}
 select{font-size:15px;padding:9px;max-width:500px;width:100%}.bad{color:#ad2525}.good{color:#19744b}
-@media(max-width:900px){.top,.grid{grid-template-columns:1fr}}
+@media(max-width:900px){.top,.grid,.pair-columns{grid-template-columns:1fr}}
 </style></head><body>
-<h1>PDFFast · 同一页面七 Provider 对照</h1>
-<p class="note">本地报告：相同页面下并排查看原图、各 Provider 的完整解析文本、执行耗时、状态、字符长度和结构通道。字符多不等于更准；没有人工审核 GT 时不产生准确率。所有内容留在本机。</p>
-<section class="panel"><h2>总体性能</h2><table><tr><th>Provider</th><th>成功</th><th>总耗时(s)</th><th>平均(s)</th><th>P50(s)</th><th>P95(s)</th><th>需关注页数</th></tr>"""]
+<h1>PDFFast · 同一页面 Provider 对照</h1>
+<p class="note">本地报告：相同页面下并排查看原图与所有 Provider 完整文本；任选 A/B 两模型高亮不同文字片段。字符重合度和三字片段重合度表示<strong>模型之间的一致程度，不是识别准确率</strong>。未审核 Ground Truth 时 CER、字段召回均未评分。所有内容留在本机。</p>
+<section class="panel"><h2>总体性能</h2><table><tr><th>Provider</th><th>成功</th><th>总耗时(s)</th><th>平均(s)</th><th>P50(s)</th><th>P95(s)</th><th>CER</th><th>字段字面召回</th><th>需关注页数</th></tr>"""]
     for x in summary:
         parts.append("<tr>" + "".join("<td>" + h(v) + "</td>" for v in (
             x["provider"], f'{x["successful_pages"]}/{x["page_count"]}', x["total_s"],
-            x["mean_s"], x["p50_s"], x["p95_s"], x["flagged_pages"])) + "</tr>")
+            x["mean_s"], x["p50_s"], x["p95_s"],
+            (str(x["micro_cer_pct"]) + "%") if x["micro_cer_pct"] is not None else "未评分",
+            (str(x["field_literal_recall_pct"]) + "%") if x["field_literal_recall_pct"] is not None else "未评分",
+            x["flagged_pages"])) + "</tr>")
     parts.append("</table></section><section class='panel'><strong>选择页面：</strong> "
                  "<select id='selector'>")
     for i, page in enumerate(pages):
         parts.append(f"<option value='{i}'>{h(page['page_id'])}</option>")
-    parts.append("</select><p class='note'>结构通道只表示输出状态，不代表表格/公式/阅读顺序正确。</p></section>")
+    parts.append("</select><p class='note'>结构通道只表示输出状态，不代表表格/公式/阅读顺序正确。</p>")
+    parts.append("<div class='pair-controls'><label for='provider-a'>A 模型</label><select id='provider-a'>")
+    for i, provider in enumerate(providers):
+        parts.append(f'<option value="{i}">{h(provider)}</option>')
+    parts.append("</select><label for='provider-b'>B 模型</label><select id='provider-b'>")
+    for i, provider in enumerate(providers):
+        sel = " selected" if i == 1 else ""
+        parts.append(f'<option value="{i}"{sel}>{h(provider)}</option>')
+    parts.append("</select></div>"
+                 "<p class='note'>切换 A/B 自动更新该页的百分比、耗时差、字数差和差异高亮；红色为 A 独有片段，绿色为 B 独有片段。百分比均不是准确率。</p>"
+                 "</section>")
 
     for idx, page in enumerate(pages):
         pid = page["page_id"]
@@ -134,29 +154,131 @@ select{font-size:15px;padding:9px;max-width:500px;width:100%}.bad{color:#ad2525}
                      f"· 第 {h(page.get('page_number') or '—')} 页 "
                      f"· 抽样原因：{h(page.get('selection_reason') or '—')}</p>"
                      f"<div class='top'><div>{image}</div><div><h3>同页快速对照</h3>"
-                     "<table><tr><th>Provider</th><th>状态</th><th>秒</th><th>字符数</th><th>提示</th></tr>")
+                     "<table><tr><th>Provider</th><th>状态</th><th>秒</th><th>字符数</th><th>CER</th><th>字段字面召回</th><th>提示</th></tr>")
         for provider in providers:
             item = cells[(pid, provider)]
             parts.append("<tr>" + "".join("<td>" + h(v) + "</td>" for v in (
-                provider, item["status"], item["seconds"], item["chars"], item["flags"] or "—")) + "</tr>")
-        parts.append("</table></div></div></div><div class='grid'>")
-        for provider in providers:
+                provider, item["status"], item["seconds"], item["chars"],
+                (str(item["cer_pct"]) + "%") if item["cer_pct"] is not None else "未评分",
+                (str(item["field_literal_recall_pct"]) + "%") if item["field_literal_recall_pct"] is not None else "未评分",
+                item["flags"] or "—")) + "</tr>")
+        parts.append("</table></div></div></div>"
+                     "<div class='panel'><h3>同页 A/B 差异高亮</h3>"
+                     "<p class='pair-summary note' aria-live='polite'>选择两个 Provider 查看同页差异</p>"
+                     "<div class='pair-columns'>"
+                     "<div><p class='pair-head'>A：<span class='pair-a-name'></span>（橙色为 A 独有片段）</p><pre class='pair-a-text'></pre></div>"
+                     "<div><p class='pair-head'>B：<span class='pair-b-name'></span>（绿色为 B 独有片段）</p><pre class='pair-b-text'></pre></div>"
+                     "</div><p class='pair-note note'></p></div>"
+                     "<div class='grid'>")
+        for provider_index, provider in enumerate(providers):
             x = cells[(pid, provider)]
             availability = " · ".join(f"{k}: {x[k]}" for k in CHANNELS)
             link = f' · <a href="{h(x["canonical_url"])}">Canonical</a>' if x["canonical_url"] else ""
             css_class = "good" if x["status"] in SUCCESS else "bad"
-            parts.append(f"<article class='provider'><h3>{h(provider)}</h3>"
+            parts.append(f"<article class='provider' data-provider-index='{provider_index}'><h3>{h(provider)}</h3>"
                          f'<p class="{css_class}">{h(x["status"])} · {h(x["seconds"])}s · {x["chars"]}字{link}</p>'
                          f'<p class="note">{h(availability)}</p>'
                          f'<p class="bad">{h(x["flags"])}</p>'
-                         f'<pre>{h(x["text"] or "（无文本输出）")}</pre></article>')
+                         f'<pre data-empty="{1 if not x["text"] else 0}">{h(x["text"] or "（无文本输出）")}</pre></article>')
         parts.append("</div></section>")
     parts.append("""<script>
 const selector=document.getElementById("selector");
-selector.addEventListener("change",()=>{
-document.querySelectorAll(".page").forEach((node,i)=>{
-node.classList.toggle("active",String(i)===selector.value);
-});});
+const selectorA=document.getElementById("provider-a");
+const selectorB=document.getElementById("provider-b");
+function normChars(value){ return Array.from(value.replace(/\\s+/gu,"")); }
+function overlap(A,B,n) {
+ const a=normChars(A),b=normChars(B);
+ if(!a.length&&!b.length) return null;
+ if(!a.length||!b.length) return 0;
+ const width=Math.min(n,a.length,b.length);
+ function count(values) {
+   const m=new Map();
+   for(let i=0;i<=values.length-width;i++) {
+     const key=values.slice(i,i+width).join("");
+     m.set(key,(m.get(key)||0)+1);
+   }
+   return m;
+ }
+ const ca=count(a),cb=count(b);let common=0,total=0;
+ for(const v of ca.values())total+=v;
+ for(const v of cb.values())total+=v;
+ for(const [key,v] of ca)common+=Math.min(v,cb.get(key)||0);
+ return 100*2*common/total;
+}
+function units(text) {
+ return text.match(/[^。！？；;\\n]+[。！？；;\\n]?|\\n+/gu)||[];
+}
+function annotate(target, text, highlight) {
+ const span=document.createElement("mark");
+ span.className=highlight;
+ span.textContent=text;
+ target.appendChild(span);
+}
+function compareFragments(left,right,outA,outB,note) {
+ outA.replaceChildren();outB.replaceChildren();
+ const A=units(left),B=units(right),m=A.length,n=B.length;
+ if(!m&&!n) {note.textContent="两侧均无文本输出";return;}
+ // Deliberately bounded: a very long page must not freeze an offline report.
+ if(m*n>65000||m>500||n>500) {
+   outA.textContent=left||"（无文本）";
+   outB.textContent=right||"（无文本）";
+   note.textContent="该页片段过多，已保留全文对照而跳过高亮；CSV 百分比仍可使用。";
+   return;
+ }
+ const dp=Array.from({length:m+1},()=>new Uint16Array(n+1));
+ for(let i=m-1;i>=0;i--) for(let j=n-1;j>=0;j--) {
+   dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+ }
+ let i=0,j=0;
+ while(i<m||j<n) {
+   if(i<m&&j<n&&A[i]===B[j]) {
+     outA.appendChild(document.createTextNode(A[i]));
+     outB.appendChild(document.createTextNode(B[j]));i++;j++;
+   } else if(j>=n||(i<m&&dp[i+1][j]>=dp[i][j+1])) {
+     annotate(outA,A[i]||"","only-a");i++;
+   } else {
+     annotate(outB,B[j]||"","only-b");j++;
+   }
+ }
+ note.textContent="按语句与换行片段做差异高亮；排版差异也会显示为变化，不能直接视为识别错误。";
+}
+function fmt(v){return v===null?"不可计算":v.toFixed(2)+"%";}
+function update() {
+ document.querySelectorAll(".page").forEach((el,i)=>{
+   el.classList.toggle("active",String(i)===selector.value);
+ });
+ const page=document.querySelector(".page.active");
+ if(!page)return;
+ const cards=page.querySelectorAll(".provider");
+ const idxA=Number(selectorA.value),idxB=Number(selectorB.value);
+ const cardA=cards[idxA],cardB=cards[idxB];
+ if(!cardA||!cardB)return;
+ const preA=cardA.querySelector("pre"),preB=cardB.querySelector("pre");
+ const textA=preA.dataset.empty==="1"?"":preA.textContent;
+ const textB=preB.dataset.empty==="1"?"":preB.textContent;
+ const nameA=cardA.querySelector("h3").textContent;
+ const nameB=cardB.querySelector("h3").textContent;
+ page.querySelector(".pair-a-name").textContent=nameA;
+ page.querySelector(".pair-b-name").textContent=nameB;
+ const aLen=normChars(textA).length,bLen=normChars(textB).length;
+ const char=overlap(textA,textB,1),gram=overlap(textA,textB,3);
+ page.querySelector(".pair-summary").textContent=
+   "字符重合度："+fmt(char)+"｜连续三字片段重合度："+fmt(gram)+
+   "｜去空白字数 A："+aLen+"，B："+bLen+
+   "｜字数差（A−B）："+(aLen-bLen)+
+   "。这些百分比表示两份输出有多像，不表示识别正确率。";
+ if(idxA===idxB) {
+   page.querySelector(".pair-a-text").textContent=textA||"（无文本）";
+   page.querySelector(".pair-b-text").textContent=textB||"（无文本）";
+   page.querySelector(".pair-note").textContent="你选择了同一个 Provider，两边输出完全相同。";
+   return;
+ }
+ compareFragments(textA,textB,page.querySelector(".pair-a-text"),
+                  page.querySelector(".pair-b-text"),
+                  page.querySelector(".pair-note"));
+}
+for(const x of [selector,selectorA,selectorB])x.addEventListener("change",update);
+update();
 </script></body></html>""")
     return "\n".join(parts)
 
