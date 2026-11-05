@@ -170,3 +170,55 @@ open outputs/provider_benchmark/compare_7providers_v1/page_compare.html
 校验：如 run_manifest 中数据集指纹与本次 manifest 不匹配，或出现同页同 Provider 重复记录，报告会拒绝合并；缺失预测会明确标记 `MISSING`，成功但空输出会显示 `EMPTY_TEXT`。CSV 对可能执行为公式的文本做防护，HTML 转义原始 OCR 文本。
 
 注意：Markdown/CSV 中没有 CER 或准确率；Canonical 的 `AVAILABLE` 只代表模型提供了该通道，并不能证明表格、公式或阅读顺序正确。所有 OCR 原文属于私有业务数据，报告仅在本机保存，**不要提交 GitHub**。HTML 使用本地图片文件相对路径，因此需要保留 `assets/` 目录。
+
+
+## 8. 六模型同页 A/B 差异与百分比报告
+
+不重新执行 OCR。沿用已完成的 27 页、六个 Provider 原始预测。明确排除 paddleocr_vl_16，仅从新生成的报告中移除这个候选，不删除七模型基线数据。
+
+先更新 Worktree，再运行针对性单测和报告：
+
+~~~bash
+cd /Users/admin/Workspace/pdffast-provider-benchmark
+deactivate 2>/dev/null || true
+git pull --ff-only
+uv run --frozen pytest -q \
+  tests/unit/test_provider_benchmark_report.py \
+  tests/unit/test_provider_benchmark_comparison_metrics.py \
+  tests/unit/test_provider_benchmark_metrics.py
+
+uv run --frozen python -m tools.provider_benchmark.report \
+  --manifest /Users/admin/Downloads/pdffast_benchmark_27_ready/manifest.jsonl \
+  --predictions \
+    outputs/provider_benchmark/ocr_27_v1/predictions.jsonl \
+    outputs/provider_benchmark/minicpm_27_v1/predictions.jsonl \
+    outputs/provider_benchmark/other3_27_v1/predictions.jsonl \
+    outputs/provider_benchmark/paddleocr_vl_27_v1/predictions.jsonl \
+  --exclude paddleocr_vl_16 \
+  --truth /Users/admin/Downloads/pdffast_benchmark_27_ready/ground_truth.template.jsonl \
+  --out outputs/provider_benchmark/compare_6providers_v2
+
+open outputs/provider_benchmark/compare_6providers_v2/page_compare.html
+~~~
+
+报告目录：
+
+- page_compare.html：离线浏览器展示原图和各模型全文；选择同一页任意 A / B Provider，自动标记不同的文字片段，统计百分比、字数差与耗时差。
+- page_matrix.csv：27 行 × 6 模型的横向对照表，追加有审批 Ground Truth 时的 CER%、字段召回%、GT 三字片段召回%。
+- page_provider_details.csv：162 行；每页每个 Provider 状态、字符数、结构通道、异常、GT 状态及可评分字段。
+- pairwise_pages.csv：27 × C(6,2) = 405 行，逐页逐组合的字符重合%、三字片段重合%、A 被 B 词面覆盖%、B 被 A 词面覆盖%、耗时差和字符数量差。
+- pairwise_summary.csv：C(6,2) = 15 行，对每组组合进行跨页平均重合度与方向性覆盖汇总。
+- overview.md：完整表格，按页横向对比各模型耗时/字符数、模型间重合百分比和有 GT 时的质量指标。
+- report_manifest.json：数据集校验指纹、预测来源、模型名单、被排除模型名单和汇总指标。
+
+指标解释（百分比不要混用）：
+
+1. 字符重合百分比：去空白后字符多重集 Dice 系数，忽略字符顺序，对称，仅用于比较两个输出有多像。
+2. 三字片段重合百分比：去空白后的连续三字符片段多重集 Dice 系数，反映局部文字顺序，但不会验证全页阅读顺序。
+3. A 片段在 B 中的覆盖百分比：A 的三字片段在 B 中出现的比例（方向性）；B 在 A 中同理。这些是文字片段召回代理，不等于文档事实完整率。
+4. CER 字符错误率：仅人工审核页面 label_status 为 approved 或 reviewed，且 text_gt 非空时才计算，编辑距离 / GT 字符长度 × 100%。数值越低越好，可以超过 100%。
+5. 关键字段字面召回：人工 GT 中列出的字段值在预测全文中是否出现，不能证明字段键值关联是否正确。
+6. GT 三字片段召回率：仅已审核 GT 的词面局部覆盖代理；不能替代正文语义、表格结构或公式的人工/专业指标。
+7. 差异高亮：先按语句和换行片段对齐，再细化不同区域的共同首尾字符；排版差异也可能被高亮，不能认为所有颜色都代表 OCR 错误。
+
+目前 ground_truth.template.jsonl 尚未获得人工审核标注，所以 CER、字段召回及 GT 内容覆盖应为空或显示“未评分”，而模型间的相似度和方向性覆盖可立即计算。不能使用任何模型输出冒充 Ground Truth。报告包含业务原文，严格留在本机，不要提交 GitHub。
