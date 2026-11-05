@@ -133,3 +133,40 @@ PaddleOCR 官方 [中文 OCR 数据集索引](https://www.paddleocr.ai/v3.6.0/da
 首版 MiniCPM-OCR 1.0 已作为**可选本地插件**接入，不增加默认生产 Provider 个数。Jev 是独立 OCR 质量判别模型，不是第八个解析工具。详细安装、单页识别与 27 页量化实验命令参见 [MiniCPM-OCR Benchmark 使用指南](MINICPM_OCR_BENCHMARK_ZH.md)。
 
 MiniCPM 插件当前使用官方 OpenAI 兼容 Chat Completions 的 `Text Recognition:`（单图识别），不是官方 SDK 完整文档版面解析模式。不同模式的分数要分开报告。
+
+
+## 7. 七模型同页横向对照（27 × 7，离线输出）
+
+原有 `evaluate.py` 只做 Provider 汇总，不方便逐页核验。新增 `tools/provider_benchmark/report.py`，按同一个 `page_id` 对齐所有已完成的预测。不会重新运行模型。
+
+在 `pdffast-provider-benchmark` 根目录执行：
+
+```bash
+cd /Users/admin/Workspace/pdffast-provider-benchmark
+deactivate 2>/dev/null || true
+
+uv run --frozen python -m tools.provider_benchmark.report \
+  --manifest /Users/admin/Downloads/pdffast_benchmark_27_ready/manifest.jsonl \
+  --predictions \
+    outputs/provider_benchmark/ocr_27_v1/predictions.jsonl \
+    outputs/provider_benchmark/minicpm_27_v1/predictions.jsonl \
+    outputs/provider_benchmark/other3_27_v1/predictions.jsonl \
+    outputs/provider_benchmark/paddleocr_vl_27_v1/predictions.jsonl \
+  --out outputs/provider_benchmark/compare_7providers_v1
+
+open outputs/provider_benchmark/compare_7providers_v1/page_compare.html
+```
+
+输出目录：
+
+| 文件 | 用途 |
+|---|---|
+| `page_compare.html` | 浏览器离线查看 27 页：原始页面 PNG、同页七模型完整识别文本、状态、耗时、字符数、结构通道、告警及 Canonical 链接 |
+| `page_matrix.csv` | 27 行的同页七模型横向对齐矩阵，便于 Excel 筛选耗时和字符数 |
+| `page_provider_details.csv` | 189 行的每页每模型细表：状态、耗时、长度、通道、文本预览、告警、Canonical 路径 |
+| `overview.md` | 七模型整体表现、同页 27 行简表 |
+| `report_manifest.json` | 数据集指纹、预测文件来源、环境信息及统计 |
+
+校验：如 run_manifest 中数据集指纹与本次 manifest 不匹配，或出现同页同 Provider 重复记录，报告会拒绝合并；缺失预测会明确标记 `MISSING`，成功但空输出会显示 `EMPTY_TEXT`。CSV 对可能执行为公式的文本做防护，HTML 转义原始 OCR 文本。
+
+注意：Markdown/CSV 中没有 CER 或准确率；Canonical 的 `AVAILABLE` 只代表模型提供了该通道，并不能证明表格、公式或阅读顺序正确。所有 OCR 原文属于私有业务数据，报告仅在本机保存，**不要提交 GitHub**。HTML 使用本地图片文件相对路径，因此需要保留 `assets/` 目录。
