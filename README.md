@@ -1,12 +1,12 @@
 # PDFFast
 
 PDFFast v3 是本地 PDF 解析工具。通过原生文本与版面证据发现文档结构，按需调用
-Provider 恢复内容，输出 Markdown、Canonical JSON 和 Audit。
+Provider 恢复内容，输出 Markdown、Canonical JSON 和 Audit。现支持在不修改主解析流水线的前提下显式注册扩展 Provider。
 
 当前 V3 维护主线为 [`main`](https://github.com/anlew07/pdffast/tree/main)，
 `refactor/v3` 为此前重构阶段使用的开发分支。章节发现不依赖固定申报书模板。
-正式 Runtime 以 Python 对象传递计算结果，JSON 等 Artifact 用于诊断和回放，
-不作为同次运行的内部数据总线。
+V3 的正式 Runtime 由 Pipeline 统一编排，通过 Python 对象传递 Native、Evidence、Quality、Fallback 和 Canonical 等计算结果；JSON 等 Artifact 用于诊断和回放，
+**不作为同次运行的内部数据总线**。源码中的部分 `stage` 编号属于历史标识和产物兼容字段，不代表恢复了旧版文件串联架构。
 
 **JudgeAI 集成说明：** JudgeAI 原生安装脚本使用固定 Git 提交部署 PDFFast。
 本仓库后续提交不会自动改变已部署的 JudgeAI 解析器；升级需在 JudgeAI
@@ -24,6 +24,26 @@ uv sync --extra dev --extra service
 [Provider 运行环境说明](docs/PROVIDER_RUNTIME_ENVIRONMENTS.md)。主环境运行 RapidOCR/Paddle，
 MinerU、Marker、Docling 使用独立 Worker 环境。上述安装命令不代表模型已经就绪，
 也不代表 Linux CPU 离线部署已经完成验收。
+
+## Provider 可插拔（显式启用）
+
+V3 默认保留六个经验证的生产 Provider：RapidOCR、PaddleOCR 文本、PaddleOCR-VL、MinerU、Marker、Docling。Registry、执行器、独立 Worker 与 Canonical Normalizer 已分层；新引擎通过**本地显式注册**启用，不自动扫描第三方插件，也不会自动进入 JudgeAI 已锁定的生产版本。
+
+新增引擎不需要修改 V3 核心 Pipeline 或中央 Provider 名称分支。实际步骤是：编写遵守 `Provider` 协议的 Adapter，编写输出 `CanonicalPrediction` 的 Normalizer，在 `configs/providers.json` 声明 `plugins` 与对应 `providers` 配置；完成测试后，再用 `provider_chain_overrides` 显式选择参与的路由及候选顺序。没有 override 时，原有冻结生产策略保持不变。
+
+**引擎注册成功不代表内容准确、性能合格或生产准入。** 解析前仍需 Provider 环境和模型准备，且同一路由的后备候选需要全部可解析。插件入口点会执行本地 Python 代码，配置必须来自可信来源。
+
+完整的配置结构、Provider/Normalizer 合同和示例见 [Provider 插件接入说明](docs/PROVIDER_PLUGINS_ZH.md)。MiniCPM-OCR 目前只是待验证候选，尚未内置实现。
+
+## MiniCPM-OCR（第 7 个候选，仅供独立 Benchmark）
+
+新增可选 `minicpm_ocr_local` 插件，使用本地 llama.cpp 服务，不自动安装或启动模型，不进入默认生产路由；配置生成及三页/27 页测试方法见 [MiniCPM-OCR Benchmark 指南](docs/MINICPM_OCR_BENCHMARK_ZH.md)。Jev 是独立质量评估模型，不作为 OCR Provider 注册。
+
+## Provider Benchmark 与生产配置档
+
+生产候选链可通过 `configs/profiles/production.candidate.json` 这样的 JSON Profile 完整覆盖四条能力路由，实现新任务的 2–4 个 Provider 组合切换。默认不指定 Profile 时保留原冻结策略。**示例组合尚未经过实测选型。**
+
+独立 Benchmark 工具位于 `tools/provider_benchmark/`，支持私有 PDF 样本、单页视觉对比、多个 Provider 的原始输出/Canonical/耗时采集、人工 GT 文字 CER 评分，以及研究用途的 OmniDocBench 抽样输入。详见 [Provider Benchmark 与配置切换指南](docs/PROVIDER_BENCHMARK_ZH.md)。不附带原始数据和模型，也不代表已经完成真实模型评测。
 
 ## Python 使用
 
@@ -80,8 +100,8 @@ PDFFAST_HOST=127.0.0.1 PDFFAST_PORT=8020 PDFFAST_LOG_MODE=normal \
 | 模式 | 控制台 |
 |---|---|
 | quiet | 解析开始/结束、错误和运行心跳；关闭 Uvicorn 访问日志 |
-| normal | 主要阶段、增强规划、关键诊断、错误和运行心跳 |
-| debug | 详细阶段、Provider 初始化、任务与尝试日志 |
+| normal | 核心处理环节、增强规划、关键诊断、错误和运行心跳 |
+| debug | 详细执行过程、Provider 初始化、任务与尝试日志 |
 
 30 秒心跳表示运行仍在执行，不代表真实进展或解析成功。结构化事件和 Provider
 Attempt/Production Manifest 保持完整。normal/quiet 在 MinerU Worker 内降低 Loguru 和

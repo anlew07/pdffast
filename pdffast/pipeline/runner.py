@@ -1,7 +1,8 @@
 """PDFFast core pipeline orchestration and final artifact rendering.
 
-`run_core_pipeline` coordinates Native, Evidence, Quality, Fallback and the final
-Stage 10 artifacts. `run_stage10` is the dedicated rendering/audit boundary.
+`run_core_pipeline` coordinates object-based Native, Evidence, Quality, Fallback,
+Provider execution and final Canonical/Renderer/Audit outputs. `run_stage10`
+is a retained internal function name for the final output boundary.
 """
 
 from __future__ import annotations
@@ -162,13 +163,14 @@ def run_core_pipeline(
     provider_configs: dict[str, dict[str, Any]] | None = None,
     registry: Any | None = None,
     normalizer: Any | None = None,
+    provider_chain_overrides: dict[str, list[str]] | None = None,
     execute_providers: bool = False,
 ) -> dict[str, Any]:
-    """Run the migrated Core stages from PDF through Stage 10.
+    """Execute the V3 object-based Core Pipeline and produce a ParseResult.
 
-    Provider execution is explicit because it can start heavyweight workers. When
-    ``execute_providers`` is false, the pipeline stops after producing the Stage 9
-    policy and requires pre-existing selected predictions for Stage 10.
+    Provider execution may initialize heavyweight workers. The supported parse
+    path requires ``execute_providers=True``. Passing False currently raises
+    after the planning artifacts are produced; it is not a replay mode.
     """
 
     a = context.artifacts
@@ -233,7 +235,10 @@ def run_core_pipeline(
             capability_plan = create_capability_plan(fallback_plan=fallback_plan, manifest_path=observable.fallback_plan)
             write_capability_plan(capability_plan, observable.capability_plan.parent)
             runtime_progress("capability_routing_completed", "provider_policy")
-            execution_plan = create_provider_execution_plan(capability_plan, context.route_candidates)
+            execution_plan = create_provider_execution_plan(
+                capability_plan, context.route_candidates,
+                provider_chain_overrides=provider_chain_overrides,
+            )
             write_provider_execution_plan(execution_plan, observable.execution_plan.parent)
 
             if not execute_providers:
