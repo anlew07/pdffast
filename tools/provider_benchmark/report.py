@@ -99,7 +99,7 @@ def h(value: object) -> str:
 def html_report(pages: list[dict], providers: list[str], cells: dict, summary: list[dict], out: Path) -> str:
     parts = ["""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PDFFast 同页七模型对照</title><style>
+<title>PDFFast 同页多模型对照</title><style>
 body{background:#f3f6fa;color:#16253b;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1700px;margin:auto;padding:24px}
 .panel,.provider{background:white;border:1px solid #dbe2ec;border-radius:12px;padding:16px;margin-bottom:14px}
 .pair-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -564,7 +564,7 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
         html_report(pages, providers, cells, summary, out), encoding="utf-8"
     )
     md = [
-        "# PDFFast 七模型同页对照（27页）", "",
+        "# PDFFast 多模型同页对照报告", "",
         f"- {len(ids)} 页 × {len(providers)} Provider；实际预测 {len(records)} 条。",
         "- 相同页面以 page_id 对齐；不重复推理。",
         "- 未审核 Ground Truth：CER、关键字段召回率不评分；模型间百分比仅为文本重合度，**不是准确率**。",
