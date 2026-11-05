@@ -1,4 +1,5 @@
 import csv
+from html.parser import HTMLParser
 import hashlib
 import json
 
@@ -114,7 +115,18 @@ def test_pairwise_csv_and_html_ab_diff(tmp_path):
     assert len(summaries) == 1
     assert summaries[0]["comparable_pages"] == "1"
     page = (out / "page_compare.html").read_text(encoding="utf-8")
-    assert 'id="provider-a"' in page and 'id="provider-b"' in page
+    class SelectIdCollector(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.select_ids = set()
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "select":
+                self.select_ids.update(value for key, value in attrs if key == "id")
+
+    parser = SelectIdCollector()
+    parser.feed(page)
+    assert {"provider-a", "provider-b"} <= parser.select_ids
     assert "同页 A/B 差异高亮" in page
     assert "fragmentCoverage" in page
     assert "flushChanged" in page
