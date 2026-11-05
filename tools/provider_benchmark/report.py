@@ -205,6 +205,24 @@ function overlap(A,B,n) {
  for(const [key,v] of ca)common+=Math.min(v,cb.get(key)||0);
  return 100*2*common/total;
 }
+function fragmentCoverage(A,B) {
+ const a=normChars(A),b=normChars(B);
+ if(!a.length)return null;
+ if(!b.length)return 0;
+ const n=Math.min(3,a.length,b.length),counts=new Map();
+ for(let i=0;i<=b.length-n;i++){
+   const word=b.slice(i,i+n).join("");
+   counts.set(word,(counts.get(word)||0)+1);
+ }
+ let found=0,total=0;
+ for(let i=0;i<=a.length-n;i++){
+   total++;
+   const word=a.slice(i,i+n).join("");
+   const count=counts.get(word)||0;
+   if(count){found++;counts.set(word,count-1);}
+ }
+ return found*100/total;
+}
 function units(text) {
  return text.match(/[^。！？；;\\n]+[。！？；;\\n]?|\\n+/gu)||[];
 }
@@ -279,8 +297,11 @@ function update() {
  page.querySelector(".pair-b-name").textContent=nameB;
  const aLen=normChars(textA).length,bLen=normChars(textB).length;
  const char=overlap(textA,textB,1),gram=overlap(textA,textB,3);
+ const aInB=fragmentCoverage(textA,textB),bInA=fragmentCoverage(textB,textA);
  page.querySelector(".pair-summary").textContent=
    "字符重合度："+fmt(char)+"｜连续三字片段重合度："+fmt(gram)+
+   "｜A 的片段在 B 中的覆盖："+fmt(aInB)+
+   "｜B 的片段在 A 中的覆盖："+fmt(bInA)+
    "｜去空白字数 A："+aLen+"，B："+bLen+
    "｜字数差（A−B）："+(aLen-bLen)+
    "｜执行耗时差（A−B）："+
@@ -559,7 +580,7 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
                   f'{s["empty_text_pages"]} | {s["flagged_pages"]} |')
     md.extend([
         "", "## 两两模型对照（同页输出重合度，非准确率）", "",
-        "字符重合：忽略空白、考虑字符数量但不考虑顺序；三字连续片段：考虑局部顺序，均不是正确率或信息覆盖率。",
+        "字符重合：忽略空白、考虑字符数量但不考虑顺序；三字连续片段：考虑局部顺序。方向性片段覆盖是文本词面召回代理，不等于事实完整率。以上均不是识别正确率。",
         "差异详情见 pairwise_pages.csv；任意两模型可在 page_compare.html 里选择并高亮差异。",
         "",
         "| A | B | 可比较页面 | 平均字符重合度 | 平均三字片段重合度 | A 片段在 B 中的覆盖 | B 片段在 A 中的覆盖 |",
@@ -591,6 +612,7 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
         coverage = f'{row["mean_gt_fragment_recall_pct"]}%' if row["mean_gt_fragment_recall_pct"] is not None else "未评分"
         md.append(f'| {row["provider"]} | {row["scored_gt_pages"]} | {cer} | {field} | {coverage} |')
     md.extend(["", "## 注意", "",
+               "- 方向性片段覆盖只比较模型输出的短文字片段，不证明两模型内容真实完整；两模型同错也可得到 100%。",
                "- 文本长度和结构通道仅用于诊断；不等于 OCR 正确率、表格正确率。",
                "- 模型加载不计入执行耗时；不同 Provider 的执行模式可能不同。",
                "- 本报告含私有 OCR 全文，仅在本机保存，禁止上传 GitHub。", ""])
