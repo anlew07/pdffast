@@ -24,3 +24,16 @@ def test_missing_text_and_symmetric_score():
 def test_short_text_is_supported():
     assert compare_texts("啊", "啊")["trigram_overlap_pct"] == 100
     assert compare_texts("甲乙", "甲丙")["trigram_overlap_pct"] == 0
+
+
+def test_directional_coverage_is_asymmetric():
+    from tools.provider_benchmark.comparison_metrics import directional_gram_recall
+    short = "今天天气很好"
+    long = "今天天气很好，适合出门散步"
+    assert directional_gram_recall(short, long) == 100.0
+    assert directional_gram_recall(long, short) < 100.0
+    assert directional_gram_recall("", long) is None
+    assert directional_gram_recall(long, "") == 0.0
+    pair = compare_texts(short, long)
+    assert pair["a_fragments_covered_by_b_pct"] == 100.0
+    assert pair["b_fragments_covered_by_a_pct"] < 100.0
