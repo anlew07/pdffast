@@ -15,7 +15,7 @@ import statistics
 from collections import Counter
 from itertools import combinations
 
-from tools.provider_benchmark.comparison_metrics import compare_texts
+from tools.provider_benchmark.comparison_metrics import compare_texts, directional_gram_recall
 from tools.provider_benchmark.evaluate import _distance, _plain
 from pathlib import Path
 from urllib.parse import quote
@@ -408,10 +408,15 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
                         field_count += 1
                         field_found += int(_plain(val) in _plain(full_text))
             field_recall_pct = round(100 * field_found / field_count, 3) if field_count else None
+            gt_fragment_recall_pct = (
+                directional_gram_recall(gt_text, full_text)
+                if approved and status in SUCCESS and isinstance(gt_text, str) else None
+            )
             item = {
                 "page_id": pid, "provider": provider, "status": status,
                 "gt_label_status": gt.get("label_status", "unlabeled"),
                 "cer_pct": cer_pct, "field_literal_recall_pct": field_recall_pct,
+                "gt_fragment_recall_pct": gt_fragment_recall_pct,
                 "gt_chars": gt_chars, "gt_edits": gt_edits,
                 "field_count": field_count, "field_found": field_found,
                 "seconds": round(elapsed, 4) if elapsed is not None else None,
@@ -430,7 +435,8 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
                 ("status", status), ("seconds", item["seconds"]),
                 ("chars", item["chars"]), ("flags", item["flags"]),
                 ("cer_pct", item["cer_pct"]),
-                ("field_literal_recall_pct", item["field_literal_recall_pct"])
+                ("field_literal_recall_pct", item["field_literal_recall_pct"]),
+                ("gt_fragment_recall_pct", item["gt_fragment_recall_pct"])
             ):
                 matrix_row[provider + "__" + suffix] = value
         matrix.append(matrix_row)
@@ -449,6 +455,12 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
             "empty_text_pages": sum(i["status"] in SUCCESS and not i["text"].strip() for i in items),
             "status_counts": dict(Counter(i["status"] for i in items)),
             "scored_gt_pages": sum(i["cer_pct"] is not None for i in items),
+            "mean_gt_fragment_recall_pct": (
+                round(statistics.mean(v), 2) if (v := [
+                    i["gt_fragment_recall_pct"] for i in items
+                    if i["gt_fragment_recall_pct"] is not None
+                ]) else None
+            ),
             "micro_cer_pct": (
                 round(100 * sum(i["gt_edits"] for i in items) / sum(i["gt_chars"] for i in items), 3)
                 if sum(i["gt_chars"] for i in items) else None
@@ -469,7 +481,8 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
             comparable = a["status"] in SUCCESS and b["status"] in SUCCESS
             metrics = compare_texts(a["text"], b["text"]) if comparable else {
                 "char_overlap_pct": None, "trigram_overlap_pct": None,
-                "char_delta": None, "normalized_chars_a": None, "normalized_chars_b": None
+                "char_delta": None, "normalized_chars_a": None, "normalized_chars_b": None,
+                "a_fragments_covered_by_b_pct": None, "b_fragments_covered_by_a_pct": None
             }
             item = {
                 "page_id": pid, "provider_a": provider_a, "provider_b": provider_b,
@@ -492,25 +505,39 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
             ),
             "char_overlap_mean_pct": round(statistics.mean(character), 2) if character else None,
             "trigram_overlap_mean_pct": round(statistics.mean(trigrams), 2) if trigrams else None,
+            "a_covered_by_b_mean_pct": (
+                round(statistics.mean(v), 2) if (v := [
+                    x["a_fragments_covered_by_b_pct"] for x in sub
+                    if x["a_fragments_covered_by_b_pct"] is not None
+                ]) else None
+            ),
+            "b_covered_by_a_mean_pct": (
+                round(statistics.mean(v), 2) if (v := [
+                    x["b_fragments_covered_by_a_pct"] for x in sub
+                    if x["b_fragments_covered_by_a_pct"] is not None
+                ]) else None
+            ),
         })
     matrix_columns = ["page_id", "document_id", "page_number", "selection_reason"]
     for provider in providers:
-        matrix_columns.extend(provider + "__" + s for s in ("status", "seconds", "chars", "flags", "cer_pct", "field_literal_recall_pct"))
+        matrix_columns.extend(provider + "__" + s for s in ("status", "seconds", "chars", "flags", "cer_pct", "field_literal_recall_pct", "gt_fragment_recall_pct"))
     write_csv(out / "page_matrix.csv", matrix_columns, matrix)
     write_csv(out / "page_provider_details.csv", [
         "page_id", "provider", "status", "seconds", "chars", "nonspace_chars",
         "flags", *CHANNELS, "text_preview", "canonical_path",
-        "gt_label_status", "cer_pct", "field_literal_recall_pct",
+        "gt_label_status", "cer_pct", "field_literal_recall_pct", "gt_fragment_recall_pct",
     ], detail)
     write_csv(out / "pairwise_pages.csv", [
         "page_id", "provider_a", "provider_b", "status_a", "status_b",
         "elapsed_a_s", "elapsed_b_s", "elapsed_delta_a_minus_b_s",
         "char_overlap_pct", "trigram_overlap_pct", "char_delta",
         "normalized_chars_a", "normalized_chars_b",
+        "a_fragments_covered_by_b_pct", "b_fragments_covered_by_a_pct",
     ], pair_rows)
     write_csv(out / "pairwise_summary.csv", [
         "provider_a", "provider_b", "comparable_pages",
         "char_overlap_mean_pct", "trigram_overlap_mean_pct",
+        "a_covered_by_b_mean_pct", "b_covered_by_a_mean_pct",
     ], pair_summary)
     (out / "page_compare.html").write_text(
         html_report(pages, providers, cells, summary, out), encoding="utf-8"
@@ -535,13 +562,14 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
         "字符重合：忽略空白、考虑字符数量但不考虑顺序；三字连续片段：考虑局部顺序，均不是正确率或信息覆盖率。",
         "差异详情见 pairwise_pages.csv；任意两模型可在 page_compare.html 里选择并高亮差异。",
         "",
-        "| A | B | 可比较页面 | 平均字符重合度 | 平均三字片段重合度 |",
-        "|---|---|---:|---:|---:|",
+        "| A | B | 可比较页面 | 平均字符重合度 | 平均三字片段重合度 | A 片段在 B 中的覆盖 | B 片段在 A 中的覆盖 |",
+        "|---|---|---:|---:|---:|---:|---:|",
     ])
     for x in pair_summary:
         md.append(f'| {x["provider_a"]} | {x["provider_b"]} | '
                   f'{x["comparable_pages"]} | {x["char_overlap_mean_pct"]}% | '
-                  f'{x["trigram_overlap_mean_pct"]}% |')
+                  f'{x["trigram_overlap_mean_pct"]}% | '
+                  f'{x["a_covered_by_b_mean_pct"]}% | {x["b_covered_by_a_mean_pct"]}% |')
     md.extend(["", "## 每页对齐：耗时 / 字符数", "",
                "| 页面 | " + " | ".join(providers) + " |",
                "|---|" + "|".join("---:" for _ in providers) + "|"])
@@ -555,12 +583,13 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
             )
         md.append("| " + pid + " | " + " | ".join(data) + " |")
     md.extend(["", "## 有审核 GT 时的正式质量指标", "",
-               "| Provider | 已评 GT 页数 | CER（微平均，越低越好） | 字段字面召回（越高越好） |",
-               "|---|---:|---:|---:|"])
+               "| Provider | 已评 GT 页数 | CER（微平均，越低越好） | 字段字面召回 | GT 三字片段召回（代理） |",
+               "|---|---:|---:|---:|---:|"])
     for row in summary:
         cer = f'{row["micro_cer_pct"]}%' if row["micro_cer_pct"] is not None else "未评分"
         field = f'{row["field_literal_recall_pct"]}%' if row["field_literal_recall_pct"] is not None else "未评分"
-        md.append(f'| {row["provider"]} | {row["scored_gt_pages"]} | {cer} | {field} |')
+        coverage = f'{row["mean_gt_fragment_recall_pct"]}%' if row["mean_gt_fragment_recall_pct"] is not None else "未评分"
+        md.append(f'| {row["provider"]} | {row["scored_gt_pages"]} | {cer} | {field} | {coverage} |')
     md.extend(["", "## 注意", "",
                "- 文本长度和结构通道仅用于诊断；不等于 OCR 正确率、表格正确率。",
                "- 模型加载不计入执行耗时；不同 Provider 的执行模式可能不同。",
