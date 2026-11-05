@@ -13,6 +13,10 @@ import math
 import os
 import statistics
 from collections import Counter
+from itertools import combinations
+
+from tools.provider_benchmark.comparison_metrics import compare_texts
+from tools.provider_benchmark.evaluate import _distance, _plain
 from pathlib import Path
 from urllib.parse import quote
 
@@ -157,7 +161,8 @@ node.classList.toggle("active",String(i)===selector.value);
     return "\n".join(parts)
 
 
-def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd: Path | None = None) -> dict:
+def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd: Path | None = None,
+                 exclude: list[str] | None = None, truth: Path | None = None) -> dict:
     manifest = Path(manifest).resolve()
     out = Path(out).resolve()
     cwd = Path(cwd or Path.cwd()).resolve()
@@ -168,6 +173,14 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
     fp = hashlib.sha256(
         json.dumps(pages, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
     ).hexdigest()
+    excluded = set(exclude or [])
+    truth_rows = read_jsonl(Path(truth).resolve()) if truth else []
+    truth_by_id = {x.get("page_id"): x for x in truth_rows}
+    if len(truth_by_id) != len(truth_rows):
+        raise ValueError("duplicate Ground Truth page_id")
+    unexpected_truth = set(truth_by_id) - set(ids)
+    if unexpected_truth:
+        raise ValueError(f"Ground Truth contains unexpected pages: {sorted(unexpected_truth)}")
     records: dict[tuple[str, str], dict] = {}
     providers: list[str] = []
     runs = []
@@ -192,6 +205,8 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
             provider = r.get("provider")
             if not isinstance(provider, str) or not provider:
                 raise ValueError(f"invalid provider in {source}")
+            if provider in excluded:
+                continue
             key = (pid, provider)
             if key in records:
                 raise ValueError(f"duplicate prediction: {key}")
@@ -230,8 +245,33 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
             flags.extend(str(w) for w in warnings)
             if record.get("reason"):
                 flags.append(str(record["reason"]))
+            # Scoring against manual GT is only allowed for approved/reviewed
+            # rows. There is no automatic "truth" from other Providers.
+            gt = truth_by_id.get(pid, {})
+            approved = gt.get("label_status") in {"reviewed", "approved"}
+            gt_text = gt.get("text_gt")
+            gt_chars = gt_edits = 0
+            cer_pct = None
+            if approved and status in SUCCESS and isinstance(gt_text, str) and isinstance(full_text, str):
+                normalized_gt = _plain(gt_text)
+                if normalized_gt:
+                    gt_chars = len(normalized_gt)
+                    gt_edits = _distance(normalized_gt, _plain(full_text))
+                    cer_pct = round(100 * gt_edits / gt_chars, 3)
+            field_count = field_found = 0
+            if approved and status in SUCCESS:
+                for field in gt.get("critical_fields_gt") or []:
+                    val = field.get("value") if isinstance(field, dict) else None
+                    if isinstance(val, str) and val.strip():
+                        field_count += 1
+                        field_found += int(_plain(val) in _plain(full_text))
+            field_recall_pct = round(100 * field_found / field_count, 3) if field_count else None
             item = {
                 "page_id": pid, "provider": provider, "status": status,
+                "gt_label_status": gt.get("label_status", "unlabeled"),
+                "cer_pct": cer_pct, "field_literal_recall_pct": field_recall_pct,
+                "gt_chars": gt_chars, "gt_edits": gt_edits,
+                "field_count": field_count, "field_found": field_found,
                 "seconds": round(elapsed, 4) if elapsed is not None else None,
                 "chars": len(full_text), "nonspace_chars": len("".join(full_text.split())),
                 "flags": "; ".join(dict.fromkeys(flags)), "text": full_text,
@@ -246,7 +286,9 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
             detail.append({k: v for k, v in item.items() if k not in ("text", "canonical_url")})
             for suffix, value in (
                 ("status", status), ("seconds", item["seconds"]),
-                ("chars", item["chars"]), ("flags", item["flags"])
+                ("chars", item["chars"]), ("flags", item["flags"]),
+                ("cer_pct", item["cer_pct"]),
+                ("field_literal_recall_pct", item["field_literal_recall_pct"])
             ):
                 matrix_row[provider + "__" + suffix] = value
         matrix.append(matrix_row)
@@ -264,15 +306,70 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
             "flagged_pages": sum(bool(i["flags"]) for i in items),
             "empty_text_pages": sum(i["status"] in SUCCESS and not i["text"].strip() for i in items),
             "status_counts": dict(Counter(i["status"] for i in items)),
+            "scored_gt_pages": sum(i["cer_pct"] is not None for i in items),
+            "micro_cer_pct": (
+                round(100 * sum(i["gt_edits"] for i in items) / sum(i["gt_chars"] for i in items), 3)
+                if sum(i["gt_chars"] for i in items) else None
+            ),
+            "field_literal_recall_pct": (
+                round(100 * sum(i["field_found"] for i in items) / sum(i["field_count"] for i in items), 3)
+                if sum(i["field_count"] for i in items) else None
+            ),
+        })
+    # Every provider pair is compared on each page (not only to a chosen
+    # "reference" provider), so readers can select any two fairly.
+    pair_rows: list[dict] = []
+    pair_summary: list[dict] = []
+    for provider_a, provider_b in combinations(providers, 2):
+        sub = []
+        for pid in ids:
+            a, b = cells[(pid, provider_a)], cells[(pid, provider_b)]
+            comparable = a["status"] in SUCCESS and b["status"] in SUCCESS
+            metrics = compare_texts(a["text"], b["text"]) if comparable else {
+                "char_overlap_pct": None, "trigram_overlap_pct": None,
+                "char_delta": None, "normalized_chars_a": None, "normalized_chars_b": None
+            }
+            item = {
+                "page_id": pid, "provider_a": provider_a, "provider_b": provider_b,
+                "status_a": a["status"], "status_b": b["status"],
+                "elapsed_a_s": a["seconds"], "elapsed_b_s": b["seconds"],
+                "elapsed_delta_a_minus_b_s": (
+                    round(a["seconds"] - b["seconds"], 3)
+                    if a["seconds"] is not None and b["seconds"] is not None else None
+                ),
+                **metrics,
+            }
+            pair_rows.append(item)
+            sub.append(item)
+        character = [x["char_overlap_pct"] for x in sub if x["char_overlap_pct"] is not None]
+        trigrams = [x["trigram_overlap_pct"] for x in sub if x["trigram_overlap_pct"] is not None]
+        pair_summary.append({
+            "provider_a": provider_a, "provider_b": provider_b,
+            "comparable_pages": sum(
+                x["status_a"] in SUCCESS and x["status_b"] in SUCCESS for x in sub
+            ),
+            "char_overlap_mean_pct": round(statistics.mean(character), 2) if character else None,
+            "trigram_overlap_mean_pct": round(statistics.mean(trigrams), 2) if trigrams else None,
         })
     matrix_columns = ["page_id", "document_id", "page_number", "selection_reason"]
     for provider in providers:
-        matrix_columns.extend(provider + "__" + s for s in ("status", "seconds", "chars", "flags"))
+        matrix_columns.extend(provider + "__" + s for s in ("status", "seconds", "chars", "flags", "cer_pct", "field_literal_recall_pct"))
     write_csv(out / "page_matrix.csv", matrix_columns, matrix)
     write_csv(out / "page_provider_details.csv", [
         "page_id", "provider", "status", "seconds", "chars", "nonspace_chars",
-        "flags", *CHANNELS, "text_preview", "canonical_path"
+        "flags", *CHANNELS, "text_preview", "canonical_path",
+        "gt_label_status", "cer_pct", "field_literal_recall_pct",
     ], detail)
+    write_csv(out / "pairwise_pages.csv", [
+        "page_id", "provider_a", "provider_b", "status_a", "status_b",
+        "elapsed_a_s", "elapsed_b_s", "elapsed_delta_a_minus_b_s",
+        "char_overlap_pct", "trigram_overlap_pct", "char_delta",
+        "normalized_chars_a", "normalized_chars_b",
+    ], pair_rows)
+    write_csv(out / "pairwise_summary.csv", [
+        "provider_a", "provider_b", "comparable_pages",
+        "char_overlap_mean_pct", "trigram_overlap_mean_pct",
+    ], pair_summary)
     (out / "page_compare.html").write_text(
         html_report(pages, providers, cells, summary, out), encoding="utf-8"
     )
@@ -280,7 +377,7 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
         "# PDFFast 七模型同页对照（27页）", "",
         f"- {len(ids)} 页 × {len(providers)} Provider；实际预测 {len(records)} 条。",
         "- 相同页面以 page_id 对齐；不重复推理。",
-        "- 未审核 Ground Truth：此报告仅统计执行性能、文本长度、通道与告警，**不产生准确率**。",
+        "- 未审核 Ground Truth：CER、关键字段召回率不评分；模型间百分比仅为文本重合度，**不是准确率**。",
         "- 查看原图与完整文字：本地打开 page_compare.html。",
         "",
         "## 模型汇总", "",
@@ -291,6 +388,18 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
         md.append(f'| {s["provider"]} | {s["successful_pages"]}/{len(ids)} | '
                   f'{s["total_s"]} | {s["mean_s"]} | {s["p50_s"]} | {s["p95_s"]} | '
                   f'{s["empty_text_pages"]} | {s["flagged_pages"]} |')
+    md.extend([
+        "", "## 两两模型对照（同页输出重合度，非准确率）", "",
+        "字符重合：忽略空白、考虑字符数量但不考虑顺序；三字连续片段：考虑局部顺序，均不是正确率或信息覆盖率。",
+        "差异详情见 pairwise_pages.csv；任意两模型可在 page_compare.html 里选择并高亮差异。",
+        "",
+        "| A | B | 可比较页面 | 平均字符重合度 | 平均三字片段重合度 |",
+        "|---|---|---:|---:|---:|",
+    ])
+    for x in pair_summary:
+        md.append(f'| {x["provider_a"]} | {x["provider_b"]} | '
+                  f'{x["comparable_pages"]} | {x["char_overlap_mean_pct"]}% | '
+                  f'{x["trigram_overlap_mean_pct"]}% |')
     md.extend(["", "## 每页对齐：耗时 / 字符数", "",
                "| 页面 | " + " | ".join(providers) + " |",
                "|---|" + "|".join("---:" for _ in providers) + "|"])
@@ -303,6 +412,13 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
                 f'{item["seconds"]}s / {item["chars"]}字' if item["status"] in SUCCESS else item["status"]
             )
         md.append("| " + pid + " | " + " | ".join(data) + " |")
+    md.extend(["", "## 有审核 GT 时的正式质量指标", "",
+               "| Provider | 已评 GT 页数 | CER（微平均，越低越好） | 字段字面召回（越高越好） |",
+               "|---|---:|---:|---:|"])
+    for row in summary:
+        cer = f'{row["micro_cer_pct"]}%' if row["micro_cer_pct"] is not None else "未评分"
+        field = f'{row["field_literal_recall_pct"]}%' if row["field_literal_recall_pct"] is not None else "未评分"
+        md.append(f'| {row["provider"]} | {row["scored_gt_pages"]} | {cer} | {field} |')
     md.extend(["", "## 注意", "",
                "- 文本长度和结构通道仅用于诊断；不等于 OCR 正确率、表格正确率。",
                "- 模型加载不计入执行耗时；不同 Provider 的执行模式可能不同。",
@@ -313,7 +429,14 @@ def build_report(*, manifest: Path, prediction_files: list[Path], out: Path, cwd
         "observed_predictions": len(records), "expected_pairs": len(ids) * len(providers),
         "providers": providers, "summaries": summary,
         "dataset_fingerprint_sha256": fp, "runs": runs,
-        "quality": "NOT_SCORED_NEEDS_APPROVED_GROUND_TRUTH",
+        "excluded_providers": sorted(excluded),
+        "ground_truth_path": str(Path(truth).resolve()) if truth else None,
+        "pairwise_summary": pair_summary,
+        "quality": (
+            "GT_SCORED_APPROVED_PAGES_ONLY"
+            if any(x["scored_gt_pages"] for x in summary)
+            else "NOT_SCORED_NEEDS_APPROVED_GROUND_TRUTH"
+        ),
     }
     (out / "report_manifest.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -326,8 +449,11 @@ def main() -> int:
     p.add_argument("--manifest", required=True, type=Path)
     p.add_argument("--predictions", required=True, nargs="+", type=Path)
     p.add_argument("--out", required=True, type=Path)
+    p.add_argument("--exclude", nargs="*", default=[], help="Providers not included in this report")
+    p.add_argument("--truth", type=Path, help="Optional manually reviewed ground-truth JSONL")
     args = p.parse_args()
-    report = build_report(manifest=args.manifest, prediction_files=args.predictions, out=args.out)
+    report = build_report(manifest=args.manifest, prediction_files=args.predictions, out=args.out,
+                          exclude=args.exclude, truth=args.truth)
     print(json.dumps({
         "pages": report["page_count"], "providers": report["provider_count"],
         "pairs": report["observed_predictions"], "expected_pairs": report["expected_pairs"],
