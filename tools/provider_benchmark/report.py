@@ -175,7 +175,7 @@ select{font-size:15px;padding:9px;max-width:500px;width:100%}.bad{color:#ad2525}
             availability = " · ".join(f"{k}: {x[k]}" for k in CHANNELS)
             link = f' · <a href="{h(x["canonical_url"])}">Canonical</a>' if x["canonical_url"] else ""
             css_class = "good" if x["status"] in SUCCESS else "bad"
-            parts.append(f"<article class='provider' data-provider-index='{provider_index}'><h3>{h(provider)}</h3>"
+            parts.append(f"<article class='provider' data-provider-index='{provider_index}' data-seconds='{h(x['seconds'])}'><h3>{h(provider)}</h3>"
                          f'<p class="{css_class}">{h(x["status"])} · {h(x["seconds"])}s · {x["chars"]}字{link}</p>'
                          f'<p class="note">{h(availability)}</p>'
                          f'<p class="bad">{h(x["flags"])}</p>'
@@ -209,10 +209,24 @@ function units(text) {
  return text.match(/[^。！？；;\\n]+[。！？；;\\n]?|\\n+/gu)||[];
 }
 function annotate(target, text, highlight) {
+ if(!text)return;
  const span=document.createElement("mark");
  span.className=highlight;
  span.textContent=text;
  target.appendChild(span);
+}
+function flushChanged(a,b,outA,outB) {
+ const left=Array.from(a.join("")),right=Array.from(b.join(""));
+ let prefix=0,suffix=0;
+ while(prefix<left.length&&prefix<right.length&&left[prefix]===right[prefix])prefix++;
+ while(suffix<left.length-prefix&&suffix<right.length-prefix&&
+       left[left.length-suffix-1]===right[right.length-suffix-1])suffix++;
+ const start=left.slice(0,prefix).join("");
+ const end=suffix?left.slice(left.length-suffix).join(""):"";
+ for(const out of [outA,outB])out.appendChild(document.createTextNode(start));
+ annotate(outA,left.slice(prefix,left.length-suffix).join(""),"only-a");
+ annotate(outB,right.slice(prefix,right.length-suffix).join(""),"only-b");
+ for(const out of [outA,outB])out.appendChild(document.createTextNode(end));
 }
 function compareFragments(left,right,outA,outB,note) {
  outA.replaceChildren();outB.replaceChildren();
@@ -229,18 +243,21 @@ function compareFragments(left,right,outA,outB,note) {
  for(let i=m-1;i>=0;i--) for(let j=n-1;j>=0;j--) {
    dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
  }
- let i=0,j=0;
+ let i=0,j=0,changeA=[],changeB=[];
+ function flush(){flushChanged(changeA,changeB,outA,outB);changeA=[];changeB=[];}
  while(i<m||j<n) {
    if(i<m&&j<n&&A[i]===B[j]) {
+     flush();
      outA.appendChild(document.createTextNode(A[i]));
      outB.appendChild(document.createTextNode(B[j]));i++;j++;
    } else if(j>=n||(i<m&&dp[i+1][j]>=dp[i][j+1])) {
-     annotate(outA,A[i]||"","only-a");i++;
+     changeA.push(A[i]);i++;
    } else {
-     annotate(outB,B[j]||"","only-b");j++;
+     changeB.push(B[j]);j++;
    }
  }
- note.textContent="按语句与换行片段做差异高亮；排版差异也会显示为变化，不能直接视为识别错误。";
+ flush();
+ note.textContent="先对齐相同语句片段，再细化差异块的共同前后缀；标亮部分包含内容变化和排版变化，不代表识别错误。";
 }
 function fmt(v){return v===null?"不可计算":v.toFixed(2)+"%";}
 function update() {
@@ -266,6 +283,9 @@ function update() {
    "字符重合度："+fmt(char)+"｜连续三字片段重合度："+fmt(gram)+
    "｜去空白字数 A："+aLen+"，B："+bLen+
    "｜字数差（A−B）："+(aLen-bLen)+
+   "｜执行耗时差（A−B）："+
+   (Number.isFinite(Number(cardA.dataset.seconds))&&Number.isFinite(Number(cardB.dataset.seconds))?
+      (Number(cardA.dataset.seconds)-Number(cardB.dataset.seconds)).toFixed(2)+"s":"不可计算")+
    "。这些百分比表示两份输出有多像，不表示识别正确率。";
  if(idxA===idxB) {
    page.querySelector(".pair-a-text").textContent=textA||"（无文本）";
