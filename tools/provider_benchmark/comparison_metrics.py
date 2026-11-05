@@ -20,6 +20,24 @@ def _overlap(a: Counter[str], b: Counter[str]) -> float | None:
     return round(200.0 * common / total, 2)
 
 
+def directional_gram_recall(reference: str, candidate: str) -> float | None:
+    """Percent of reference character n-grams appearing in candidate.
+
+    No longer than 3 characters per gram. This is a rough lexical
+    coverage diagnostic only; it does not prove actual content completeness.
+    """
+    left, right = clean(reference), clean(candidate)
+    if not left:
+        return None
+    if not right:
+        return 0.0
+    width = min(3, len(left), len(right))
+    ref_counts = Counter(left[i:i+width] for i in range(len(left)-width+1))
+    pred_counts = Counter(right[i:i+width] for i in range(len(right)-width+1))
+    found = sum(min(n, pred_counts.get(fragment, 0)) for fragment, n in ref_counts.items())
+    return round(100.0 * found / sum(ref_counts.values()), 2)
+
+
 def compare_texts(a: str, b: str) -> dict[str, float | int | None]:
     """Character bag Dice and ordered 3-gram bag Dice percentages.
 
@@ -36,6 +54,8 @@ def compare_texts(a: str, b: str) -> dict[str, float | int | None]:
             "char_delta": 0,
             "normalized_chars_a": 0,
             "normalized_chars_b": 0,
+            "a_fragments_covered_by_b_pct": None,
+            "b_fragments_covered_by_a_pct": None,
         }
     char_pct = _overlap(Counter(left), Counter(right))
     def grams(s: str) -> Counter[str]:
@@ -60,4 +80,6 @@ def compare_texts(a: str, b: str) -> dict[str, float | int | None]:
         "char_delta": len(left) - len(right),
         "normalized_chars_a": len(left),
         "normalized_chars_b": len(right),
+        "a_fragments_covered_by_b_pct": directional_gram_recall(a, b),
+        "b_fragments_covered_by_a_pct": directional_gram_recall(b, a),
     }
