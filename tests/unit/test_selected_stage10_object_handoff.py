@@ -132,7 +132,7 @@ def test_production_runner_passes_execution_selection_to_stage10(
     monkeypatch.setattr(runner, "write_fallback_plan", lambda *args: None)
     monkeypatch.setattr(runner, "create_capability_plan", lambda **kwargs: object())
     monkeypatch.setattr(runner, "write_capability_plan", lambda *args: None)
-    monkeypatch.setattr(runner, "create_provider_execution_plan", lambda *args: object())
+    monkeypatch.setattr(runner, "create_provider_execution_plan", lambda *args, **kwargs: object())
     monkeypatch.setattr(runner, "write_provider_execution_plan", lambda *args: None)
     monkeypatch.setattr(runner, "execute_provider_plan", lambda **kwargs: selection)
 

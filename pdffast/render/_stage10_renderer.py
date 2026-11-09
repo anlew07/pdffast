@@ -1000,7 +1000,27 @@ def render_page_fallback(record: dict[str, Any], page_overlay_by_task: dict[str,
             f"【整页结构解析结束】"
         )
 
-    text = clean_markdown_text(nonempty_text_channel(ov.get("fallback_content")))
+    fallback_content = ov.get("fallback_content")
+    text_obj = (
+        fallback_content.get("text")
+        if isinstance(fallback_content, dict)
+        else None
+    )
+    if not isinstance(text_obj, dict):
+        text_obj = {}
+
+    source_format = str(text_obj.get("source_format") or "")
+    raw_markdown = str(text_obj.get("raw_content") or "").strip()
+
+    # Preserve structure that a Markdown-capable provider already emitted.
+    # Plain OCR providers continue to use canonical plain text.
+    if source_format in {"markdown", "html_markdown"} and raw_markdown:
+        text = clean_markdown_text(
+            neutralize_nested_markdown_headings(raw_markdown)
+        )
+    else:
+        text = clean_markdown_text(nonempty_text_channel(fallback_content))
+
     if not text:
         return f"【整页识别失败｜第{page}页｜未恢复可靠文本】"
     # OCR fallback is content inside the current canonical section, not a new Markdown heading.
