@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .base import RawProviderResult
 from .normalization import normalize_prediction
@@ -56,6 +56,7 @@ def normalize_runtime_result(
     *,
     result_path: Path,
     manifest_path: Path,
+    plugin_normalizer_paths: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Normalize a live provider result without coupling Core to transport APIs."""
     result_path = Path(result_path)
@@ -100,5 +101,6 @@ def normalize_runtime_result(
             str(result_path): hashlib.sha256(result_json.encode("utf-8")).hexdigest(),
             str(manifest_path): hashlib.sha256(manifest_json.encode("utf-8")).hexdigest(),
         },
+        plugin_normalizer_paths=plugin_normalizer_paths,
     )
     return prediction

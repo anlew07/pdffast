@@ -101,7 +101,7 @@ def execute_provider_plan(
     observation = current_observation()
     if observation is not None:
         observation.tasks_known(len(policy_ids))
-    validate_runtime_provider_closure(policy, provider_configs)
+    validate_runtime_provider_closure(policy, provider_configs, registry=registry)
 
     output_dir = Path(output_dir)
     selected_dir = output_dir / "selected_predictions"

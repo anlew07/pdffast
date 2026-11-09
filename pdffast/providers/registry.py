@@ -58,6 +58,8 @@ def _load_factory(path: str) -> ProviderFactory:
         raise ProviderConfigurationError(f"Invalid Provider factory path: {path}")
     module = importlib.import_module(module_name)
     factory = getattr(module, attribute)
+    if not callable(factory):
+        raise ProviderConfigurationError(f"Provider entrypoint is not callable: {path}")
     return factory
 
 
@@ -86,6 +88,8 @@ def _policy_provider_names(policy: dict[str, Any]) -> frozenset[str]:
 def validate_runtime_provider_closure(
     policy: dict[str, Any],
     provider_configs: Mapping[str, dict[str, Any]],
+    *,
+    registry: Any | None = None,
 ) -> frozenset[str]:
     """Validate every policy reference before any Provider or artifact is created."""
     names = _policy_provider_names(policy)
@@ -99,7 +103,13 @@ def validate_runtime_provider_closure(
             errors.append(f"{name}: runtime-disabled")
             continue
         kind = str(config.get("kind") or "")
-        if name not in PRODUCTION_PROVIDER_NAMES or kind not in DEFAULT_ADAPTER_PATHS:
+        supports = getattr(registry, "supports", None)
+        allowed = (
+            bool(supports(name, kind))
+            if callable(supports)
+            else name in PRODUCTION_PROVIDER_NAMES and kind in DEFAULT_ADAPTER_PATHS
+        )
+        if not allowed:
             errors.append(f"{name}: unsupported production adapter kind={kind!r}")
     if errors:
         raise ProviderClosureError("; ".join(errors))
@@ -112,9 +122,37 @@ class ProviderRegistry:
         *,
         factories: Mapping[str, ProviderFactory] | None = None,
         base_dir: Path | None = None,
+        plugins: Mapping[str, Mapping[str, str]] | None = None,
     ) -> None:
         self._factories = dict(factories or {})
         self._base_dir = Path(base_dir).resolve() if base_dir is not None else None
+        self._plugins: dict[str, dict[str, str]] = {}
+        if plugins is not None and not isinstance(plugins, Mapping):
+            raise ProviderConfigurationError("plugins must be a mapping")
+        for name, entry in (plugins or {}).items():
+            if not isinstance(name, str) or not name.isidentifier() or name in PRODUCTION_PROVIDER_NAMES:
+                raise ProviderConfigurationError(f"invalid or reserved Provider plugin name: {name!r}")
+            if not isinstance(entry, Mapping):
+                raise ProviderConfigurationError(f"plugin {name}: definition must be an object")
+            kind = entry.get("kind")
+            factory = entry.get("factory")
+            normalizer = entry.get("normalizer")
+            if not isinstance(kind, str) or not kind:
+                raise ProviderConfigurationError(f"plugin {name}: kind is required")
+            for field, value in (("factory", factory), ("normalizer", normalizer)):
+                if not isinstance(value, str) or not all(value.partition(":")[::2]):
+                    raise ProviderConfigurationError(f"plugin {name}: invalid {field} entrypoint")
+            self._plugins[name] = {"kind": kind, "factory": factory, "normalizer": normalizer}
+
+    @property
+    def plugin_normalizers(self) -> dict[str, str]:
+        return {name: spec["normalizer"] for name, spec in self._plugins.items()}
+
+    def supports(self, name: str, kind: str) -> bool:
+        if name in PRODUCTION_PROVIDER_NAMES:
+            return kind in DEFAULT_ADAPTER_PATHS
+        plugin = self._plugins.get(name)
+        return plugin is not None and kind == plugin["kind"]
 
     def _resolve_path(self, raw_path: str, *, field: str) -> Path:
         expanded = os.path.expandvars(raw_path)
@@ -261,18 +299,23 @@ class ProviderRegistry:
             raise ProviderDisabledError(
                 f"Provider runtime_enabled is not true: {name}"
             )
-        if name not in PRODUCTION_PROVIDER_NAMES:
-            raise ProviderConfigurationError(
-                f"Provider is outside the production closure: {name}"
-            )
-
         kind = str(config.get("kind") or "")
-        if kind not in DEFAULT_ADAPTER_PATHS:
-            raise UnknownProviderKindError(f"Unsupported Provider kind: {kind}")
+        if name in PRODUCTION_PROVIDER_NAMES:
+            if kind not in DEFAULT_ADAPTER_PATHS:
+                raise UnknownProviderKindError(f"Unsupported Provider kind: {kind}")
+            factory_path = DEFAULT_ADAPTER_PATHS[kind]
+        else:
+            plugin = self._plugins.get(name)
+            if plugin is None:
+                raise ProviderConfigurationError(f"Provider is outside the production closure: {name}")
+            if kind != plugin["kind"]:
+                raise ProviderConfigurationError(
+                    f"plugin {name}: configured kind={kind!r}, declared kind={plugin['kind']!r}"
+                )
+            factory_path = plugin["factory"]
 
         prepared = self._prepare_config(config)
-
         factory = self._factories.get(kind)
         if factory is None:
-            factory = _load_factory(DEFAULT_ADAPTER_PATHS[kind])
+            factory = _load_factory(factory_path)
         return factory(name, prepared)
