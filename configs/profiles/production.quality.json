@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "name": "pdffast-v3-quality-two-provider-candidate",
+  "enabled_providers": [
+    "rapidocr_ch_light",
+    "mineru_local"
+  ],
+  "chains": {
+    "PAGE_DOCUMENT_OCR": [
+      "mineru_local",
+      "rapidocr_ch_light"
+    ],
+    "PAGE_DOCUMENT_LAYOUT_PARSE": [
+      "mineru_local"
+    ],
+    "REGION_MULTIMODAL_PARSE": [
+      "rapidocr_ch_light",
+      "mineru_local"
+    ],
+    "INLINE_CONTEXT_PARSE": [
+      "mineru_local",
+      "rapidocr_ch_light"
+    ]
+  }
+}
