@@ -66,3 +66,39 @@ https://huggingface.co/datalab-to/indra-ocr/blob/main/LICENSE
 历史已有运行结果可直接在 `outputs/indra_triple_smoke/` 下查找，
 **不必因为终端滚动丢失而重新解析。**
 
+## 四份真实 PDF 批量回归
+
+此前 `case_002` 的单份 Smoke 已有结构审计 PASS，且条形码数字歧义已确认被抑制。
+其余四份使用相同三模型 Profile 做顺序运行（不会更改默认路由）：
+
+```bash
+cd /Users/admin/Workspace/pdffast-v3
+
+.venv/bin/python scripts/run_indra_triple_regression.py \
+  --case-002-existing outputs/indra_triple_smoke/run_20261118T035212Z
+```
+
+默认只新运行 `case_001、case_003、case_004、case_005`。
+`--case-002-existing` 只把先前的 `case_002` 结果作为参考附在汇总报告里，
+**不重新解析，也不把它计入本轮四份机器 PASS 统计**。
+如果需要五份样本在完全同一批次下重新执行，改用 `--all`（不要同时带
+`--case-002-existing`）。
+
+输入默认从 `benchmark/samples/real/` 读取。如 PDF 不在这里，可指定
+`--pdf-dir /绝对路径/PDF目录`。所有输入文件在执行前一次性检查，缺文件直接
+报错，避免产生误导性的部分测试记录。
+
+输出位于 `outputs/indra_triple_regression/indra_triple_*/`：
+
+- `regression_report.md`：逐份 PASS/FAIL、Fallback/Indra/RapidOCR/MinerU 次数、
+  被拒绝原因和条码保护统计。
+- `regression_summary.json`：机器可读结果与路径、输入 SHA256、Profile SHA256。
+- `case_001/`、`case_003/` 等：分别保存原有 V3 result、Stage 9 证据和
+  `console.log` 全量日志。
+
+终端只输出每份开始/结束摘要，不回显整篇 Markdown，某份失败则打印最后 15 行日志，
+继续其他 PDF。最后若存在机器验收失败则以非零退出。
+
+**验收边界**：Audit PASS 和机器 PASS 不能证明 OCR 文字正确。必须人工核对
+`case_001` 第 22 页中文标识、证书/图片文字，以及条形码数字是否存在未验证
+候选值错误进入最终 Markdown。所有案例的人工作业状态初始都标记为 `PENDING`。
