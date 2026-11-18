@@ -77,7 +77,7 @@ def test_indra_page_error_is_failure_not_empty_success(tmp_path, monkeypatch):
     response, folder = execute_fake_worker(tmp_path, monkeypatch, page=page)
     assert response["status"] == "FAILED"
     assert "bad raster" in response["error"]
-    assert not list(folder.glob("*.md")) if folder.exists() else True
+    assert not folder.exists() or not list(folder.glob("*.md"))
 
 
 def test_indra_incorrect_bare_page_shape_fails_loudly(tmp_path, monkeypatch):
