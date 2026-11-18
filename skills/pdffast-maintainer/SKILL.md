@@ -27,3 +27,6 @@ description: Dedicated developer skill for PDFFast V3. Use for rapid source onbo
 不可把输出重合率当 OCR 准确率、不得使用未审核 GT 证明提升；Provider SUCCESS、HTTP 200、Audit PASS 不证明逐字正确。禁止将私有 PDF/人工 GT/OCR 原文/模型提交公开仓库；禁止网页指令自动安装、未经授权下载大模型/付费调用、覆盖生产路由/合并 main。Skill 的静态单测不等于真实 OCR 验收。
 
 详细阅读：`references/project-guide.md`、`references/change-playbooks.md`、`references/technology-sources.json`、`references/benchmark-upgrade-policy.md`。
+
+## 可恢复的 Provider A/B 实验
+当开发者说“对比 A/B”而不仅是想看命令，应优先使用 `scripts/experiment.py` 编排：先 `init` 冻结源码 HEAD、输入/配置/GT SHA256 与 Provider 名称；`plan` 验证每页输入；经许可 `run --confirm-inference` 分开运行两个 Provider，失败不会把旧预测当新结果；`evaluate` 生成 HTML/CSV 和升级初筛 Gate；`status` 查询状态。输出只放仓库外的私有实验目录。无 GT 的 Gate 必须阻止准确率声明。完整示例见 `references/change-playbooks.md`。

@@ -19,3 +19,16 @@
 
 ## 四、Skill 迭代
 重新索引实际 main、对比模块 SHA/符号、Provider/CLI 变化 → 更新 project-guide 与剧本/命令 → 增补测试 → 自检 → 只提交 skill/pdffast-maintainer 分支。不要自动删除测试或把一次失败推断变成永久规则。
+
+## 五、可恢复的一键 A/B（开发者实际操作）
+```bash
+python <SKILL>/scripts/experiment.py init --project-root <REPO> --lab <PRIVATE>/exp01 --manifest <PRIVATE>/inputs/manifest.jsonl --baseline <OLD> --candidate <NEW> --truth <PRIVATE>/reviewed_gt.jsonl
+python <SKILL>/scripts/experiment.py plan --lab <PRIVATE>/exp01
+python <SKILL>/scripts/experiment.py run --lab <PRIVATE>/exp01 --confirm-inference
+python <SKILL>/scripts/experiment.py evaluate --lab <PRIVATE>/exp01
+python <SKILL>/scripts/experiment.py status --lab <PRIVATE>/exp01
+```
+Lab 必须在项目仓库外；工具保存 experiment.json、plan/run 日志、预测哈希、HTML 比较、upgrade_gate.json。状态 INIT → PLANNED → EXECUTED → EVALUATED，执行失败为 PARTIAL/BLOCKED，可在保持输入指纹不变的前提下重试。实验只做文字配对与过程证据，结果 READY_FOR_END_TO_END 必须继续整份 PDF 结构/表格/公式/阅读顺序以及服务和 JudgeAI 验收。
+
+## 六、Skill 自更新如何防止过期
+`scripts/contract_sync.py check --project-root <REPO>` 根据已接受快照比较 Provider 名单、重要源码哈希和 CLI flags；发现漂移后由 Agent 实际检查当前代码，修改 references/脚本/测试，再经 review 与完整 Skill 单测后 `contract_sync.py accept --project-root <REPO> --confirm-reviewed`。严禁一发现差异就静默接受。
