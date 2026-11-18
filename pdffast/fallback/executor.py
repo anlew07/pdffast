@@ -186,20 +186,12 @@ def execute_provider_plan(
                         )
                         raw_path = output_dir / "provider_raw" / f"{task_id}.json"
                         manifest_path = output_dir / "provider_raw" / "runtime_manifest.json"
-                        try:
-                            canonical = normalizer(
-                                raw,
-                                task,
-                                result_path=raw_path,
-                                manifest_path=manifest_path,
-                            )
-                        except TypeError as exc:
-                            # Preserve the small legacy/fake normalizer contract used
-                            # by migration tests; runtime adapters should accept paths.
-                            try:
-                                canonical = normalizer(raw, task)
-                            except TypeError:
-                                raise exc
+                        canonical = normalizer(
+                            raw,
+                            task,
+                            result_path=raw_path,
+                            manifest_path=manifest_path,
+                        )
                     except Exception as exc:
                         if observation is not None:
                             observation.failure("provider_task_failed", exc)

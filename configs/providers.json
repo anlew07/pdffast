@@ -230,6 +230,31 @@
         "SURYA_GGUF_LOCAL_MMPROJ_PATH": "${HOME}/.cache/huggingface/hub/models--datalab-to--surya-ocr-2-gguf/snapshots/6a3a4c30e5e74446d4f8b6afd05b2f2da970f470/surya-2-mmproj.gguf",
         "SURYA_INFERENCE_KEEP_ALIVE": "False"
       }
+    },
+    "indra_local": {
+      "runtime_enabled": true,
+      "benchmark_enabled": false,
+      "kind": "indra_worker",
+      "python_executable": "runtimes/indra/.venv/bin/python",
+      "model_dir": "runtimes/indra/models/indra-ocr",
+      "threads": 4,
+      "furniture": true,
+      "math": false,
+      "preflight_timeout_seconds": 60,
+      "worker_init_timeout_seconds": 180,
+      "predict_timeout_seconds": 300,
+      "required_artifacts": [
+        "runtimes/indra/models/indra-ocr/det.onnx",
+        "runtimes/indra/models/indra-ocr/rec_cjk.onnx",
+        "runtimes/indra/models/indra-ocr/order.onnx"
+      ]
+    }
+  },
+  "plugins": {
+    "indra_local": {
+      "kind": "indra_worker",
+      "factory": "pdffast.providers.indra:IndraProvider",
+      "normalizer": "pdffast.providers.indra_normalizer:normalize_indra"
     }
   }
 }

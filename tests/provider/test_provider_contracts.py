@@ -17,9 +17,10 @@ IN_PROCESS_DEPENDENCY_BY_KIND = {
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PROVIDER_CONFIGS = json.loads(
+PROVIDER_DOCUMENT = json.loads(
     (PROJECT_ROOT / "configs/providers.json").read_text(encoding="utf-8")
-)["providers"]
+)
+PROVIDER_CONFIGS = PROVIDER_DOCUMENT["providers"]
 
 
 @pytest.mark.parametrize("provider_name", sorted(PROVIDER_CONFIGS))
@@ -36,7 +37,9 @@ def test_real_provider_preflight_is_explicit_pass_or_skip(provider_name: str) ->
                 f"optional Provider environment is not installed: {python_executable}"
             )
 
-    provider = ProviderRegistry(base_dir=PROJECT_ROOT).create(
+    provider = ProviderRegistry(
+        base_dir=PROJECT_ROOT, plugins=PROVIDER_DOCUMENT.get("plugins"),
+    ).create(
         provider_name,
         config,
     )

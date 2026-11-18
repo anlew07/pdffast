@@ -115,7 +115,7 @@ def test_executor_accepts_and_escalates_by_wave(tmp_path: Path) -> None:
         registry=FakeRegistry(
             {"rapidocr_ch_light": p1, "mineru_local": p2}
         ),
-        normalizer=lambda raw, task: raw.payload,
+        normalizer=lambda raw, task, **kwargs: raw.payload,
         output_dir=tmp_path,
     )
 
@@ -167,7 +167,7 @@ def test_executor_applies_terminal_or_pipeline_failure(tmp_path: Path) -> None:
             }
         },
         registry=FakeRegistry({"rapidocr_ch_light": provider}),
-        normalizer=lambda raw, task: raw.payload,
+        normalizer=lambda raw, task, **kwargs: raw.payload,
         output_dir=tmp_path,
     )
 
@@ -207,7 +207,7 @@ def test_executor_records_provider_and_normalizer_exceptions_then_escalates(
         _task("normalize-error", ["rapidocr_ch_light", "mineru_local"]),
     ]
 
-    def normalize(raw: RawProviderResult, task: dict) -> dict:
+    def normalize(raw: RawProviderResult, task: dict, **kwargs) -> dict:
         if (
             raw.provider == "rapidocr_ch_light"
             and task["task_id"] == "normalize-error"
@@ -273,7 +273,7 @@ def test_executor_validates_complete_runtime_closure_before_resolving_or_writing
             plan={"tasks": [task]},
             provider_configs={},
             registry=RegistryMustNotRun(),
-            normalizer=lambda raw, metadata: raw.payload,
+            normalizer=lambda raw, metadata, **kwargs: raw.payload,
             output_dir=output_dir,
         )
 
@@ -333,7 +333,7 @@ def test_object_executor_needs_neither_plan_nor_policy_json_and_matches_wrapper(
     result = execute_provider_plan(
         execution_plan=plan, provider_configs=configs,
         registry=FakeRegistry({"rapidocr_ch_light": provider}),
-        normalizer=lambda raw, task: raw.payload, output_dir=output_dir,
+        normalizer=lambda raw, task, **kwargs: raw.payload, output_dir=output_dir,
     )
     assert result.manifest["summary"]["accepted_task_count"] == 1
     assert provider.initialized == provider.closed == 1
@@ -346,7 +346,7 @@ def test_object_executor_needs_neither_plan_nor_policy_json_and_matches_wrapper(
     execute_fallback(
         policy=plan.data, plan={"tasks": [task]}, provider_configs=configs,
         registry=FakeRegistry({"rapidocr_ch_light": second}),
-        normalizer=lambda raw, task: raw.payload, output_dir=output_dir,
+        normalizer=lambda raw, task, **kwargs: raw.payload, output_dir=output_dir,
     )
     assert {path.relative_to(output_dir): path.read_bytes() for path in output_dir.rglob("*.json")} == artifacts
 
@@ -373,7 +373,7 @@ def test_object_executor_preserves_escalation_and_unresolved_terminal(tmp_path: 
             "mineru_local": {"kind": "mineru_worker", "runtime_enabled": True},
         },
         registry=FakeRegistry({"rapidocr_ch_light": first, "mineru_local": second}),
-        normalizer=lambda raw, task: raw.payload,
+        normalizer=lambda raw, task, **kwargs: raw.payload,
         output_dir=tmp_path,
     )
 

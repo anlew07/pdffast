@@ -41,10 +41,16 @@ def main() -> int:
         provider_chain_overrides=None if args.provider_profile else config.get("provider_chain_overrides"),
         provider_profile=args.provider_profile,
     ).parse(args.pdf, run_id=run_id, case_id=args.case_id)
-    print(f"Canonical: {result['canonical']}")
-    print(f"Markdown: {result['markdown']}")
-    print(f"Structure audit: {result['structure_audit']}")
-    return 0 if result["structure_audit"]["validation"]["pass"] else 2
+    # The actual document and evidence already exist on disk. Never dump
+    # canonical JSON or the entire Markdown body to a terminal/CI log.
+    audit_pass = result["structure_audit"]["validation"]["pass"] is True
+    print(f"Run ID: {run_id}")
+    print(f"Status: {'PASS' if audit_pass else 'AUDIT_FAILED'}")
+    print(f"Canonical JSON: {result['result_document']}")
+    print(f"Markdown: {result['result_markdown']}")
+    print(f"Audit JSON: {result['result_audit']}")
+    print(f"Manifest: {result['result_manifest']}")
+    return 0 if audit_pass else 2
 
 
 if __name__ == "__main__":

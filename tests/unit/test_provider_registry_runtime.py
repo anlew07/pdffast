@@ -11,6 +11,7 @@ PRODUCTION_NAMES = {
     "mineru_local",
     "marker_local",
     "docling_local",
+    "indra_local",
 }
 
 PRODUCTION_KINDS = {
@@ -82,7 +83,7 @@ def test_registry_declares_only_production_adapter_kinds() -> None:
     assert "pp_structure_v3" not in DEFAULT_ADAPTER_PATHS
 
 
-def test_all_six_production_providers_resolve_without_optional_imports() -> None:
+def test_builtin_production_providers_resolve_without_optional_imports() -> None:
     from pdffast.providers.registry import ProviderRegistry
 
     providers = json.loads(
@@ -101,12 +102,13 @@ def test_all_six_production_providers_resolve_without_optional_imports() -> None
             "kind": config["kind"],
         }
         for name, config in providers.items()
+        if config["kind"] in PRODUCTION_KINDS
     }
 
     assert {
         registry.create(name, config)
         for name, config in routing_configs.items()
-    } == {(name, config["kind"]) for name, config in providers.items()}
+    } == {(name, config["kind"]) for name, config in routing_configs.items()}
 
 
 def test_registry_resolves_worker_python_relative_to_explicit_base_dir(
