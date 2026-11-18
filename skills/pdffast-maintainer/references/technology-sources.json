@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Discovery sources only; not quality rankings",
+  "sources": [
+    {
+      "id": "paddleocr",
+      "repo": "PaddlePaddle/PaddleOCR",
+      "official_url": "https://github.com/PaddlePaddle/PaddleOCR"
+    },
+    {
+      "id": "rapidocr",
+      "repo": "RapidAI/RapidOCR",
+      "official_url": "https://github.com/RapidAI/RapidOCR"
+    },
+    {
+      "id": "mineru",
+      "repo": "opendatalab/MinerU",
+      "official_url": "https://github.com/opendatalab/MinerU"
+    },
+    {
+      "id": "docling",
+      "repo": "docling-project/docling",
+      "official_url": "https://github.com/docling-project/docling"
+    },
+    {
+      "id": "marker",
+      "repo": "datalab-to/marker",
+      "official_url": "https://github.com/datalab-to/marker"
+    },
+    {
+      "id": "olmocr",
+      "repo": "allenai/olmocr",
+      "official_url": "https://github.com/allenai/olmocr"
+    },
+    {
+      "id": "dots-mocr",
+      "repo": "studio-dots-ai/dots.mocr",
+      "official_url": "https://github.com/studio-dots-ai/dots.mocr"
+    },
+    {
+      "id": "tesseract",
+      "repo": "tesseract-ocr/tesseract",
+      "official_url": "https://github.com/tesseract-ocr/tesseract"
+    },
+    {
+      "id": "omnidocbench",
+      "repo": "opendatalab/OmniDocBench",
+      "official_url": "https://github.com/opendatalab/OmniDocBench"
+    }
+  ]
+}
