@@ -52,3 +52,17 @@ JudgeAI 适配器必须**显式传递** V3 的 provider_profile 路径；
 Indra 代码 Apache-2.0；模型权重适用 modified OpenRAIL-M 的额外约束。
 公司部署前必须单独核对模型许可：
 https://huggingface.co/datalab-to/indra-ocr/blob/main/LICENSE
+
+## 解析输出与完整日志
+
+普通命令 `scripts/run_pipeline.py` 的终端输出只包含 Run ID、审计状态以及
+`result/document.md`、`result/document.json`、`result/audit.json` 的路径。
+**不再向终端打印完整 Markdown 和 Canonical JSON 内容。**
+
+`scripts/verify_indra_runtime.py --smoke-pdf /path/to/case_002.pdf` 默认安静运行，
+每次生成独立 `outputs/indra_triple_smoke/smoke_*/` 目录：
+`smoke_console.log` 保存完整 stdout/stderr，子目录 `result/` 保存解析结果。
+失败时终端只显示最后 25 行报错；原始日志不会截断。
+历史已有运行结果可直接在 `outputs/indra_triple_smoke/` 下查找，
+**不必因为终端滚动丢失而重新解析。**
+
