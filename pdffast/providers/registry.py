@@ -186,6 +186,7 @@ class ProviderRegistry:
             "text_recognition_model_dir",
             "layout_detection_model_dir",
             "vl_rec_model_dir",
+            "model_dir",
         ):
             if prepared.get(field):
                 prepared[field] = str(
