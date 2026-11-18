@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Verify pinned Indra runtime and run optional V3 end-to-end smoke."""
 from __future__ import annotations
-import argparse, hashlib, json, subprocess, sys
+import argparse, hashlib, json, os, subprocess, sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 def sha256(path: Path) -> str:
@@ -59,6 +60,45 @@ def verify(root: Path, hashes: bool = False, preflight: bool = False) -> None:
             indra.close()
     print(f"PASS: Indra {package}, model revision {record['model_revision_sha']}")
 
+def smoke_pdf(root: Path, pdf: Path) -> Path:
+    """Run a real PDF once, keeping full console diagnostics beside its outputs."""
+    pdf = pdf.expanduser().resolve()
+    if not pdf.is_file():
+        raise FileNotFoundError(pdf)
+    output_root = root / "outputs/indra_triple_smoke"
+    run_id = "smoke_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"_{os.getpid()}"
+    run_dir = output_root / run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
+    log_path = run_dir / "smoke_console.log"
+    command = [
+        str(root / ".venv/bin/python"), str(root / "scripts/run_pipeline.py"), str(pdf),
+        "--project-root", str(root), "--output-root", str(output_root),
+        "--run-id", run_id,
+        "--provider-profile", str(root / "configs/profiles/production.indra-triple.json"),
+    ]
+    print(f"PDF: {pdf}", flush=True)
+    print(f"Run ID: {run_id}", flush=True)
+    print(f"Full console log: {log_path}", flush=True)
+    with log_path.open("w", encoding="utf-8") as log:
+        completed = subprocess.run(
+            command, cwd=root, stdout=log, stderr=subprocess.STDOUT, check=False,
+        )
+    if completed.returncode:
+        print(f"FAIL: PDF smoke exited with code {completed.returncode}", file=sys.stderr)
+        # Only the last few diagnostic lines belong on screen; never print huge logs.
+        with log_path.open("r", encoding="utf-8", errors="replace") as log:
+            from collections import deque
+            for line in deque(log, maxlen=25):
+                print(line.rstrip("\n"), file=sys.stderr)
+        raise SystemExit(completed.returncode)
+    print("PASS: PDF smoke completed and audit passed.")
+    print(f"Markdown: {run_dir / 'result/document.md'}")
+    print(f"Canonical JSON: {run_dir / 'result/document.json'}")
+    print(f"Audit JSON: {run_dir / 'result/audit.json'}")
+    print("Note: verify OCR fidelity manually; audit success is not proof of exact transcription.")
+    return run_dir
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
@@ -69,15 +109,7 @@ def main():
     root = args.root.resolve()
     verify(root, args.hashes, args.preflight)
     if args.smoke_pdf:
-        pdf = args.smoke_pdf.expanduser().resolve()
-        if not pdf.is_file():
-            raise FileNotFoundError(pdf)
-        subprocess.run([
-            str(root / ".venv/bin/python"), str(root / "scripts/run_pipeline.py"), str(pdf),
-            "--project-root", str(root), "--output-root", str(root / "outputs/indra_triple_smoke"),
-            "--provider-profile", str(root / "configs/profiles/production.indra-triple.json"),
-        ], cwd=root, check=True)
-        print("PASS: full pipeline finished. Manually verify OCR accuracy and Stage9.8 evidence.")
+        smoke_pdf(root, args.smoke_pdf)
 
 if __name__ == "__main__":
     main()
