@@ -12,3 +12,9 @@ benchmark/samples/*.pdf
 benchmark/samples/**/*.pdf
 *.log
 
+
+# Isolated Indra runtime: do not commit downloaded models, locks or local state
+runtimes/indra/.venv/
+runtimes/indra/models/
+runtimes/indra/install_manifest.json
+runtimes/indra/requirements.lock
