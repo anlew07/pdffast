@@ -68,8 +68,19 @@ for raw_line in sys.stdin:
             pages = list(converters[key].convert(str(input_image)))
         if len(pages) != 1:
             raise RuntimeError(f"expected one crop/page, got {len(pages)}")
-        page = pages[0]
-        if getattr(page, "source", "") == "error":
+        # Indra 1.1.2 Converter.convert() yields (page_index, Page), not Page.
+        # Silently treating the tuple as Page previously made every OCR result
+        # SUCCESS with empty markdown, so all tasks escalated to RapidOCR.
+        converted = pages[0]
+        if (not isinstance(converted, tuple) or len(converted) != 2
+                or converted[0] != 0):
+            raise RuntimeError(
+                "unexpected Indra convert() response; expected (0, Page)"
+            )
+        page_index, page = converted
+        if not all(hasattr(page, name) for name in ("markdown", "text", "lines", "source")):
+            raise TypeError("unexpected Indra Page payload; missing OCR output fields")
+        if page.source == "error":
             raise RuntimeError(str(getattr(page, "note", "Indra page error")))
         markdown = str(getattr(page, "markdown", None) or getattr(page, "text", None) or "")
         plain_text = str(getattr(page, "text", None) or "")
