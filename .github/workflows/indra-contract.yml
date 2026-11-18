@@ -1,13 +1,17 @@
 name: Indra V3 contract
+
 on:
   pull_request:
     paths:
       - "pdffast/providers/indra.py"
       - "pdffast/providers/indra_normalizer.py"
       - "pdffast/providers/registry.py"
+      - "pdffast/fallback/executor.py"
       - "configs/providers.json"
       - "configs/profiles/production.indra-triple.json"
       - "tests/unit/test_indra_runtime_integration.py"
+      - "tests/unit/test_fallback_executor.py"
+      - "tests/unit/test_provider_registry_runtime.py"
       - ".github/workflows/indra-contract.yml"
   workflow_dispatch:
 
@@ -21,10 +25,11 @@ jobs:
           python-version: "3.12"
       - name: Python syntax
         run: |
+          python -m compileall -q pdffast/providers/indra.py pdffast/providers/indra_normalizer.py pdffast/fallback/executor.py scripts/verify_indra_runtime.py tests/unit/test_indra_runtime_integration.py
       - name: Install minimal V3 and pytest
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e . pytest
-      - name: Run offline Indra contract tests
+      - name: Run unified contracts
         run: |
-          python -m pytest tests/unit/test_indra_runtime_integration.py -q
+          python -m pytest tests/unit/test_indra_runtime_integration.py tests/unit/test_fallback_executor.py tests/unit/test_provider_registry_runtime.py tests/unit/test_provider_dual_modes.py -q
