@@ -1,6 +1,6 @@
-# PDFFast V3 架构
+# PDFFast 当前架构（V3 技术基线）
 
-PDFFast V3 是一个面向 PDF 解析的对象化 Pipeline。对外使用 `PDFFastParser.parse(pdf_path)`，返回包含 Markdown、Canonical JSON、Audit 和产物路径的 `ParseResult`。
+PDFFast 当前 Core 是一个面向 PDF 解析的对象化 Pipeline。对外使用 `PDFFastParser.parse(pdf_path)`，返回包含 Markdown、Canonical JSON、Audit 和产物路径的 `ParseResult`。
 
 Core 不依赖 HTTP、FastAPI、Celery 等传输层对象；当前项目已有可选的 FastAPI 服务适配器，JudgeAI 也可以通过嵌入式调用接入。
 

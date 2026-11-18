@@ -8,46 +8,46 @@
 
 | 维度 | 必填证据 |
 |---|---|
-| 版本 | \`git rev-parse HEAD\`、\`git status --short\` |
+| 版本 | `git rev-parse HEAD`、`git status --short` |
 | 环境 | 系统架构、Python 版本、uv 版本、各 Provider 独立环境情况 |
 | 输入 | PDF 文件摘要（SHA-256）、页数、是否扫描件；私有材料仅在受控路径保留 |
-| 运行 | \`run_id\`、CLI/Python 参数、\`provider_profile\`（未传则注明默认） |
-| 结果 | 异常堆栈、\`diagnostics/logs/pipeline.log\`、\`result/manifest.json\`、Audit |
+| 运行 | `run_id`、CLI/Python 参数、`provider_profile`（未传则注明默认） |
+| 结果 | 异常堆栈、`diagnostics/logs/pipeline.log`、`result/manifest.json`、Audit |
 | 预期 | 哪个页/字段/表格/区域错、正确结果是什么、是否有人工 GT |
 
-\`manifest.json\` 可能在解析开始就出现，**不能当作完成信号**。不得凭日志“心跳”判定完成，也不能把 Provider SUCCESS/Audit PASS 当作内容准确。
+`manifest.json` 可能在解析开始就出现，**不能当作完成信号**。不得凭日志“心跳”判定完成，也不能把 Provider SUCCESS/Audit PASS 当作内容准确。
 
 ## 2. 按责任层定位
 
 | 症状 | 首查路径 | 排查重点 |
 |---|---|---|
-| Python/CLI 参数、配置错误 | \`pdffast/parser.py\`、\`config.py\`、\`scripts/run_pipeline.py\` | project_root、输出目录、Profile |
-| 原生文字缺失、阅读顺序错 | \`pdffast/native/\` | 文本块、表格、原生证据 |
-| 不必要 OCR / 本应 OCR 却未触发 | \`pdffast/quality/\`、\`pdffast/fallback/router.py\` | Quality Gate、路由决策 |
-| 图像裁剪失败或空图 | \`pdffast/fallback/planner.py\` | bbox、页面坐标、DPI、像素区域 |
-| 某 OCR 不可用、卡住、回退不正确 | \`pdffast/providers/\`、\`pdffast/fallback/executor.py\` | 解释器/模型、preflight、worker、超时与回退 |
-| OCR 文本被错误合并/漏掉 | \`pdffast/providers/runtime_normalization.py\`、\`pdffast/canonical/\` | Raw/Canonical、来源、补充证据 |
-| 标题、段落、表格顺序不对 | \`pdffast/structure_reconciliation/\`、\`pdffast/render/\` | 结构推断、正文映射 |
-| 结果文件/结构审计异常 | \`pdffast/pipeline/artifacts.py\`、\`pdffast/audit/\` | 输出合同、引用、完整性 |
-| HTTP 退出/取消问题 | \`pdffast/service/app.py\`、\`pdffast/runtime.py\` | Core/Service 生命周期 |
+| Python/CLI 参数、配置错误 | `pdffast/parser.py`、`config.py`、`scripts/run_pipeline.py` | project_root、输出目录、Profile |
+| 原生文字缺失、阅读顺序错 | `pdffast/native/` | 文本块、表格、原生证据 |
+| 不必要 OCR / 本应 OCR 却未触发 | `pdffast/quality/`、`pdffast/fallback/router.py` | Quality Gate、路由决策 |
+| 图像裁剪失败或空图 | `pdffast/fallback/planner.py` | bbox、页面坐标、DPI、像素区域 |
+| 某 OCR 不可用、卡住、回退不正确 | `pdffast/providers/`、`pdffast/fallback/executor.py` | 解释器/模型、preflight、worker、超时与回退 |
+| OCR 文本被错误合并/漏掉 | `pdffast/providers/runtime_normalization.py`、`pdffast/canonical/` | Raw/Canonical、来源、补充证据 |
+| 标题、段落、表格顺序不对 | `pdffast/structure_reconciliation/`、`pdffast/render/` | 结构推断、正文映射 |
+| 结果文件/结构审计异常 | `pdffast/pipeline/artifacts.py`、`pdffast/audit/` | 输出合同、引用、完整性 |
+| HTTP 退出/取消问题 | `pdffast/service/app.py`、`pdffast/runtime.py` | Core/Service 生命周期 |
 
 ### 典型：0×0 裁剪
 
-历史问题：原始区域可能小于一个像素，\`page.crop(...).to_image(...).original.save()\` 抛出 \`ValueError: cannot write empty image\`。相关防护位于 \`pdffast/fallback/planner.py\`，测试 \`tests/unit/test_zero_pixel_fallback_crop.py\`。
+历史问题：原始区域可能小于一个像素，`page.crop(...).to_image(...).original.save()` 抛出 `ValueError: cannot write empty image`。相关防护位于 `pdffast/fallback/planner.py`，测试 `tests/unit/test_zero_pixel_fallback_crop.py`。
 
-**修复准则**：保留 \`source_bbox\` 原始证据坐标，只调整 OCR 渲染范围并记录 \`render.raster_bbox\`；不要在 JudgeAI 中吞掉异常、伪造空文本成功。
+**修复准则**：保留 `source_bbox` 原始证据坐标，只调整 OCR 渲染范围并记录 `render.raster_bbox`；不要在 JudgeAI 中吞掉异常、伪造空文本成功。
 
 ## 3. Bug 修复操作标准
 
-1. 在独立 \`fix/<topic>\` 分支从当前 \`main\` 开始；保留输入摘要、错误轨迹与配置。
+1. 在独立 `fix/<topic>` 分支从当前 `main` 开始；保留输入摘要、错误轨迹与配置。
 2. **先写复现测试**：用能脱敏的最小 fixture/合成 PDF；若需真实私有样本，放在 Git 忽略目录，不上传原件或原始文本。
 3. 修改最小责任模块；禁止“顺手”大规模重命名 Stage/API/默认路由。
 4. 运行相关单测，再跑合同/回归。示例：
 
-   \`\`\`bash
+   ```bash
    .venv/bin/python -m pytest -q tests/unit/test_zero_pixel_fallback_crop.py
    .venv/bin/python -m pytest -q tests/unit tests/contracts tests/regression
-   \`\`\`
+   ```
 
 5. 涉及真实 PDF 输出时，使用**同一份 PDF、同一 Profile、明确的两版 SHA**做 Markdown、Canonical、Audit 与耗时对比；标记人工未审核项。
 6. PR 写清复现、修复、PASS/FAIL/SKIP、环境、风险和回滚提交。CI 失败时不合并。
@@ -56,11 +56,11 @@
 
 注册新 OCR 的主要文件：
 
-- Adapter：\`pdffast/providers/<provider>.py\`，实现 \`preflight / initialize / execute / close\`；
-- 规范化：\`pdffast/providers/<provider>_normalizer.py\` 或适用的已有 Normalizer；
-- 配置：\`configs/providers.json\` 中受信插件/Provider 声明；
-- 路由实验：独立 \`configs/profiles/*.json\`，需覆盖四个 Capability Route；
-- 检测：\`tests/unit/\`、\`tests/provider/\`，再做真实 PDF 的质量和性能基准。
+- Adapter：`pdffast/providers/<provider>.py`，实现 `preflight / initialize / execute / close`；
+- 规范化：`pdffast/providers/<provider>_normalizer.py` 或适用的已有 Normalizer；
+- 配置：`configs/providers.json` 中受信插件/Provider 声明；
+- 路由实验：独立 `configs/profiles/*.json`，需覆盖四个 Capability Route；
+- 检测：`tests/unit/`、`tests/provider/`，再做真实 PDF 的质量和性能基准。
 
 先确定来源、模型授权、平台和硬件需求，再安装隔离依赖，固定可复现 revision 与哈希。通过 **import → artifact 检查 → preflight → 单任务输出规范化 → 真实 PDF → GT/人工质量复核** 后，才考虑改变生产选择。不能只看非空 OCR 文本或一个 PDF 的 PASS。
 

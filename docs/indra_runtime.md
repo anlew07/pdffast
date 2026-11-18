@@ -1,3 +1,5 @@
+> **现行使用提示**：本页保留 2026-11-18 Indra 研发记录，包含已经合并的旧功能分支命令。正式维护请以 `main` 的 `scripts/install_indra_runtime.sh`、`scripts/verify_indra_runtime.py` 和 [环境重建清单](REBUILD_ZH.md) 为准；不要直接执行下文带旧功能分支名的 `git pull`。
+
 # Indra OCR — 统一 Runtime / JudgeAI 集成
 
 Indra 不是新的 PDF 分类器：V3 先用 pdfplumber 做原生解析，Stage 8 决定哪些

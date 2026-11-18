@@ -15,7 +15,7 @@
 | [架构概览](ARCHITECTURE.md) | 理解 Core | 当前对象化 Pipeline |
 | [Core 流程](PIPELINE.md) | 阅读执行路径 | 关键组件与运行阶段 |
 | [Python 接入](INTEGRATION_ZH.md) | 外部系统 | 公共 API 与异常 |
-| [输出模式](OUTPUT_MODES_ZH.md) | 集成与排障 | \`result/\` 和诊断产物 |
+| [输出模式](OUTPUT_MODES_ZH.md) | 集成与排障 | `result/` 和诊断产物 |
 | [故障排查](TROUBLESHOOTING_ZH.md) | 日常问题 | 从日志到责任模块 |
 
 ## 二、专项技术文档（按需核对源码）
@@ -45,4 +45,4 @@
 - 新的 Provider、模型文件、CLI 参数或用户可见结果改变时，须同时更新相关操作文档与验收范围。
 - 历史实测数据注明日期、样本、Profile、机器、Git SHA，不能无条件写成当前基准。
 - 环境探针 PASS 只代表资源检查，不等于真实模型推理和 OCR 文字准确。
-- \`README\` 负责导航；内部深入排障与方法写在维护文档，避免把所有历史资料堆在首页。
+- `README` 负责导航；内部深入排障与方法写在维护文档，避免把所有历史资料堆在首页。

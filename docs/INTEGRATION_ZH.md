@@ -11,8 +11,7 @@ PDFFast Core 接受本地 PDF 路径和普通 Python 参数，返回 `ParseResul
   -> ParseResult
 ```
 
-Core 不接收 FastAPI `UploadFile`、HTTP request/response 或 Celery task。未来接入 HTTP 时，
-adapter 应先把上传内容保存为受控的本地临时文件，再调用 Parser，最后把 `ParseResult` 映射为
+Core 不接收 FastAPI `UploadFile`、HTTP request/response 或 Celery task。现有 HTTP adapter 会先把上传内容保存为受控的本地临时文件，再调用 Parser，最后把 `ParseResult` 映射为
 响应。解析 Pipeline 不需要知道传输协议。
 
 ## 建议封装
@@ -76,7 +75,7 @@ except PDFFastError:
 - 输入文件在 `parse()` 返回前必须保持可读；
 - MinerU、Marker、Docling 由 Core 通过隔离 subprocess worker 调用；
 - worker 由 executor 在 `finally` 中关闭，业务层不要直接管理 Provider 进程；
-- 模型缓存是用户级共享资源，Python 虚拟环境属于当前 V2 工程。
+- 模型缓存可能是用户级共享资源，Python 虚拟环境属于当前独立 PDFFast 开发工作区；JudgeAI 的嵌入式运行时由 JudgeAI 单独锁定。
 
 ## 输出契约
 
