@@ -12,6 +12,7 @@ from .normalization import (
     SCHEMA_VERSION, VERSION, STATUS_MAP, availability,
     extract_tables, extract_formulas, extract_reading_blocks,
     markdown_to_plain_text, source_sha256, text_payload,
+    _machine_code_safety_diagnostics,
 )
 
 def normalize_indra(
@@ -84,6 +85,12 @@ def normalize_indra(
             "line_count": len(items), "explicit_table_count": len(tables),
             "explicit_formula_count": len(formulas),
             "ocr_source": response.get("source"),
+            # Apply the same provider-agnostic OCR-candidate safety diagnostics as
+            # RapidOCR. No barcode is inferred or decoded from text alone.
+            "machine_code": _machine_code_safety_diagnostics(
+                provider_structure=result.get("structure"),
+                spatial_items=items,
+            ),
             "quality_warning": "A non-empty result does not establish transcription accuracy",
         },
         "source_artifacts": {
