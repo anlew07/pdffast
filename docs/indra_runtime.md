@@ -102,3 +102,30 @@ cd /Users/admin/Workspace/pdffast-v3
 **验收边界**：Audit PASS 和机器 PASS 不能证明 OCR 文字正确。必须人工核对
 `case_001` 第 22 页中文标识、证书/图片文字，以及条形码数字是否存在未验证
 候选值错误进入最终 Markdown。所有案例的人工作业状态初始都标记为 `PENDING`。
+
+## Indra tuple 返回值缺陷修复（2026-11-18）
+
+实测四份 PDF 的 163 次 Indra 尝试全部 `SUCCESS` 但空文本，已定位为
+Worker 的确定性接口错误：官方 `indra_ocr.document.Converter.convert()`
+返回 `(page_index, Page)`，旧实现直接把整个元组当成 `Page`，使用
+`getattr(..., default)` 取 `markdown` / `text` 时静默返回空值。
+
+现已改为严格拆包 `page_index, page = converted`，并验证索引/字段结构。
+Worker 的真实协议级单元测试使用官方相同返回形态，检测正文与几何信息
+写入成功、模型错误与意外接口形态必须明确失败。
+代码层验收不代表 Mac 上真实模型识别质量已被再次验证。
+
+同步 GitHub 分支后无需重新安装模型，必须重新运行 PDF 回归才能确认
+本次修复在本机有效：
+
+```bash
+git pull --ff-only origin feat/indra-unified-runtime-judgeai
+.venv/bin/python -m pytest tests/unit/test_indra_worker_convert_contract.py -q
+.venv/bin/python scripts/run_indra_triple_regression.py \
+  --case-002-existing outputs/indra_triple_smoke/run_20261118T035212Z
+```
+
+本轮应检查各案例 `selected_provider_counts` 是否出现 `indra_local`
+以及 `indra_empty_text_attempts` 是否显著下降；真实 OCR 仍须人工核对。
+**注意：此前的 case_002 引用结果来自修复前版本，不能作为修复后的 Indra 成功证据。**
+
