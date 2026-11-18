@@ -133,3 +133,72 @@ def test_candidate_profile_uses_mineru_for_layout():
         profile["enabled_providers"]
     )
     assert cfg["plugins"]["indra_local"]["factory"] == "pdffast.providers.indra:IndraProvider"
+
+
+def test_indra_machine_code_conflicting_long_numbers_are_suppressed(tmp_path):
+    """Indra and RapidOCR use the same conservative numeric conflict policy."""
+    from pdffast.render._stage10_renderer import render_machine_code_safety_block
+
+    manifest = tmp_path / "manifest.json"
+    result_path = tmp_path / "result.json"
+    manifest.write_text("{}", encoding="utf-8")
+    result_path.write_text("{}", encoding="utf-8")
+    task = {
+        "task_id": "region-barcode", "task_type": "REGION_FALLBACK",
+        "page_number": 2, "source_id": "region-barcode",
+        "capability_route": "REGION_MULTIMODAL_PARSE",
+    }
+    result = {
+        "task_id": "region-barcode", "status": "SUCCESS",
+        "text": "005119116173\n006119116173",
+        "provider": {"name": "indra_local", "kind": "indra_worker"},
+        "worker_response": {
+            "plain_text": "005119116173\n006119116173",
+            "lines": [
+                {"text": "005119116173", "box": [0, 0, 100, 10], "conf": 0.6},
+                {"text": "006119116173", "box": [0, 11, 100, 21], "conf": 0.5},
+            ],
+        },
+    }
+    canonical = normalize_indra(
+        result=result, manifest_task=task,
+        manifest_path=manifest, result_path=result_path,
+    )
+    validate_canonical(canonical)
+    diag = canonical["diagnostics"]["machine_code"]
+    assert diag["action"] == "SUPPRESS_AMBIGUOUS_LONG_NUMERIC_OCR"
+    assert diag["long_numeric_candidate_count"] == 2
+    block = render_machine_code_safety_block(
+        canonical, page=2, region_meta="｜区域=region-barcode",
+    )
+    assert "机器编码候选抑制" in block
+    assert "005119116173" not in block
+    assert "006119116173" not in block
+    assert canonical["text"]["content"] == "005119116173\n006119116173"
+
+
+def test_indra_short_ocr_has_no_false_machine_code_verification(tmp_path):
+    manifest = tmp_path / "manifest.json"
+    result_path = tmp_path / "result.json"
+    manifest.write_text("{}", encoding="utf-8")
+    result_path.write_text("{}", encoding="utf-8")
+    task = {
+        "task_id": "region-short", "task_type": "REGION_FALLBACK",
+        "page_number": 2, "source_id": "region-short",
+        "capability_route": "REGION_MULTIMODAL_PARSE",
+    }
+    result = {
+        "task_id": "region-short", "status": "SUCCESS", "text": "123",
+        "provider": {"name": "indra_local", "kind": "indra_worker"},
+        "worker_response": {
+            "lines": [
+                {"text": "123", "box": [1, 1, 30, 10], "conf": 0.85},
+            ],
+        },
+    }
+    canonical = normalize_indra(
+        result=result, manifest_task=task,
+        manifest_path=manifest, result_path=result_path,
+    )
+    assert canonical["diagnostics"]["machine_code"]["action"] == "NONE"
+    assert canonical["diagnostics"]["machine_code"]["decoded_values"] == []
