@@ -1,0 +1,28 @@
+name: Fallback raster crop contract
+
+on:
+  pull_request:
+    paths:
+      - "pdffast/fallback/planner.py"
+      - "tests/unit/test_zero_pixel_fallback_crop.py"
+      - ".github/workflows/fallback-crop-contract.yml"
+  workflow_dispatch:
+
+jobs:
+  stage9-raster-crop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install minimal pdffast and pytest
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+      - name: Run real pdfplumber regression tests
+        run: |
+          python -m pytest -q tests/unit/test_zero_pixel_fallback_crop.py
+      - name: Check affected test contracts
+        run: |
+          python -m pytest -q tests/unit/test_fallback_executor.py tests/unit/test_pipeline_context.py
