@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "name": "pdffast-v3-indra-rapidocr-mineru-candidate",
+  "enabled_providers": [
+    "indra_local",
+    "rapidocr_ch_light",
+    "mineru_local"
+  ],
+  "chains": {
+    "PAGE_DOCUMENT_OCR": [
+      "indra_local",
+      "rapidocr_ch_light",
+      "mineru_local"
+    ],
+    "PAGE_DOCUMENT_LAYOUT_PARSE": [
+      "mineru_local"
+    ],
+    "REGION_MULTIMODAL_PARSE": [
+      "indra_local",
+      "rapidocr_ch_light",
+      "mineru_local"
+    ],
+    "INLINE_CONTEXT_PARSE": [
+      "indra_local",
+      "mineru_local",
+      "rapidocr_ch_light"
+    ]
+  }
+}
