@@ -20,6 +20,11 @@ def index(rows, name):
     return result
 
 def dist(a, b):
+    try:
+        from rapidfuzz.distance import Levenshtein
+        return Levenshtein.distance(a,b)
+    except ImportError:
+        pass
     if len(a) < len(b):
         a, b = b, a
     prev = list(range(len(b) + 1))

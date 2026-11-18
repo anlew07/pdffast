@@ -2,9 +2,9 @@
 name: pdffast-maintainer
 description: Dedicated developer skill for PDFFast V3. Use for rapid source onboarding, locating interfaces and tests, debugging or modifying parsing, finding new OCR technology, isolated Provider benchmarks, evidence-gated upgrades, and skill maintenance.
 ---
-# PDFFast Maintainer v0.2.0
+# PDFFast Maintainer v0.3.0
 
-本 Skill 用于**让陌生 Coding AI 理解并维护 PDFFast**，不只是提示词。先读 `references/project-guide.md`，再按 `references/change-playbooks.md` 执行。工具需要 Python 3.12+ 和实际 PDFFast checkout；修改以实时源码为准。
+本 Skill 用于**让陌生 Coding AI 理解并维护 PDFFast**，不只是提示词。先读 `references/agent-onboarding.md`，再读 `references/project-guide.md`，再按 `references/change-playbooks.md` 执行。工具需要 Python 3.12+ 和实际 PDFFast checkout；修改以实时源码为准。
 
 ## 入场
 1. 找到真正代码目录（必须存在 `pdffast/parser.py`、`configs/providers.json`、`tools/provider_benchmark/run.py`），不要猜用户绝对路径。
@@ -30,3 +30,11 @@ description: Dedicated developer skill for PDFFast V3. Use for rapid source onbo
 
 ## 可恢复的 Provider A/B 实验
 当开发者说“对比 A/B”而不仅是想看命令，应优先使用 `scripts/experiment.py` 编排：先 `init` 冻结源码 HEAD、输入/配置/GT SHA256 与 Provider 名称；`plan` 验证每页输入；经许可 `run --confirm-inference` 分开运行两个 Provider，失败不会把旧预测当新结果；`evaluate` 生成 HTML/CSV 和升级初筛 Gate；`status` 查询状态。输出只放仓库外的私有实验目录。无 GT 的 Gate 必须阻止准确率声明。完整示例见 `references/change-playbooks.md`。
+
+## v0.3 工程工作流
+新开发者必须从 `references/agent-onboarding.md` 开始：
+- 一键检查 `maintain.py doctor --project-root <REPO>`；精准找改动位置 `maintain.py impact --project-root <REPO> --topic <关键字>`，输出源码符号/直接依赖/推荐测试。
+- 候选发现 `technology_radar.py --online`，验证官方 GitHub Release/模型卡/许可证/硬件后，再使用 `maintain.py scaffold --project-root <REPO> --candidate <ID> --route PAGE_DOCUMENT_OCR --out <PRIVATE>/scaffold` 生成故意拒绝执行的 Adapter/Normalizer 包。
+- 使用 `experiment_config.py --project-root <REPO> --fragment <PRIVATE>/scaffold/registry-fragment.json --out <PRIVATE>/providers.lab.json` 生成私有注册配置；安装候选代码/模型必须有授权并在隔离环境。
+- `experiment.py init/plan/run/evaluate/status` 冻结源码、真正的图像/PDF 文件、配置、GT 哈希，再做可恢复的同页 A/B；`run` 需要 `--confirm-inference`。
+- `READY_FOR_END_TO_END` 仅允许申请真实 PDF 和接口回归，绝不自动生产替换；详见 `references/real-ocr-upgrade.md`。

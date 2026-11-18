@@ -6,10 +6,12 @@ from pathlib import Path
 DIR=Path(__file__).resolve().parent
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument("task",choices=("doctor","map","tests","radar"))
+    p.add_argument("task",choices=("doctor","map","impact","scaffold","tests","radar"))
     p.add_argument("--project-root",required=True,type=Path)
     p.add_argument("--out",type=Path)
     p.add_argument("--topic")
+    p.add_argument("--candidate")
+    p.add_argument("--route")
     p.add_argument("--online",action="store_true")
     p.add_argument("--with-tests",action="store_true")
     a=p.parse_args();root=a.project_root.resolve()
@@ -19,6 +21,15 @@ def main():
               ("index",[sys.executable,str(DIR/"project_index.py"),"--project-root",str(root)])]
         if a.out:cmds[-1][1].extend(["--out",str(a.out)])
         if a.with_tests:cmds.append(("tests",[sys.executable,"-m","pytest","-q","tests/unit","tests/contracts","tests/regression"]))
+    elif a.task=="impact":
+        if not a.topic:p.error("impact requires --topic")
+        cmd=[sys.executable,str(DIR/"change_impact.py"),"--project-root",str(root),"--topic",a.topic]
+        if a.out:cmd+=["--out",str(a.out)]
+        cmds=[("impact",cmd)]
+    elif a.task=="scaffold":
+        if not a.candidate or not a.route or not a.out:p.error("scaffold requires --candidate --route --out")
+        cmds=[("scaffold",[sys.executable,str(DIR/"candidate_scaffold.py"),
+                          "--candidate",a.candidate,"--route",a.route,"--out",str(a.out)])]
     elif a.task=="map":
         cmd=[sys.executable,str(DIR/"project_index.py"),"--project-root",str(root)]
         if a.out:cmd+=["--out",str(a.out)]

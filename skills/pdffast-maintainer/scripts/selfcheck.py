@@ -8,7 +8,11 @@ REQUIRED=["SKILL.md","README.md","references/project-guide.md",
           "references/repo-contract.md","references/benchmark-upgrade-policy.md",
           "scripts/project_index.py","scripts/technology_radar.py",
           "scripts/upgrade_profile.py","scripts/maintain.py","scripts/benchmark.py",
-          "scripts/evaluate_upgrade.py","scripts/inspect_project.py","scripts/experiment.py","scripts/contract_sync.py"]
+          "scripts/evaluate_upgrade.py","scripts/inspect_project.py","scripts/experiment.py","scripts/contract_sync.py",
+          "scripts/change_impact.py","scripts/candidate_scaffold.py",
+          "scripts/experiment_config.py","scripts/propose_profile.py","scripts/candidate_registry.py",
+          "references/agent-onboarding.md","references/real-ocr-upgrade.md",
+          "tests/test_developer_tools.py","tests/test_experiment_safety.py"]
 PROJECT=["pdffast/parser.py","pdffast/providers/base.py","pdffast/providers/registry.py",
          "pdffast/pipeline/runner.py","tools/provider_benchmark/run.py",
          "tools/provider_benchmark/evaluate.py","configs/providers.json"]
