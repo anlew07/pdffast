@@ -11,7 +11,7 @@ import pytest
     [
         (
             "configs/providers.json",
-            "9de971e198a849713fcc18db28142140f3a84b184cc3f608440bd14bc4b323da",
+            "99c895dfef4016424621e8d614e27cb215b02ac78be114ce62de0e38a8e13dc3",
         ),
         (
             "configs/frozen/stage9_route_candidates_prod_v001.json",
@@ -34,7 +34,10 @@ def test_provider_registry_contains_exact_approved_scope() -> None:
         "docling_local",
         "mineru_local",
         "marker_local",
+        "indra_local",
     }
+    assert set(registry.get("plugins") or {}) == {"indra_local"}
+    assert registry["plugins"]["indra_local"]["factory"] == "pdffast.providers.indra:IndraProvider"
 
 
 def test_retained_provider_objects_equal_explicit_reference_migration() -> None:
@@ -51,6 +54,11 @@ def test_retained_provider_objects_equal_explicit_reference_migration() -> None:
             encoding="utf-8"
         )
     )["providers"]
+    # The historical reference contains the six original production providers.
+    # Indra was added later as an explicitly registered plugin, so preserve
+    # reference parity for the six rather than pretending Indra was in V2.
+    assert set(reference) <= set(candidate)
+    assert set(candidate) - set(reference) == {"indra_local"}
     expected = {}
     normalized_candidate = {}
     migrated_python_paths = {
@@ -58,7 +66,7 @@ def test_retained_provider_objects_equal_explicit_reference_migration() -> None:
         "mineru_local": (".venv-mineru/bin/python", "runtimes/mineru/.venv/bin/python"),
         "marker_local": (".venv-marker/bin/python", "runtimes/marker/.venv/bin/python"),
     }
-    for name in candidate:
+    for name in reference:
         migrated = dict(reference[name])
         migrated["benchmark_enabled"] = bool(migrated.pop("enabled"))
         migrated["runtime_enabled"] = True
