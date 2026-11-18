@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,57 @@ def bbox_to_tuple(bbox: dict[str, Any]) -> tuple[float, float, float, float]:
         safe_float(bbox.get("x1")),
         safe_float(bbox.get("bottom")),
     )
+
+
+def raster_safe_region_bbox(
+    bbox: dict[str, Any],
+    page_bbox: tuple[float, float, float, float],
+    dpi: int,
+    *,
+    task_id: str,
+) -> tuple[float, float, float, float]:
+    """Render a real, nonempty pixel crop even when Stage 8 bbox is subpixel.
+
+    PDF coordinates are in points; pdfplumber truncates crop boundaries in
+    image pixels, so a valid very narrow region can round to a 0x0 PNG.
+    Enlarge *only the raster input* to >=2 pixels per axis; the original
+    source_bbox remains unchanged for canonical provenance.
+    """
+    if dpi <= 0:
+        raise ValueError(f"{task_id}: invalid region DPI: {dpi}")
+    try:
+        x0, top, x1, bottom = (float(bbox[name]) for name in ("x0", "top", "x1", "bottom"))
+        page_x0, page_top, page_x1, page_bottom = map(float, page_bbox)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"{task_id}: invalid region/page bbox: {bbox}") from exc
+    if not all(math.isfinite(v) for v in (
+        x0, top, x1, bottom, page_x0, page_top, page_x1, page_bottom
+    )):
+        raise ValueError(f"{task_id}: non-finite crop coordinates: {bbox}")
+    if x1 < x0 or bottom < top or page_x1 <= page_x0 or page_bottom <= page_top:
+        raise ValueError(f"{task_id}: inverted/invalid crop bbox: {bbox}")
+    if x1 < page_x0 or x0 > page_x1 or bottom < page_top or top > page_bottom:
+        raise ValueError(f"{task_id}: region outside PDF page: {bbox}")
+
+    # Intersect to avoid expanding content outside a real page. A zero-area
+    # source region on the boundary is allowed: the raster will be enlarged
+    # inwards, while source_bbox retains the exact Stage 8 geometry.
+    x0, x1 = max(x0, page_x0), min(x1, page_x1)
+    top, bottom = max(top, page_top), min(bottom, page_bottom)
+    minimum_span = 2.0 * 72.0 / dpi
+
+    def ensure_span(lo: float, hi: float, bound_lo: float, bound_hi: float) -> tuple[float, float]:
+        width = hi - lo
+        desired = min(minimum_span, bound_hi - bound_lo)
+        if width >= desired:
+            return lo, hi
+        center = (lo + hi) / 2.0
+        start = max(bound_lo, min(center - desired / 2.0, bound_hi - desired))
+        return start, start + desired
+
+    x0, x1 = ensure_span(x0, x1, page_x0, page_x1)
+    top, bottom = ensure_span(top, bottom, page_top, page_bottom)
+    return x0, top, x1, bottom
 
 
 def validate_stage8(qg: dict[str, Any]) -> None:
@@ -216,7 +268,10 @@ def render_task_inputs(
                     bbox = task.get("source_bbox")
                     if not isinstance(bbox, dict):
                         raise ValueError(f"任务缺少 bbox：{task['task_id']}")
-                    clip = bbox_to_tuple(bbox)
+                    source_clip = bbox_to_tuple(bbox)
+                    clip = raster_safe_region_bbox(
+                        bbox, page.bbox, region_dpi, task_id=str(task["task_id"])
+                    )
                     cropped = page.crop(clip, strict=False)
                     img = cropped.to_image(resolution=region_dpi).original
                     if ttype == TASK_REGION_FALLBACK:
@@ -226,12 +281,25 @@ def render_task_inputs(
                     else:
                         raise ValueError(f"未知 task_type：{ttype}")
 
+                if img.width <= 0 or img.height <= 0:
+                    raise ValueError(
+                        f"{task['task_id']}: empty raster crop {img.size}; "
+                        f"page={pn}, source_bbox={task.get('source_bbox')}, "
+                        f"render_bbox={clip if ttype != TASK_PAGE_FALLBACK else page.bbox}"
+                    )
                 img.save(path)
                 task["input_image"] = str(path)
                 task["render"] = {
                     "renderer": "pdfplumber",
                     "dpi": page_dpi if ttype == TASK_PAGE_FALLBACK else region_dpi,
                 }
+                if ttype != TASK_PAGE_FALLBACK:
+                    # Distinguish the OCR-only pixel footprint from the source
+                    # region. Never overwrite source_bbox or the Stage 8 evidence.
+                    task["render"]["raster_bbox"] = {
+                        key: value for key, value in zip(("x0", "top", "x1", "bottom"), clip)
+                    }
+                    task["render"]["raster_bbox_adjusted"] = clip != source_clip
 
 
 def build_markdown(doc: dict[str, Any]) -> str:
