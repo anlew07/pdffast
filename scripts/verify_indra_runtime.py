@@ -66,7 +66,7 @@ def smoke_pdf(root: Path, pdf: Path) -> Path:
     if not pdf.is_file():
         raise FileNotFoundError(pdf)
     output_root = root / "outputs/indra_triple_smoke"
-    run_id = "smoke_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"_{os.getpid()}"
+    run_id = "smoke_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + f"_{os.getpid()}"
     run_dir = output_root / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     log_path = run_dir / "smoke_console.log"
