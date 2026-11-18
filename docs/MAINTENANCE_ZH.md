@@ -78,6 +78,18 @@
 
 测试缺失或 SKIP 应保留为 **未验**。用户级模型缓存与数据集不应被隐式当作新机天然存在。
 
+## 6. 新开发环境的只读资源审计
+
+`scripts/audit_environment.py` 根据当前配置检查模型路径、外部 Manifest、独立 Worker Python 路径，以及可选的模型 SHA-256。默认仅报告清单，`--strict` 在任何缺项时返回非零码，`--profile` 用于指定明确的候选组合。
+
+```bash
+.venv/bin/python scripts/audit_environment.py \
+  --profile configs/profiles/production.speed.json --hashes --strict
+.venv/bin/python -m pytest -q tests/unit/test_environment_audit.py tests/contracts/test_frozen_configs.py
+```
+
+仅通过静态检查不能宣称 Indra 等模型真的能运行，也无法判断 OCR 质量和许可证。更详细的迁移及删除前门禁见 [环境重建](REBUILD_ZH.md)。
+
 ## 6. 合并后的收尾
 
 更新变更记录、当前维护文档，记录修复提交及回退路径；通知依赖 PDFFast 的系统**按各自锁文件显式升级**。JudgeAI 不在这个仓库内自动同步，其独立运行环境、数据库及任务状态不属于本仓库日常清理或重构范围。

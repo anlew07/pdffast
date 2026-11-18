@@ -50,6 +50,17 @@ uv sync --frozen --python 3.12 --extra dev --extra service --extra runtime-main
 
 上面仅为**主 Python 环境与代码测试入口**，不等于 MinerU/Marker/Docling/Indra 模型已安装，也不表示真实 PDF 可完成全链路解析。安装其他 Worker、模型与验证步骤参见 [快速上手](docs/QUICKSTART_ZH.md)和[环境重建](docs/REBUILD_ZH.md)。
 
+新建或清理开发环境前先运行**只读资源清单工具**（不会下载模型，也不会执行 OCR）：
+
+```bash
+.venv/bin/python scripts/audit_environment.py
+# 指定已选 Profile；模型文件齐备后可增加 --hashes --strict
+.venv/bin/python scripts/audit_environment.py \
+  --profile configs/profiles/production.speed.json --hashes --strict
+```
+
+这只核对依赖/模型文件及可选哈希，**不等于**完整 Provider preflight 或真实 PDF 解析成功。
+
 模型与缓存准备完成后，可独立解析：
 
 ```bash

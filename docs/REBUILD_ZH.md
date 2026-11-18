@@ -60,6 +60,26 @@ uv sync --frozen --python 3.12 --project runtimes/docling
 
 这些命令会创建新独立虚拟环境；若其模型仍位于旧目录或用户缓存，必须检查配置引用，不能把“import 成功”误当成资源就绪。
 
+### 自动核对安装闭包（只读）
+
+本仓库提供 `scripts/audit_environment.py`，使用 Python 标准库读取当前 `configs/providers.json` 的路径要求，**不调用模型、不联网、不执行安装和删除**。
+
+```bash
+# 未安装时先盘点缺什么；即使有缺项，清单模式也返回 0，但 JSON 明确写 failed 数
+.venv/bin/python scripts/audit_environment.py \
+  --json-out /tmp/pdffast-environment-inventory.json
+
+# 安装模型后按选定的 Profile 严格检查；可选哈希检查会读取模型大文件
+.venv/bin/python scripts/audit_environment.py \
+  --profile configs/profiles/production.speed.json \
+  --hashes --strict
+
+# 若需要核查所有 runtime_enabled Provider（包括 Indra），不指定 Profile
+.venv/bin/python scripts/audit_environment.py --hashes --strict
+```
+
+检查项包含主/子项目锁文件、解释器是否存在、已声明的模型文件及目录树、可选 SHA-256，以及 Indra 的固定模型版本 Manifest。它**不是** `uv lock --check`、Package Import、Provider 实际启动、单任务或真实 PDF 测试的替代品；必须继续完成本节第 5 部分的独立解析验收。不能根据 `inventory` 模式的退出码判断环境已就绪。
+
 ## 4. 模型准备必须可追踪
 
 - **RapidOCR**：部分 ONNX 权重随安装包提供；具体 SHA-256 以当前 `configs/providers.json` 为准。

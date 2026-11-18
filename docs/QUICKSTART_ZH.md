@@ -49,6 +49,16 @@ INDRA_MODEL_REVISION="YOUR_APPROVED_HF_COMMIT_SHA" \
 
 不要直接照抄 `YOUR_APPROVED_HF_COMMIT_SHA` 占位符；应使用经核对的实际 Hugging Face 模型提交 SHA。模型授权需独立审查，见 [Indra 文档](indra_runtime.md)。
 
+环境检查可先运行**不安装、不启动模型**的只读盘点：
+
+```bash
+.venv/bin/python scripts/audit_environment.py
+# 需要文件与模型哈希验证时：
+.venv/bin/python scripts/audit_environment.py --hashes --strict
+```
+
+默认检查 `runtime_enabled=true` 的全部 Provider（包括未进入默认路由的 Indra）；若只验某个组合，请加 `--profile configs/profiles/production.speed.json` 等已存在的 Profile。文件清单通过不代表推理正确。
+
 ## 3. 解析一份真实 PDF
 
 仅在相应候选链依赖和权重就绪后运行：

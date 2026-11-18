@@ -45,6 +45,15 @@ uv sync --frozen --python 3.12 --extra dev --extra service --extra runtime-main
 
 第二条部分回归测试依赖本地外部样本或参考环境，可能 SKIP；不要把 SKIP 写成已验收。模型与 Worker 未准备好时，第三条不能保证成功。
 
+## 环境及模型文件检查（只读）
+
+```bash
+.venv/bin/python scripts/audit_environment.py
+.venv/bin/python scripts/audit_environment.py --profile configs/profiles/production.speed.json --hashes --strict
+```
+
+默认覆盖所有 `runtime_enabled` Provider；指定 Profile 时只检查该组合。缺失模型时默认清单模式退出码仍是 0（报告会标为 `MISSING_OR_INVALID`）；把 `--strict` 用作验收门禁。此工具不证明实际模型能加载/推理。
+
 ## Provider 新增或替换
 
 阅读 `docs/PROVIDER_PLUGINS_ZH.md` 和 `docs/MAINTENANCE_ZH.md`：新适配器必须符合 `preflight / initialize / execute / close`、Raw 与 Canonical 合同；通过可信本地配置显式注册，并以 **独立 Profile** 做候选实验。比较速度、失败回退、OCR 质量、表格、结构证据与模型许可；未验收前不要替换默认路线。

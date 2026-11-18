@@ -18,6 +18,8 @@
 | [输出模式](OUTPUT_MODES_ZH.md) | 集成与排障 | `result/` 和诊断产物 |
 | [故障排查](TROUBLESHOOTING_ZH.md) | 日常问题 | 从日志到责任模块 |
 
+日常只读资源盘点命令：`python scripts/audit_environment.py`；缺项门禁加 `--strict`，重模型哈希检查加 `--hashes`。详见[环境重建](REBUILD_ZH.md)。
+
 ## 二、专项技术文档（按需核对源码）
 
 - [Provider 插件接入](PROVIDER_PLUGINS_ZH.md)：Adapter/Normalizer/Registry 合同。
