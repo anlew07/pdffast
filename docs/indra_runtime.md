@@ -84,7 +84,9 @@ cd /Users/admin/Workspace/pdffast-v3
 如果需要五份样本在完全同一批次下重新执行，改用 `--all`（不要同时带
 `--case-002-existing`）。
 
-输入默认从 `benchmark/samples/real/` 读取。如 PDF 不在这里，可指定
+真实 PDF 样本统一放在 `~/Workspace/resource/`，即当前 Mac 上的
+`/Users/admin/Workspace/resource/case_001.pdf` 至 `case_005.pdf`。
+批量脚本默认从此目录读取；仅在其他环境运行时才需要指定
 `--pdf-dir /绝对路径/PDF目录`。所有输入文件在执行前一次性检查，缺文件直接
 报错，避免产生误导性的部分测试记录。
 
