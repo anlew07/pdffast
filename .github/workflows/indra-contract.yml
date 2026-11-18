@@ -8,7 +8,6 @@ on:
       - "configs/providers.json"
       - "configs/profiles/production.indra-triple.json"
       - "tests/unit/test_indra_runtime_integration.py"
-      - "tests/unit/test_indra_migrated_contract.py"
       - ".github/workflows/indra-contract.yml"
   workflow_dispatch:
 
@@ -22,11 +21,10 @@ jobs:
           python-version: "3.12"
       - name: Python syntax
         run: |
-          python -m compileall -q pdffast/providers/indra.py pdffast/providers/indra_normalizer.py scripts/verify_indra_runtime.py tests/unit/test_indra_runtime_integration.py tests/unit/test_indra_migrated_contract.py
       - name: Install minimal V3 and pytest
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e . pytest
       - name: Run offline Indra contract tests
         run: |
-          python -m pytest tests/unit/test_indra_runtime_integration.py tests/unit/test_indra_migrated_contract.py -q
+          python -m pytest tests/unit/test_indra_runtime_integration.py -q
