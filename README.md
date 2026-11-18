@@ -1,155 +1,69 @@
 # PDFFast
 
-PDFFast v3 是本地 PDF 解析工具。通过原生文本与版面证据发现文档结构，按需调用
-Provider 恢复内容，输出 Markdown、Canonical JSON 和 Audit。现支持在不修改主解析流水线的前提下显式注册扩展 Provider。
+**PDFFast** 是一个以原生 PDF 内容为优先、按需使用 OCR/版面 Provider 补全信息的 Python PDF 解析项目。核心流水线生成可供阅读与下游程序使用的 **Markdown、Canonical JSON、结构审计（Audit）与输入 Manifest**。
 
-当前 V3 维护主线为 [`main`](https://github.com/anlew07/pdffast/tree/main)，
-`refactor/v3` 为此前重构阶段使用的开发分支。章节发现不依赖固定申报书模板。
-V3 的正式 Runtime 由 Pipeline 统一编排，通过 Python 对象传递 Native、Evidence、Quality、Fallback 和 Canonical 等计算结果；JSON 等 Artifact 用于诊断和回放，
-**不作为同次运行的内部数据总线**。源码中的部分 `stage` 编号属于历史标识和产物兼容字段，不代表恢复了旧版文件串联架构。
+- GitHub 仓库：\`anlew07/pdffast\`；Python 包与导入名：\`pdffast\`。
+- 正式开发分支：\`main\`。本地目录建议叫 \`pdffast\`，不再以 \`pdffast-v2\`、\`pdffast-v3\` 命名新开发工作区。
+- **V3** 在部分旧设计文档和源码中表示架构演进阶段，不是另一个仓库，也不能当作当前发布版本号。发布版本以 Git Tag 与 \`pyproject.toml\` 为准。
+- 当前工作重点：**稳定维护、Bug 修复、模型/Provider 可控更新、可复现的质量回归**；非必要不做大规模结构重构。
 
-**JudgeAI 集成说明：** JudgeAI 原生安装脚本使用固定 Git 提交部署 PDFFast。
-本仓库后续提交不会自动改变已部署的 JudgeAI 解析器；升级需在 JudgeAI
-明确更新锁定版本并重新进行解析与接口回归验证。
+> 核心代码可从 Git 克隆，但完整 OCR 环境 **不能仅靠克隆源码得到**。权重、用户级缓存、授权与外部测试资料需单独准备。请在清理旧工作区前阅读 [环境重建与安全清理](docs/REBUILD_ZH.md)。
 
-## 环境准备
+## 从这里开始
 
-Python 3.12+。开发和 HTTP 服务依赖可使用：
-
-```bash
-uv sync --extra dev --extra service
-```
-
-实际解析还需准备生产 Provider 环境与模型，见
-[Provider 运行环境说明](docs/PROVIDER_RUNTIME_ENVIRONMENTS.md)。主环境运行 RapidOCR/Paddle，
-MinerU、Marker、Docling 使用独立 Worker 环境。上述安装命令不代表模型已经就绪，
-也不代表 Linux CPU 离线部署已经完成验收。
-
-## Provider 可插拔（显式启用）
-
-V3 默认保留六个经验证的生产 Provider：RapidOCR、PaddleOCR 文本、PaddleOCR-VL、MinerU、Marker、Docling。Registry、执行器、独立 Worker 与 Canonical Normalizer 已分层；新引擎通过**本地显式注册**启用，不自动扫描第三方插件，也不会自动进入 JudgeAI 已锁定的生产版本。
-
-新增引擎不需要修改 V3 核心 Pipeline 或中央 Provider 名称分支。实际步骤是：编写遵守 `Provider` 协议的 Adapter，编写输出 `CanonicalPrediction` 的 Normalizer，在 `configs/providers.json` 声明 `plugins` 与对应 `providers` 配置；完成测试后，再用 `provider_chain_overrides` 显式选择参与的路由及候选顺序。没有 override 时，原有冻结生产策略保持不变。
-
-**引擎注册成功不代表内容准确、性能合格或生产准入。** 解析前仍需 Provider 环境和模型准备，且同一路由的后备候选需要全部可解析。插件入口点会执行本地 Python 代码，配置必须来自可信来源。
-
-完整的配置结构、Provider/Normalizer 合同和示例见 [Provider 插件接入说明](docs/PROVIDER_PLUGINS_ZH.md)。MiniCPM-OCR 目前只是待验证候选，尚未内置实现。
-
-## MiniCPM-OCR（第 7 个候选，仅供独立 Benchmark）
-
-新增可选 `minicpm_ocr_local` 插件，使用本地 llama.cpp 服务，不自动安装或启动模型，不进入默认生产路由；配置生成及三页/27 页测试方法见 [MiniCPM-OCR Benchmark 指南](docs/MINICPM_OCR_BENCHMARK_ZH.md)。Jev 是独立质量评估模型，不作为 OCR Provider 注册。
-
-## Provider Benchmark 与生产配置档
-
-生产候选链可通过 `configs/profiles/production.candidate.json` 这样的 JSON Profile 完整覆盖四条能力路由，实现新任务的 2–4 个 Provider 组合切换。默认不指定 Profile 时保留原冻结策略。**示例组合尚未经过实测选型。**
-
-独立 Benchmark 工具位于 `tools/provider_benchmark/`，支持私有 PDF 样本、单页视觉对比、多个 Provider 的原始输出/Canonical/耗时采集、人工 GT 文字 CER 评分，以及研究用途的 OmniDocBench 抽样输入。详见 [Provider Benchmark 与配置切换指南](docs/PROVIDER_BENCHMARK_ZH.md)。不附带原始数据和模型，也不代表已经完成真实模型评测。
-
-## Python 使用
-
-从仓库根目录运行：
-
-```python
-from pathlib import Path
-from pdffast import PDFFastParser
-
-parser = PDFFastParser(
-    project_root=Path.cwd(),
-    output_root=Path("outputs"),
-    output_mode="minimal",
-)
-result = parser.parse(Path("document.pdf"), run_id="example_run")
-print(result.markdown)
-print(result.audit)
-```
-
-每次解析使用独立 run_id。稳定结果位于：
-
-```text
-outputs/<run_id>/result/
-  document.json
-  document.md
-  audit.json
-  manifest.json
-```
-
-Manifest 保存输入 PDF 的 SHA-256、字节数及采集状态。它在解析开始时先保存输入记录，
-成功后补全结果路径，因此 **Manifest 存在不代表解析完成**。摘要代表扫描前读到的字节，
-直接调用者应保持文件在解析期间不变。详见[输入指纹说明](docs/reviews/pdf-input-fingerprint.md)。
-
-## HTTP 服务
-
-```bash
-PDFFAST_HOST=127.0.0.1 PDFFAST_PORT=8020 PDFFAST_LOG_MODE=normal \
-  uv run python -m pdffast.service
-```
-
-- `GET /health`：服务健康检查，不表示所有模型均已实际推理验收。
-- `POST /parse`：multipart 上传字段 `file`。
-- 响应包含 `schema_version="1.0"`、`run_id`、`markdown`、`canonical`、`audit`。
-
-这里的 1.0 是 HTTP 合同版本，与 PDFFast 产品版本不同。重构以 v3 正确性和 JudgeAI
-实际使用的对外接口稳定为约束，不要求与旧产品的内部行为或 Markdown 字节一致。
-
-默认关闭宽限为 30 秒，可在启动前设置 `PDFFAST_SHUTDOWN_GRACE_SECONDS`。
-
-## 日志与诊断
-
-`PDFFAST_LOG_MODE=quiet|normal|debug`，默认 normal：
-
-| 模式 | 控制台 |
+| 我想做什么 | 阅读 |
 |---|---|
-| quiet | 解析开始/结束、错误和运行心跳；关闭 Uvicorn 访问日志 |
-| normal | 核心处理环节、增强规划、关键诊断、错误和运行心跳 |
-| debug | 详细执行过程、Provider 初始化、任务与尝试日志 |
+| 新克隆项目、运行基本测试、解析一份 PDF | [快速上手](docs/QUICKSTART_ZH.md) |
+| 在新机器上准备 Provider、模型与验收环境 | [环境重建与安全清理](docs/REBUILD_ZH.md) |
+| 定位 Bug、调整 OCR、回归与合并 | [维护者手册](docs/MAINTENANCE_ZH.md) |
+| 让 AI/新开发者快速理解源码与约束 | [AGENTS.md](AGENTS.md) |
+| 查找现行文档与历史实验记录 | [文档索引](docs/INDEX.md) |
+| 管理项目名称、提交、版本和 JudgeAI 锁定版本 | [版本管理规范](docs/VERSIONING_ZH.md) |
 
-30 秒心跳表示运行仍在执行，不代表真实进展或解析成功。结构化事件和 Provider
-Attempt/Production Manifest 保持完整。normal/quiet 在 MinerU Worker 内降低 Loguru 和
-进度条噪声，保留 WARNING、ERROR 和 traceback。
+## 运行轮廓
 
-配置在新服务/Worker 启动时生效，不支持修改环境变量后自动更新正在运行的实例。
-详见[日志分级报告](docs/reviews/runtime-log-noise-reduction.md)。
+\`\`\`text
+PDF
+  → Native 原生文本/结构
+  → Evidence 与 Quality Gate
+  → Fallback Planning / Capability Routing / Policy
+  → Provider Executor（按需 OCR、版面解析及候选回退）
+  → Canonical Builder → Markdown Renderer → Audit
+  → ParseResult + result/document.md / document.json / audit.json / manifest.json
+\`\`\`
 
-`output_mode` 支持 minimal、diagnostic、full；影响公开诊断路径，不改变 Provider 选择
-或解析内容。补充脚注证据保留来源、空间关系及顺序不确定性，当前不会自动插入正文。
+主入口是 \`pdffast.PDFFastParser.parse()\`，CLI 是 \`scripts/run_pipeline.py\`。HTTP 服务是可选适配层，不属于 Core 的依赖。
 
-## 质量边界
+源码中的 Stage 编号和历史 Artifact 文件名是兼容标识；**同一次解析的核心数据以 Python 对象传递，不能把旧 Stage JSON 重新设计成内部数据总线**。
 
-Provider 执行 SUCCESS、结果 accepted、HTTP 200 和 Audit PASS 都不能证明 OCR 逐字正确。
-复杂扫描页的人名、公式、缺句及正文关系仍可能需要人工核验。已有 case_003 结果及
-整改规划见：
+## 开发环境的最小起点
 
-- [修复后真实解析核验](docs/reviews/case003-post-mineru-fix-validation.md)
-- [质量与证据闭环方案](docs/reviews/case003-quality-remediation-plan.md)
+建议 Python **3.12**，使用 [uv](https://docs.astral.sh/uv/)：
 
-原生 Provider 输出引用可能指向临时材料，尚未实施完整的有界证据留存方案。
+\`\`\`bash
+git clone https://github.com/anlew07/pdffast.git pdffast
+cd pdffast
+uv python install 3.12
+uv sync --frozen --python 3.12 --extra dev --extra service --extra runtime-main
+.venv/bin/python -m pytest -q tests/unit
+\`\`\`
 
-## 测试
+上面仅为**主 Python 环境与代码测试入口**，不等于 MinerU/Marker/Docling/Indra 模型已安装，也不表示真实 PDF 可完成全链路解析。安装其他 Worker、模型与验证步骤参见 [快速上手](docs/QUICKSTART_ZH.md)和[环境重建](docs/REBUILD_ZH.md)。
 
-```bash
-uv run pytest -q tests/unit tests/contracts tests/regression
-```
+模型与缓存准备完成后，可独立解析：
 
-Reference-bound 测试需显式指定参考资源：
+\`\`\`bash
+.venv/bin/python scripts/run_pipeline.py /absolute/path/to/sample.pdf \
+  --project-root . --output-root outputs --run-id smoke_local
+\`\`\`
 
-```bash
-PDFFAST_REFERENCE_ROOT=/path/to/reference \
-PDFFAST_SAMPLE_PDF=/path/to/sample.pdf \
-  uv run pytest -q tests/unit tests/contracts tests/regression
-```
+稳定产物写入 \`outputs/smoke_local/result/\`。不指定 Profile 时维持既有默认候选路由；显式选择 \`configs/profiles/production.indra-triple.json\` 才会使用 Indra 三模型候选链。
 
-参考资源用于测试对照，不是正式解析所需的旧工程依赖。缺少外部条件时会 SKIP；
-SKIP 不代表端到端或模型验证通过。不要将 8 个主要真实样本的通过外推为所有 PDF 的质量保证。
+## 扩展和集成
 
-## 当前候选基线验证
+- 当前内置生产 Provider：RapidOCR、PaddleOCR 文本、PaddleOCR-VL、MinerU、Marker、Docling；另有通过插件注册的 **Indra OCR**，需独立隔离环境。MiniCPM-OCR 为可选研究/评测方向，不默认启用。
+- Provider 的注册、选择、执行和 Canonical Normalizer 分层；不要将新 Provider 的推理逻辑写进 Core Pipeline。
+- Provider \`SUCCESS\`、Audit \`PASS\`、HTTP 200 **不等于 OCR 逐字准确**。业务关键数字、中文标识、表格与阅读顺序仍需人工或 GT 对照。
+- JudgeAI 使用自己的 PDFFast Git Commit 锁与隔离运行时；更新此仓库 **不会自动更新 JudgeAI**。见 [Python 集成](docs/INTEGRATION_ZH.md)。
 
-2026-10-13 提交前回归：完整测试 **459 passed、20 skipped、0 failed**；
-reference-bound 全套 **479 passed、0 failed**。本次未重新运行完整 case_003，
-真实模型与 HTTP 运行证据见各验收报告。这些结果不代表 OCR 内容逐字准确。
-
-## 更多资料
-
-- [重构收尾审查](docs/reviews/refactor-closeout-audit.md)
-- [独立环境与 Git 基线](docs/reviews/v3-independent-environment-and-git-baseline.md)
-- [服务退出可靠性](docs/reviews/service-shutdown-reliability.md)
-- [Supplemental Evidence 合同](docs/reviews/supplemental-evidence-contract.md)
+更多内容请使用 [文档索引](docs/INDEX.md)。历史 V2/V3 的实验、评估和重构记录保留为来源证据，不作为今天的新装机指令。
