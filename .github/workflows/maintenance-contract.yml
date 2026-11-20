@@ -6,6 +6,9 @@ on:
       - "scripts/audit_environment.py"
       - "tests/unit/test_environment_audit.py"
       - "tests/contracts/test_frozen_configs.py"
+      - "tests/contracts/test_production_import_boundaries.py"
+      - "tests/unit/test_phase4_core.py"
+      - "tests/unit/test_package.py"
       - "README.md"
       - "AGENTS.md"
       - "docs/**"
@@ -30,6 +33,9 @@ jobs:
       - name: Validate read-only environment inventory and frozen contracts
         run: |
           python -m pytest -q tests/unit/test_environment_audit.py tests/contracts/test_frozen_configs.py
+      - name: Run README, Phase 4 reference gates, and Core import boundaries
+        run: |
+          python -m pytest -q tests/unit/test_package.py tests/unit/test_phase4_core.py tests/contracts/test_production_import_boundaries.py
       - name: Confirm fresh checkout inventory reports missing models, not success
         run: |
           python scripts/audit_environment.py --format json > "$RUNNER_TEMP/pdffast-inventory.json"
