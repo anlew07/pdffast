@@ -1,0 +1,49 @@
+name: PDFFast maintenance and environment inventory contract
+
+on:
+  pull_request:
+    paths:
+      - "scripts/audit_environment.py"
+      - "tests/unit/test_environment_audit.py"
+      - "tests/contracts/test_frozen_configs.py"
+      - "tests/contracts/test_production_import_boundaries.py"
+      - "tests/unit/test_phase4_core.py"
+      - "tests/unit/test_package.py"
+      - "README.md"
+      - "AGENTS.md"
+      - "docs/**"
+      - ".github/workflows/maintenance-contract.yml"
+  workflow_dispatch:
+
+jobs:
+  offline-maintenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install lightweight Core and pytest (no model downloads)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+      - name: Check syntax
+        run: |
+          python -m compileall -q scripts/audit_environment.py tests/unit/test_environment_audit.py
+      - name: Validate read-only environment inventory and frozen contracts
+        run: |
+          python -m pytest -q tests/unit/test_environment_audit.py tests/contracts/test_frozen_configs.py
+      - name: Run README, Phase 4 reference gates, and Core import boundaries
+        run: |
+          python -m pytest -q tests/unit/test_package.py tests/unit/test_phase4_core.py tests/contracts/test_production_import_boundaries.py
+      - name: Confirm fresh checkout inventory reports missing models, not success
+        run: |
+          python scripts/audit_environment.py --format json > "$RUNNER_TEMP/pdffast-inventory.json"
+          python - "$RUNNER_TEMP/pdffast-inventory.json" <<'PY'
+          import json,sys
+          data=json.load(open(sys.argv[1],encoding="utf-8"))
+          assert data["summary"]["failed"] > 0
+          assert data["summary"]["artifact_files_present"] is False
+          assert data["not_checked"]
+          print("PASS: cold checkout reports uninstalled runtimes/models truthfully")
+          PY

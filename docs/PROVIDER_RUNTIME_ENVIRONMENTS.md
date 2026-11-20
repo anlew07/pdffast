@@ -1,3 +1,5 @@
+> **历史环境记录（V2 阶段，2026-09-20）**：此文档保留当时运行环境与模型缓存证据，旧绝对路径不适用于全新 PDFFast 开发工作区。新环境安装请以 [快速上手](QUICKSTART_ZH.md) 和 [环境重建清单](REBUILD_ZH.md) 为准。
+
 # Provider Runtime Environments
 
 日期：2026-09-20  

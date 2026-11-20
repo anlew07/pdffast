@@ -78,7 +78,12 @@ def test_core_package_does_not_import_service_frameworks_or_http_types() -> None
                         f"{source_path}:{node.lineno}:from {module}"
                     )
                 for alias in node.names:
-                    if alias.name in FORBIDDEN_HTTP_ADAPTER_TYPES:
+                    # urllib.request.Request is a standard-library HTTP *client*
+                    # object used by an optional OCR provider, not a FastAPI /
+                    # Starlette server request type. Keep the Core/service
+                    # boundary check without misclassifying that import.
+                    if (alias.name in FORBIDDEN_HTTP_ADAPTER_TYPES
+                            and (module, alias.name) != ("urllib.request", "Request")):
                         violations.append(
                             f"{source_path}:{node.lineno}:import type {alias.name}"
                         )
