@@ -96,6 +96,20 @@ INDRA_MODEL_REVISION="YOUR_APPROVED_HF_COMMIT_SHA" bash scripts/install_indra_ru
 
 `YOUR_APPROVED_HF_COMMIT_SHA` 必须替换成实际批准的模型 revision。该命令可能访问网络、下载大量模型，并受授权约束；不要在无许可和不知流量成本时直接执行。**新目录内不能简单复用旧目录的 Python 虚拟环境**，但在确保权重来源、哈希、权限一致的前提下可以复用已批准的模型文件。
 
+## 历史 Phase 4 参考产物的可选回归
+
+`tests/unit/test_phase4_core.py` 中的六项历史 Stage 6–10 对照测试需要**未随 Git 提供的** `case_008` 参考运行产物。常规干净 clone 时这些测试会明确标记为 `SKIP`，而不是依赖硬编码的旧开发目录或把缺失文件报成代码失败。
+
+如果保存了合法可用的原始参考产物，可以执行：
+
+```bash
+PDFFAST_PHASE4_RUN_DIR=/absolute/path/to/case_008_reference_run \
+PDFFAST_PHASE4_SOURCE_PDF=/absolute/path/to/reference_source.pdf \
+  .venv/bin/python -m pytest -q tests/unit/test_phase4_core.py
+```
+
+未配置环境变量：外部参考测试明确 SKIP；**指定后文件缺失或不完整会 FAIL**，不会静默跳过。真实 PDF/参考产物不提交公开仓库，检验其来源及内容质量仍需独立审查。其余自包含单元测试正常运行。
+
 ## 5. 验收独立运行
 
 在新仓库中使用一份有权使用、可重复校验的真实 PDF：

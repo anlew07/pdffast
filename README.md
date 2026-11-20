@@ -68,6 +68,21 @@ uv sync --frozen --python 3.12 --extra dev --extra service --extra runtime-main
   --project-root . --output-root outputs --run-id smoke_local
 ```
 
+Python API 的最小调用示例：
+
+```python
+from pathlib import Path
+from pdffast import PDFFastParser
+
+parser = PDFFastParser(
+    project_root=Path.cwd(),
+    output_root=Path("outputs"),
+    output_mode="minimal",
+)
+result = parser.parse(Path("/absolute/path/to/sample.pdf"), run_id="example_python")
+print(result.artifacts["result_markdown"])
+```
+
 稳定产物写入 `outputs/smoke_local/result/`。不指定 Profile 时维持既有默认候选路由；显式选择 `configs/profiles/production.indra-triple.json` 才会使用 Indra 三模型候选链。
 
 ## 扩展和集成
