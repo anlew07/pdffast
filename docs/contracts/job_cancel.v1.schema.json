@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PDFFast job cancellation V1",
+  "type": "object",
+  "required": [
+    "schema_version", "run_id", "state", "accepted_exit", "cleanup_complete", "error_code", "receipt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": ["string", "null"], "pattern": "^[0-9a-f]{32}$"},
+    "state": {"enum": ["CANCELLED", "CANCEL_PENDING", "COMPLETED", "CANCEL_ERROR"]},
+    "accepted_exit": {"type": "boolean"},
+    "cleanup_complete": {"type": "boolean"},
+    "error_code": {"type": ["string", "null"]},
+    "receipt": {
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["requested_at", "confirmed_at", "verification"],
+          "additionalProperties": false,
+          "properties": {
+            "requested_at": {"type": "number", "minimum": 0},
+            "confirmed_at": {"type": "number", "minimum": 0},
+            "verification": {
+              "enum": ["GROUP_EMPTY", "NEVER_SUBMITTED", "REGISTRATION_REVOKED", "LEASE_REVOKED"]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "state": {"const": "CANCELLED"},
+        "run_id": {"type": "string"},
+        "accepted_exit": {"const": false},
+        "cleanup_complete": {"const": true},
+        "error_code": {"type": "null"},
+        "receipt": {"type": "object"}
+      }
+    },
+    {
+      "properties": {
+        "state": {"const": "CANCEL_PENDING"},
+        "run_id": {"type": "string"},
+        "accepted_exit": {"const": false},
+        "cleanup_complete": {"const": false},
+        "error_code": {
+          "enum": [
+            "STATE_IO_ERROR", "JOB_OWNERSHIP_MISMATCH", "LAUNCHD_UNAVAILABLE", "DEADLINE_EXCEEDED",
+            "SUBMISSION_UNCONFIRMED", "BOOTOUT_FAILED", "SCOPE_STILL_REGISTERED",
+            "INVALID_CLAIM", "PROCESS_OBSERVATION_UNAVAILABLE", "GROUP_NOT_EMPTY"
+          ]
+        },
+        "receipt": {"type": "null"}
+      }
+    },
+    {
+      "properties": {
+        "state": {"const": "COMPLETED"},
+        "run_id": {"type": "string"},
+        "accepted_exit": {"const": true},
+        "cleanup_complete": {"const": true},
+        "error_code": {"type": "null"},
+        "receipt": {"type": "null"}
+      }
+    },
+    {
+      "properties": {
+        "state": {"const": "CANCEL_ERROR"},
+        "accepted_exit": {"const": false},
+        "cleanup_complete": {"const": false},
+        "error_code": {
+          "enum": [
+            "INVALID_JOB_ID", "JOB_NOT_FOUND", "STATE_ROOT_INVALID", "STATE_IO_ERROR",
+            "JOB_OWNERSHIP_MISMATCH", "LAUNCHD_UNAVAILABLE", "DEADLINE_EXCEEDED"
+          ]
+        },
+        "receipt": {"type": "null"}
+      },
+      "if": {"properties": {"error_code": {"const": "INVALID_JOB_ID"}}},
+      "then": {"properties": {"run_id": {"type": "null"}}},
+      "else": {"properties": {"run_id": {"type": "string"}}}
+    }
+  ]
+}

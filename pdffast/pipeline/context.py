@@ -28,6 +28,7 @@ class PipelineContext:
     output_mode: OutputMode = "minimal"
     capture_output: bool = True
     input_metadata: dict = field(default_factory=dict)
+    defer_result_manifest: bool = False
 
     @classmethod
     def create(

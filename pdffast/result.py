@@ -18,6 +18,7 @@ class ParseResult:
     audit: dict[str, Any]
     artifacts: dict[str, Path]
     production_manifest: dict[str, Any] | None = None
+    parser_provenance: dict[str, Any] | None = None
 
     @classmethod
     def from_pipeline(cls, context: PipelineContext, payload: dict[str, Any]) -> "ParseResult":
@@ -39,6 +40,7 @@ class ParseResult:
             audit=payload["structure_audit"],
             artifacts=artifacts,
             production_manifest=payload.get("production_manifest"),
+            parser_provenance=payload.get("parser_provenance"),
         )
 
     def __getitem__(self, key: str) -> Any:

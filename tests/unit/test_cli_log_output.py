@@ -44,6 +44,32 @@ def test_run_pipeline_prints_artifact_paths_not_document_body(tmp_path, monkeypa
     assert "SECRET_AUDIT_BODY_SENTINEL" not in stdout
 
 
+def test_locked_cli_reports_pipeline_failure_and_nonzero_exit(tmp_path, monkeypatch, capsys):
+    from pdffast import ParseResult
+    from scripts import run_pipeline
+
+    pdf = tmp_path / "fixture.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    result = ParseResult(
+        canonical={}, markdown="body", audit={"validation": {"pass": True}},
+        artifacts={f"result_{key}": tmp_path / key for key in ("document", "markdown", "audit", "manifest")},
+        parser_provenance={"execution_status": "COMPLETED_WITH_PIPELINE_FAILURES"},
+    )
+
+    class FakeParser:
+        def parse(self, *args, **kwargs):
+            return result
+
+    monkeypatch.setattr(run_pipeline, "PDFFastParser", lambda **kwargs: FakeParser())
+    monkeypatch.setattr(sys, "argv", [
+        "run_pipeline.py", str(pdf), "--provider-profile", "production.json",
+    ])
+    assert run_pipeline.main() == 3
+    output = capsys.readouterr().out
+    assert "Status: COMPLETED_WITH_PIPELINE_FAILURES" in output
+    assert "Status: PASS" not in output
+
+
 def test_indra_smoke_keeps_full_log_and_prints_only_summary(tmp_path, monkeypatch, capsys):
     from scripts import verify_indra_runtime
 

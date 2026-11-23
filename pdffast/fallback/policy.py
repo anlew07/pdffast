@@ -784,9 +784,10 @@ def create_provider_execution_plan(
     route_candidates_path: Path,
     *,
     provider_chain_overrides: dict[str, list[str]] | None = None,
+    route_candidates: dict[str, Any] | None = None,
 ) -> ProviderExecutionPlan:
     """Apply the frozen policy to a CapabilityPlan in memory."""
-    candidates = load_json(Path(route_candidates_path))
+    candidates = route_candidates if route_candidates is not None else load_json(Path(route_candidates_path))
     validate_provider_plan(capability_plan.data)
     validate_candidates(candidates)
     report = build_report(capability_plan.data, candidates)

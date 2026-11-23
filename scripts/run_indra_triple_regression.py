@@ -226,8 +226,7 @@ def run_batch(root: Path, pdf_dir: Path, output_root: Path,
     for i, case in enumerate(cases, start=1):
         pdf = pdf_dir / f"{case}.pdf"
         target = folder / case
-        target.mkdir(parents=True, exist_ok=False)
-        log_path = target / "console.log"
+        log_path = folder / f"{case}.console.log"
         cmd = [str(py), str(entry), str(pdf),
                "--project-root", str(root), "--output-root", str(folder),
                "--run-id", case, "--case-id", case,
@@ -243,6 +242,7 @@ def run_batch(root: Path, pdf_dir: Path, output_root: Path,
             log_path.write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
         elapsed = time.monotonic() - started
         row = inspect_run(target, case, pdf, exitcode, elapsed)
+        row["artifacts"]["log"] = str(log_path)
         row["source"] = "NEW_RUN"
         batch["cases"].append(row)
         save_report(batch, folder)

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import importlib
-from hashlib import sha256
 import json
 import os
+import string
+from collections import ChainMap
 from collections.abc import Callable, Mapping
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 from .base import Provider
-
 
 ProviderFactory = Callable[[str, dict[str, Any]], Provider]
 
@@ -90,9 +91,16 @@ def validate_runtime_provider_closure(
     provider_configs: Mapping[str, dict[str, Any]],
     *,
     registry: Any | None = None,
+    locked_routes: Mapping[str, list[str]] | None = None,
 ) -> frozenset[str]:
     """Validate every policy reference before any Provider or artifact is created."""
     names = _policy_provider_names(policy)
+    if locked_routes is not None:
+        for task in policy["tasks"]:
+            chain = [entry["provider"] for entry in task["provider_chain"]]
+            expected = locked_routes.get(task.get("capability_route"))
+            if not expected or chain != expected:
+                raise ProviderClosureError(f"task={task.get('task_id')}: chain differs from locked capability route")
     errors: list[str] = []
     for name in sorted(names):
         config = provider_configs.get(name)
@@ -123,8 +131,10 @@ class ProviderRegistry:
         factories: Mapping[str, ProviderFactory] | None = None,
         base_dir: Path | None = None,
         plugins: Mapping[str, Mapping[str, str]] | None = None,
+        environment: Mapping[str, str] | None = None,
     ) -> None:
         self._factories = dict(factories or {})
+        self._environment = environment
         self._base_dir = Path(base_dir).resolve() if base_dir is not None else None
         self._plugins: dict[str, dict[str, str]] = {}
         if plugins is not None and not isinstance(plugins, Mapping):
@@ -155,7 +165,16 @@ class ProviderRegistry:
         return plugin is not None and kind == plugin["kind"]
 
     def _resolve_path(self, raw_path: str, *, field: str) -> Path:
-        expanded = os.path.expandvars(raw_path)
+        if self._environment is None:
+            expanded = os.path.expandvars(raw_path)
+        else:
+            root = {"PDFFAST_PROJECT_ROOT": str(self._base_dir)} if self._base_dir is not None else {}
+            variables = ChainMap(root, self._environment)
+            expanded = string.Template(raw_path).safe_substitute(variables)
+            if string.Template(expanded).get_identifiers():
+                raise ProviderConfigurationError(f"locked {field} contains an unresolved environment variable")
+            if "HOME" in variables and (expanded == "~" or expanded.startswith("~/")):
+                expanded = variables["HOME"] + expanded[1:]
         if "$PDFFAST_PROJECT_ROOT" in expanded:
             if self._base_dir is None:
                 raise ProviderConfigurationError(
@@ -316,6 +335,8 @@ class ProviderRegistry:
             factory_path = plugin["factory"]
 
         prepared = self._prepare_config(config)
+        if self._environment is not None and kind in {"indra_worker", "mineru_worker"}:
+            prepared["runtime_environment"] = self._environment
         factory = self._factories.get(kind)
         if factory is None:
             factory = _load_factory(factory_path)

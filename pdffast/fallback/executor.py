@@ -3,16 +3,20 @@ from __future__ import annotations
 import json
 import logging
 from collections import Counter, defaultdict
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from pdffast.providers.base import Provider, ProviderTask, RawProviderResult
-from pdffast.providers.registry import validate_runtime_provider_closure
 from pdffast.fallback.policy import ProviderExecutionPlan
-from pdffast.runtime import current_observation, check_parse_cancelled
+from pdffast.providers.base import Provider, ProviderTask, RawProviderResult
+from pdffast.providers.registry import (
+    ProviderClosureError,
+    validate_runtime_provider_closure,
+)
 from pdffast.providers.supplemental import supplemental_diagnostics
-
+from pdffast.providers.workers import WorkerShutdownError
+from pdffast.runtime import check_parse_cancelled, current_observation
 
 SUCCESS_STATUSES = {"SUCCESS", "SUCCESS_WITH_WARNINGS"}
 
@@ -88,20 +92,23 @@ def execute_provider_plan(
     registry: Any,
     normalizer: Callable[..., dict[str, Any]],
     output_dir: Path,
+    locked_routes: dict[str, list[str]] | None = None,
 ) -> ProviderExecutionResult:
     """Execute the supplied provider chains as deterministic escalation waves."""
-    policy = execution_plan.data
+    policy = deepcopy(execution_plan.data) if locked_routes is not None else execution_plan.data
     tasks = policy.get("tasks")
     if not isinstance(tasks, list):
         raise ValueError("execution plan must contain tasks")
     policy_ids = [str(task.get("task_id") or "") for task in tasks]
-    if not all(policy_ids):
-        raise ValueError("execution plan task_id 为空")
+    if not all(policy_ids) or len(set(policy_ids)) != len(policy_ids):
+        raise ValueError("execution plan task_id is empty or duplicated")
 
     observation = current_observation()
     if observation is not None:
         observation.tasks_known(len(policy_ids))
-    validate_runtime_provider_closure(policy, provider_configs, registry=registry)
+    validate_runtime_provider_closure(
+        policy, provider_configs, registry=registry, locked_routes=locked_routes,
+    )
 
     output_dir = Path(output_dir)
     selected_dir = output_dir / "selected_predictions"
@@ -181,9 +188,11 @@ def execute_provider_plan(
                                 task_id=task_id,
                                 capability_route=str(task.get("capability_route") or ""),
                                 input_image=Path(str(task.get("input_image") or "")),
-                                metadata=task,
+                                metadata=deepcopy(task) if locked_routes is not None else task,
                             )
                         )
+                        if locked_routes is not None and (raw.provider != provider_name or raw.task_id != task_id):
+                            raise ProviderClosureError(f"task={task_id}: Provider result identity mismatch")
                         raw_path = output_dir / "provider_raw" / f"{task_id}.json"
                         manifest_path = output_dir / "provider_raw" / "runtime_manifest.json"
                         canonical = normalizer(
@@ -192,6 +201,13 @@ def execute_provider_plan(
                             result_path=raw_path,
                             manifest_path=manifest_path,
                         )
+                        if locked_routes is not None and (
+                            canonical.get("task_id") != task_id
+                            or (canonical.get("provider") or {}).get("name") != provider_name
+                        ):
+                            raise ProviderClosureError(f"task={task_id}: normalized Provider identity mismatch")
+                    except (ProviderClosureError, WorkerShutdownError):
+                        raise
                     except Exception as exc:
                         if observation is not None:
                             observation.failure("provider_task_failed", exc)

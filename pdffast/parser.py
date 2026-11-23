@@ -8,6 +8,7 @@ from typing import Any
 
 from pdffast.application.parse_service import ParseService
 from pdffast.config import ParserConfig
+from pdffast.errors import ConfigurationError
 from pdffast.result import ParseResult
 
 
@@ -29,6 +30,16 @@ class PDFFastParser:
 
     def parse(self, pdf_path: Path, *, run_id: str = "parse", case_id: str | None = None) -> ParseResult:
         config = self.config
+        if config is not None and (
+            self.provider_profile is not None
+            or config.provider_profile is not None and any(
+                value is not None for value in (
+                    self.project_root, self.provider_configs, self.registry, self.normalizer,
+                    self.provider_plugins, self.provider_chain_overrides,
+                )
+            )
+        ):
+            raise ConfigurationError("provider_profile cannot be split between config and facade options")
         if config is None:
             config = ParserConfig(
                 project_root=self.project_root,

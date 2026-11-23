@@ -27,11 +27,30 @@ def load_provider_profile(path: Path) -> dict[str, Any]:
     """Read a trusted, local profile. Never accept a path supplied by a PDF."""
     path = Path(path)
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return decode_config_json(path.read_bytes())
+    except (OSError, ProviderProfileError) as exc:
         raise ProviderProfileError(f"unable to read Provider profile {path}: {exc}") from exc
+
+
+def decode_config_json(raw: bytes) -> dict[str, Any]:
+    """Decode one JSON object, rejecting duplicate keys and non-finite numbers."""
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ProviderProfileError(f"duplicate config JSON key: {key}")
+            value[key] = item
+        return value
+
+    def reject_constant(value: str) -> None:
+        raise ProviderProfileError(f"invalid JSON number: {value}")
+
+    try:
+        data = json.loads(raw, object_pairs_hook=unique_object, parse_constant=reject_constant)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ProviderProfileError(f"invalid config JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise ProviderProfileError("Provider profile must be a JSON object")
+        raise ProviderProfileError("config must be a JSON object")
     return data
 
 
