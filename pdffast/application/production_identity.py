@@ -70,7 +70,7 @@ def code_identity() -> dict[str, Any]:
         if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
             raise ValueError("invalid PDFFast Git revision")
         dirty = bool(git("status", "--porcelain=v1", "--untracked-files=all", "--",
-                         "pdffast", "configs", "pyproject.toml", "uv.lock"))
+                         "pdffast", "configs", "scripts/run_pipeline.py", "pyproject.toml", "uv.lock"))
     algorithms = {}
     for label, directory in (
         ("native", "native"), ("evidence", "quality"), ("quality", "quality"),

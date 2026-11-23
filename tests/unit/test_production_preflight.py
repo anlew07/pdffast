@@ -1,4 +1,5 @@
 import json
+import subprocess
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -206,6 +207,44 @@ def test_locked_parse_rejects_in_process_environment_drift(tmp_path, monkeypatch
     with pytest.raises(ParseExecutionError, match="semantic environment changed"):
         parser.parse(pdf, run_id="drift")
     assert not (tmp_path / "drift/result/manifest.json").exists()
+
+
+def test_production_cli_edit_invalidates_clean_release_identity(tmp_path, monkeypatch):
+    from pdffast.application import production_identity, production_preflight
+
+    checkout = tmp_path / "checkout"
+    subprocess.run(
+        ["git", "clone", "--quiet", "--no-tags", "--shared", str(ROOT), str(checkout)],
+        check=True, capture_output=True, timeout=30,
+    )
+    monkeypatch.setattr(production_identity, "ROOT", checkout)
+    package_relative = Path(production_identity.__file__).relative_to(ROOT)
+    monkeypatch.setattr(production_identity, "__file__", str(checkout / package_relative))
+    monkeypatch.setattr(production_preflight, "inspect_runtime", lambda snapshot, **kwargs: {
+        name: {"status": "READY", "identity": {}} for name in snapshot.allowed
+    })
+    config = ParserConfig(project_root=checkout, provider_profile=PROFILE)
+    clean = preflight_production_profile(config=config)
+    assert clean["status"] == "PASS"
+    assert clean["code_identity"]["source_dirty"] is False
+
+    cli = checkout / "scripts/run_pipeline.py"
+    with cli.open("a", encoding="utf-8") as stream:
+        stream.write("\n# Local production entry point edit\n")
+
+    def assert_rejected_as_dirty():
+        report = preflight_production_profile(config=config)
+        assert report["status"] == "PASS"
+        assert report["code_identity"] == {**clean["code_identity"], "source_dirty": True}
+        assert report["profile_sha256"] == clean["profile_sha256"]
+        assert report["effective_config_fingerprint"] == clean["effective_config_fingerprint"]
+
+    assert_rejected_as_dirty()
+    subprocess.run(
+        ["git", "-C", str(checkout), "add", "--", "scripts/run_pipeline.py"],
+        check=True, capture_output=True, timeout=15,
+    )
+    assert_rejected_as_dirty()
 
 
 def test_clean_release_commit_changes_fingerprint_even_with_same_source(monkeypatch):
