@@ -10,7 +10,6 @@ pytestmark = pytest.mark.migration
 
 
 def test_retained_provider_objects_equal_explicit_reference_migration() -> None:
-    """Only the audited enable, runtime path, and safety migrations may differ."""
     raw_root = os.environ.get("PDFFAST_REFERENCE_ROOT")
     if not raw_root:
         pytest.skip("PDFFAST_REFERENCE_ROOT is required for migration parity")
@@ -54,7 +53,7 @@ def test_retained_provider_objects_equal_explicit_reference_migration() -> None:
             actual_env = dict(actual["env"])
             reference_env = dict(migrated["env"])
             if name == "marker_local":
-                current_home = "\${HOME}/Library/Caches/pdffast/marker-workers/\${PDFFAST_WORKER_ID}"
+                current_home = "${HOME}/Library/Caches/pdffast/marker-workers/${PDFFAST_WORKER_ID}"
                 assert actual_env.get("HOME") == current_home
                 reference_env["HOME"] = current_home
             actual["env"] = {

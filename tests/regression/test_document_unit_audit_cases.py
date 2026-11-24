@@ -13,11 +13,12 @@ from pdffast.canonical.document_units import resolve_document_units_from_artifac
 from pdffast.render.llm_ready import build_rendered_document
 
 
+pytestmark = pytest.mark.regression
+
 @pytest.mark.parametrize("case,pages,statuses", [
     ("003", [27, 29, 30, 36, 66], ["PARTIAL", "RESOLVED", "PARTIAL", "PARTIAL", "RESOLVED"]),
     ("004", [83, 108], ["PARTIAL", "PARTIAL"]),
 ])
-pytestmark = pytest.mark.regression
 
 def test_existing_case_document_units_pass_semantic_audit(case: str, pages: list[int], statuses: list[str]) -> None:
     raw_root = os.environ.get("PDFFAST_REGRESSION_ARTIFACTS_ROOT")

@@ -1,4 +1,4 @@
-"""Top-level orchestration can use semantic artifact groups exclusively."""
+"""The V3 runner uses semantic artifact groups and in-memory handoff objects."""
 
 from dataclasses import replace
 import json
@@ -15,11 +15,8 @@ from pdffast.pipeline.context import PipelineContext
 from pdffast.quality.gate import QualityReport
 
 
-ROOT = Path(__file__).resolve().parents[2]
-
-
 class SemanticOnlyPaths:
-    """Disallow flat path aliases while preserving the real group properties."""
+    """Reject flat path aliases while exposing V3 semantic artifact groups."""
 
     def __init__(self, paths):
         self.paths = paths
@@ -32,9 +29,16 @@ class SemanticOnlyPaths:
 
 def test_pipeline_entry_uses_semantic_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     context = PipelineContext.create(
-        project_root=ROOT, pdf=tmp_path / "input.pdf", output_root=tmp_path,
-        run_id="semantic-entry", case_id="input", page_dpi=200, region_dpi=300,
-        rapidocr_workers=1, table_mode="auto", capture_output=False,
+        project_root=tmp_path / "project",
+        pdf=tmp_path / "input.pdf",
+        output_root=tmp_path,
+        run_id="semantic-entry",
+        case_id="input",
+        page_dpi=200,
+        region_dpi=300,
+        rapidocr_workers=1,
+        table_mode="auto",
+        capture_output=False,
     )
     context = replace(context, artifacts=SemanticOnlyPaths(context.artifacts))
     seen = {}
@@ -50,36 +54,35 @@ def test_pipeline_entry_uses_semantic_paths(tmp_path: Path, monkeypatch: pytest.
     assert seen["snapshot_output"] == tmp_path / "semantic-entry/01_stage1/page_snapshot.jsonl"
 
 
-def test_stage10_uses_semantic_paths_for_real_case_002_objects(tmp_path: Path) -> None:
-    source = ROOT / "outputs/final_structure_regression/case_002"
-    files = {
-        "section_alignment": source / "03_stage3/section_alignment.json",
-        "normalized_flow": source / "06_stage6/normalized_text_flow.json",
-        "quality_gate": source / "08_stage8/quality_gate.json",
-        "provider_plan": source / "09_2_provider_plan/provider_plan.json",
-        "selected_prediction_index": source / "09_8_production_fallback/selected_prediction_index.json",
-        "selected_predictions_dir": source / "09_8_production_fallback/selected_predictions",
-    }
-    if not all(path.exists() for path in files.values()):
-        pytest.skip("case_002 existing execution artifacts unavailable")
-    read = lambda path: json.loads(path.read_text(encoding="utf-8"))
-    index = read(files["selected_prediction_index"])
-    wrappers = [read(files["selected_predictions_dir"] / f"{item['task_id']}.json") for item in index["items"]]
-    flow = TextFlowResult({}, {}, {}, {}, read(files["normalized_flow"]))
+def test_canonical_boundary_uses_semantic_paths_with_v3_objects(
+    tmp_path: Path, v3_pipeline_inputs: dict,
+) -> None:
     context = PipelineContext.create(
-        project_root=ROOT, pdf=tmp_path / "case_002.pdf", output_root=tmp_path,
-        run_id="semantic-stage10", case_id="case_002", page_dpi=200, region_dpi=300,
-        rapidocr_workers=1, table_mode="auto", capture_output=False,
+        project_root=tmp_path / "project",
+        pdf=tmp_path / "input.pdf",
+        output_root=tmp_path,
+        run_id="semantic-canonical",
+        case_id="synthetic",
+        page_dpi=200,
+        region_dpi=300,
+        rapidocr_workers=1,
+        table_mode="auto",
+        capture_output=False,
     )
-    context = replace(context, artifacts=SemanticOnlyPaths(replace(context.artifacts, **files)))
+    paths = context.artifacts
+    context = replace(context, artifacts=SemanticOnlyPaths(paths))
+    inputs = v3_pipeline_inputs
+    selection = ProviderExecutionResult(
+        {"status": "COMPLETED"}, inputs["selected_index"], inputs["selected_predictions"],
+    )
     result = runner.run_stage10(
         context,
-        selection=ProviderExecutionResult({}, index, wrappers),
-        section_alignment=read(files["section_alignment"]),
-        text_flow=flow,
-        quality_report=QualityReport(read(files["quality_gate"])),
-        capability_plan=CapabilityPlan(read(files["provider_plan"])),
+        selection=selection,
+        text_flow=TextFlowResult({}, {}, {}, {}, inputs["native_flow"]),
+        quality_report=QualityReport(inputs["quality_gate"]),
+        capability_plan=CapabilityPlan(inputs["capability_plan"]),
     )
-    assert result["canonical"] == read(tmp_path / "semantic-stage10/result/document.json")
-    assert result["markdown"] == (tmp_path / "semantic-stage10/result/document.md").read_text(encoding="utf-8")
-    assert result["structure_audit"] == read(tmp_path / "semantic-stage10/result/audit.json")
+
+    assert result["canonical"] == json.loads(paths.result.document_json.read_text(encoding="utf-8"))
+    assert result["markdown"] == paths.result.document_md.read_text(encoding="utf-8")
+    assert result["structure_audit"] == json.loads(paths.result.audit_json.read_text(encoding="utf-8"))
