@@ -14,7 +14,7 @@
 
 执行器按候选链进行确定性升级波次，同一运行内复用已初始化的 Provider，并在 `finally` 中尝试关闭已创建的实例。生产闭包验证会在 Provider 实际创建前检查配置的启用状态和可解析性。
 
-默认六引擎及候选顺序保持原样。扩展 Provider 必须显式注册其 Adapter/Normalizer；指定 `provider_chain_overrides` 才会改变运行候选链。详见 [插件接入说明](PROVIDER_PLUGINS_ZH.md)。
+未显式指定锁定 Profile 时，既有六个内置 Provider 适配器与默认路由策略保持原样。Indra 是通过 `plugins` 显式注册的扩展 Provider，只有 Profile 将其加入允许名单和候选链时才参与执行。当前 `configs/profiles/production.indra-triple.json` 是显式锁定的 Indra + RapidOCR + MinerU 候选组合，不等于默认 Provider 集合，也不代表已经完成正式生产发布。扩展 Provider 必须显式注册其 Adapter/Normalizer；指定 `provider_chain_overrides` 才会改变非锁定模式的运行候选链。详见 [插件接入说明](PROVIDER_PLUGINS_ZH.md)。
 
 运行结果会包含 `production_execution_manifest.json` 与 `selected_prediction_index.json` 等可追踪产物；它们用于审查执行过程和选择依据，不取代真实内容准确率评测。
 

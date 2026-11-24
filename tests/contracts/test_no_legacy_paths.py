@@ -14,13 +14,22 @@ def test_current_v3_surfaces_do_not_reference_legacy_workspaces_or_runs() -> Non
         "~/Workspace/resource",
     )
     paths = []
-    for directory in ("pdffast", "scripts", "configs", "tests/unit", "tests/contracts"):
-        paths.extend((root / directory).rglob("*.py" if directory in {"pdffast", "scripts", "tests/unit", "tests/contracts"} else "*.json"))
+    for directory in (
+        "pdffast", "scripts", "tests/unit", "tests/contracts",
+        "tests/provider", "tests/regression",
+    ):
+        paths.extend((root / directory).rglob("*.py"))
+    paths.extend((root / "configs").rglob("*.json"))
+    paths.extend((root / "docs/contracts").rglob("*.md"))
+    paths.extend((root / "docs/contracts").rglob("*.json"))
     paths.extend(
         root / path for path in (
             "README.md",
+            "docs/README.md",
             "docs/QUICKSTART_ZH.md",
             "docs/PROVIDER_RUNTIME_ENVIRONMENTS.md",
+            "docs/PROVIDER_PLUGINS_ZH.md",
+            "docs/OUTPUT_MODES_ZH.md",
             "docs/PIPELINE.md",
             "docs/ARCHITECTURE.md",
         )

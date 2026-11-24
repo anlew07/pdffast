@@ -1,8 +1,21 @@
+from pdffast.providers.workers import _ProcessIdentity
+
 import json
 import subprocess
 import sys
 
 import pytest
+
+
+def test_process_identity_ignores_mutable_command_name() -> None:
+    original = _ProcessIdentity(101, "1764000000.123456", "python3.12")
+    renamed = _ProcessIdentity(101, "1764000000.123456", "Python")
+    different_start = _ProcessIdentity(101, "1764000001.123456", "Python")
+    different_pid = _ProcessIdentity(102, "1764000000.123456", "python3.12")
+
+    assert original == renamed
+    assert original != different_start
+    assert original != different_pid
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="Darwin process supervisor")

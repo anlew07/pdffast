@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
@@ -32,9 +32,11 @@ def worker_environment(environment: Mapping[str, str]) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class _ProcessIdentity:
+    """Stable process identity; command is diagnostic and may change at runtime."""
+
     pid: int
     started_at: str
-    command: str
+    command: str = field(compare=False)
 
 
 class _DarwinProcBSDInfo(ctypes.Structure):
