@@ -1,6 +1,7 @@
 """Audit the existing admitted units without rerunning any Provider."""
 
 import json
+import os
 from copy import deepcopy
 from pathlib import Path
 
@@ -16,8 +17,13 @@ from pdffast.render.llm_ready import build_rendered_document
     ("003", [27, 29, 30, 36, 66], ["PARTIAL", "RESOLVED", "PARTIAL", "PARTIAL", "RESOLVED"]),
     ("004", [83, 108], ["PARTIAL", "PARTIAL"]),
 ])
+pytestmark = pytest.mark.regression
+
 def test_existing_case_document_units_pass_semantic_audit(case: str, pages: list[int], statuses: list[str]) -> None:
-    root = Path(__file__).resolve().parents[2] / "outputs/template_removal_review" / f"case_{case}"
+    raw_root = os.environ.get("PDFFAST_REGRESSION_ARTIFACTS_ROOT")
+    if not raw_root:
+        pytest.skip("PDFFAST_REGRESSION_ARTIFACTS_ROOT is required for artifact-backed regression")
+    root = Path(raw_root).resolve() / "template_removal_review" / f"case_{case}"
     stage3 = root / "03_stage3/section_alignment.json"
     flow = root / "06_stage6/normalized_text_flow.json"
     quality = root / "08_stage8/quality_gate.json"

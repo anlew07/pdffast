@@ -10,8 +10,8 @@ import pytest
 from scripts import run_indra_triple_regression as regression
 
 
-def test_default_pdf_directory_is_shared_workspace_resource():
-    assert regression.DEFAULT_PDF_DIR == Path.home() / "Workspace/resource"
+def test_default_pdf_directory_is_project_relative():
+    assert regression.DEFAULT_PDF_DIR == Path("benchmark/samples/real")
 
 
 def fixture_root(tmp_path: Path):

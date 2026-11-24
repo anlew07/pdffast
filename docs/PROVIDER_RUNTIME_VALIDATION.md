@@ -1,3 +1,9 @@
+> **历史验收记录（V2 / 2026-09-20 至 2026-09-21）**  
+> 本文保存当时的 V2 环境安装与模型验证证据，不是当前 V3 Runtime 配置或安装手册。文中的
+> `pdffast-v2`、绝对 home 路径、缓存大小和测试数量仅代表当时环境。当前环境以
+> `configs/providers.json`、各 Runtime 的 `pyproject.toml` / `uv.lock` 和
+> [V3 Provider Runtime 环境说明](PROVIDER_RUNTIME_ENVIRONMENTS.md) 为准。
+
 # Provider Runtime Validation
 
 验证日期：2026-09-20 至 2026-09-21

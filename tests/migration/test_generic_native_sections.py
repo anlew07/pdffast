@@ -15,6 +15,8 @@ from pdffast.quality.evidence import create_evidence_report, write_evidence_repo
 from pdffast.quality.gate import evaluate_evidence_report, write_quality_report
 
 
+pytestmark = pytest.mark.migration
+
 @pytest.mark.parametrize("case_id", ("case_001", "case_002"))
 def test_real_pdf_generic_sections_and_accounting(tmp_path: Path, case_id: str) -> None:
     reference_root = os.environ.get("PDFFAST_REFERENCE_ROOT")

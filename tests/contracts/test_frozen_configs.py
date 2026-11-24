@@ -54,6 +54,9 @@ def test_provider_registry_contains_exact_approved_scope() -> None:
         },
     }
     assert registry["providers"]["indra_local"]["kind"] == registry["plugins"]["indra_local"]["kind"]
+    assert registry["providers"]["marker_local"]["env"]["HOME"] == (
+        "${HOME}/Library/Caches/pdffast/marker-workers/${PDFFAST_WORKER_ID}"
+    )
 
 
 def test_retained_provider_objects_equal_explicit_reference_migration() -> None:

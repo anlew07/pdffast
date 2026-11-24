@@ -22,10 +22,7 @@ def main() -> int:
     parser.add_argument("--provider-profile", type=Path, default=None, help="Local production profile JSON; complete four-route override")
     args = parser.parse_args()
     if not args.pdf.is_file():
-        parser.error(
-            f"PDF 不存在: {args.pdf}. 若要只处理已有 Stage 1-9 artifact，"
-            "请使用 --from-artifacts（当前 CLI 尚未启用该模式）。"
-        )
+        parser.error(f"PDF 不存在: {args.pdf}")
     run_id = args.run_id or datetime.now(timezone.utc).strftime("run_%Y%m%dT%H%M%SZ")
     if args.provider_profile is not None and args.provider_config is not None:
         parser.error("--provider-profile cannot be combined with --provider-config")

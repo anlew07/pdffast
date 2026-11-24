@@ -221,7 +221,7 @@
       ],
       "env": {
         "PYTHONUNBUFFERED": "1",
-        "HOME": "${HOME}/Library/Caches/pdffast-v2/marker-workers/${PDFFAST_WORKER_ID}",
+        "HOME": "${HOME}/Library/Caches/pdffast/marker-workers/${PDFFAST_WORKER_ID}",
         "HF_HOME": "${HOME}/.cache/huggingface",
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",

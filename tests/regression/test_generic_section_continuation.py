@@ -8,12 +8,14 @@ import pytest
 from pdffast.native.profiler import run_profiler
 from pdffast.native.sections import diagnose_page_ownership, load_snapshot_pages, run_section_discovery
 
+pytestmark = pytest.mark.regression
+
 
 def _native_sections(tmp_path: Path, case: str) -> tuple[dict, dict[int, dict], list[dict]]:
-    root = os.environ.get("PDFFAST_REFERENCE_ROOT")
-    if not root:
-        pytest.skip("PDFFAST_REFERENCE_ROOT is required for this real PDF")
-    pdf = Path(root).resolve() / "benchmark/samples/real" / f"case_{case}.pdf"
+    raw_root = os.environ.get("PDFFAST_TEST_DATA_ROOT")
+    if not raw_root:
+        pytest.skip("PDFFAST_TEST_DATA_ROOT is required for real-PDF regression")
+    pdf = Path(raw_root).resolve() / "benchmark/samples/real" / f"case_{case}.pdf"
     profile = tmp_path / "page_profile.json"
     snapshot = tmp_path / "page_snapshot.jsonl"
     alignment = tmp_path / "section_alignment.json"
