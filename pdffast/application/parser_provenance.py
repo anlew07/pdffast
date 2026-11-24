@@ -42,6 +42,7 @@ def collect_execution_statistics(
     allowed_providers: tuple[str, ...],
     *,
     output_dir: Path | None = None,
+    plan_path: Path | None = None,
 ) -> dict[str, Any]:
     planned = _task_index(plan.data["tasks"], "plan")
     index = _task_index(execution.selected_index["items"], "selection index")
@@ -57,6 +58,9 @@ def collect_execution_statistics(
         "plan or index task count does not match records",
     )
     _require(manifest["selected_predictions"] == execution.selected_index["items"], "manifest index differs")
+    if plan_path is not None:
+        saved_plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+        _require(saved_plan == plan.data, "persisted runtime escalation policy differs from execution plan")
     if output_dir is not None:
         for name, expected in (
             ("production_execution_manifest.json", manifest),
@@ -64,6 +68,21 @@ def collect_execution_statistics(
         ):
             saved = json.loads((output_dir / name).read_text(encoding="utf-8"))
             _require(saved == expected, f"{name} differs from execution state")
+        selected_dir = output_dir / "selected_predictions"
+        expected_files = set()
+        for task_id, prediction in predictions.items():
+            expected_path = (selected_dir / f"{task_id}.json").resolve()
+            reference = Path(str(index[task_id]["selected_prediction"]))
+            actual_path = reference.resolve() if reference.is_absolute() else (Path.cwd() / reference).resolve()
+            _require(actual_path == expected_path, f"{task_id} selected prediction path escapes its run directory")
+            saved_prediction = json.loads(expected_path.read_text(encoding="utf-8"))
+            _require(saved_prediction == prediction, f"{task_id} persisted selected prediction differs")
+            expected_files.add(expected_path)
+        actual_files = (
+            {path.resolve() for path in selected_dir.glob("*.json")}
+            if selected_dir.is_dir() else set()
+        )
+        _require(actual_files == expected_files, "persisted selected prediction file set differs from plan")
 
     selected: Counter[str] = Counter()
     attempted: Counter[str] = Counter()

@@ -30,6 +30,8 @@ PREFIX = "local.pdffast.v1."
 ID = re.compile(r"[0-9a-f]{32}")
 JOB_PID = re.compile(r"^\s*pid = ([1-9]\d*)\s*$", re.MULTILINE)
 SWEEP_FRESHNESS_SECONDS = 60
+CONTROLLER_LABEL = "local.pdffast.v1.reconcile"
+CONTROLLER_INTERVAL_SECONDS = 20
 CANCEL_TIMEOUT_SECONDS = 4.75  # Leaves room for CLI startup in JudgeAI's five-second window.
 CANCEL_COOPERATIVE_SECONDS = CORE_TERM_GRACE + 0.5
 POLL_SECONDS = 0.04
@@ -487,7 +489,139 @@ def _sweep_failed(reply: dict) -> bool:
     )
 
 
-def _check_controller(root: Path, code: dict, report: dict) -> None:
+def _controller_plist_path() -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{CONTROLLER_LABEL}.plist"
+
+
+def _controller_plist(root: Path) -> dict:
+    project_root = Path(__file__).resolve().parents[1]
+    log_root = root / "controller-logs"
+    return {
+        "Label": CONTROLLER_LABEL,
+        "ProgramArguments": [
+            sys.executable, "-B", "-m", "pdffast.deployment_recovery",
+            "reconcile-all", str(root),
+        ],
+        "WorkingDirectory": str(project_root),
+        "RunAtLoad": True,
+        "StartInterval": CONTROLLER_INTERVAL_SECONDS,
+        "StandardOutPath": str(log_root / "reconcile.stdout.log"),
+        "StandardErrorPath": str(log_root / "reconcile.stderr.log"),
+        "AbandonProcessGroup": False,
+        "ProcessType": "Background",
+        "Umask": 0o077,
+    }
+
+
+def install_controller(root: Path, domain: str) -> dict:
+    """Install a per-user LaunchAgent that runs reconcile-all every 20 seconds."""
+    root = _root(root)
+    domain = _domain(domain)
+    path = _controller_plist_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    (root / "controller-logs").mkdir(mode=0o700, exist_ok=True)
+    expected = _controller_plist(root)
+    target = f"{domain}/{CONTROLLER_LABEL}"
+
+    if path.exists():
+        try:
+            current = plistlib.loads(path.read_bytes())
+        except Exception as exc:
+            raise ControlError("SWEEP_IDENTITY_MISMATCH", "controller plist is invalid") from exc
+        if current.get("Label") != CONTROLLER_LABEL:
+            raise ControlError("SWEEP_IDENTITY_MISMATCH", "controller plist label is not owned by PDFFast")
+        if current != expected:
+            raise ControlError("SWEEP_IDENTITY_MISMATCH", "installed controller plist differs from this deployment")
+        loaded = _launch("print", target, timeout=3)
+        if loaded.returncode != 0:
+            _checked(_launch("bootstrap", domain, str(path)))
+    else:
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".pdffast-controller-", delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(plistlib.dumps(expected))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, path)
+            descriptor = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        _checked(_launch("bootstrap", domain, str(path)))
+
+    _checked(_launch("kickstart", "-k", target))
+    deadline = time.monotonic() + 20
+    expected_identity = _sweep_identity(root, code_identity())
+    while time.monotonic() < deadline:
+        heartbeat = root / "reconcile-heartbeat.json"
+        if heartbeat.is_file():
+            try:
+                record = _read(heartbeat)
+                if record.get("status") == "PASS" and record.get("identity") == expected_identity:
+                    return {
+                        "state": "INSTALLED",
+                        "label": CONTROLLER_LABEL,
+                        "plist_path": str(path),
+                        "start_interval_seconds": CONTROLLER_INTERVAL_SECONDS,
+                    }
+            except (OSError, ValueError, TypeError):
+                pass
+        time.sleep(0.05)
+    raise ControlError("SWEEP_NOT_SUCCESSFUL", "periodic reconciliation agent did not complete its initial sweep")
+
+
+def uninstall_controller(root: Path, domain: str) -> dict:
+    """Unload and remove the PDFFast periodic reconciliation LaunchAgent."""
+    root = _root(root)
+    domain = _domain(domain)
+    path = _controller_plist_path()
+    if not path.exists():
+        return {"state": "NOT_INSTALLED", "label": CONTROLLER_LABEL}
+    try:
+        current = plistlib.loads(path.read_bytes())
+    except Exception as exc:
+        raise ControlError("SWEEP_IDENTITY_MISMATCH", "controller plist is invalid") from exc
+    if current != _controller_plist(root):
+        raise ControlError("SWEEP_IDENTITY_MISMATCH", "controller plist belongs to another deployment")
+    target = f"{domain}/{CONTROLLER_LABEL}"
+    loaded = _launch("print", target, timeout=3)
+    if loaded.returncode == 0:
+        _checked(_launch("bootout", target))
+    path.unlink()
+    descriptor = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    return {"state": "UNINSTALLED", "label": CONTROLLER_LABEL}
+
+
+def _check_controller_agent(root: Path, domain: str) -> None:
+    path = _controller_plist_path()
+    if not path.is_file():
+        raise ControlError("SWEEP_MISSING", "periodic reconciliation LaunchAgent is not installed")
+    try:
+        installed = plistlib.loads(path.read_bytes())
+    except Exception as exc:
+        raise ControlError("SWEEP_INVALID", "periodic reconciliation LaunchAgent plist is invalid") from exc
+    if installed != _controller_plist(root):
+        raise ControlError("SWEEP_IDENTITY_MISMATCH", "periodic reconciliation LaunchAgent differs from this deployment")
+    target = f"{_domain(domain)}/{CONTROLLER_LABEL}"
+    state = _launch("print", target, timeout=3)
+    if state.returncode != 0:
+        raise ControlError("SWEEP_MISSING", "periodic reconciliation LaunchAgent is not loaded")
+    if str(path) not in state.stdout:
+        raise ControlError("SWEEP_IDENTITY_MISMATCH", "loaded reconciliation LaunchAgent points to another plist")
+
+
+def _check_controller(root: Path, code: dict, report: dict, domain: str) -> None:
+    _check_controller_agent(root, domain)
     report.update(last_sweep_unix_seconds=None, age_seconds=None)
     path = root / "reconcile-heartbeat.json"
     if not path.exists():
@@ -623,7 +757,7 @@ def health(root: Path, domain: str) -> dict:
     _health_check(checks, "process_observation", _check_process_observation, "PROCESS_OBSERVATION_UNAVAILABLE")
     if all(checks[name]["status"] == "PASS" for name in ("state_root", "code_identity")):
         _health_check(checks, "controller", lambda: _check_controller(
-            _root(root), report["code_identity"], controller,
+            _root(root), report["code_identity"], controller, domain,
         ), "SWEEP_INVALID")
     if all(item["status"] == "PASS" for name, item in checks.items() if name != "recovery_probe"):
         recovered = _health_check(checks, "recovery_probe", lambda: _check_recovery(
@@ -632,7 +766,7 @@ def health(root: Path, domain: str) -> dict:
         if recovered:
             # The sweep's freshness must still hold after the live Job probe.
             _health_check(checks, "controller", lambda: _check_controller(
-                _root(root), report["code_identity"], controller,
+                _root(root), report["code_identity"], controller, domain,
             ), "SWEEP_INVALID")
     if all(item["status"] == "PASS" for item in checks.values()):
         report["state"] = "PASS"
@@ -657,6 +791,10 @@ def main() -> int:
     check.add_argument("--state-root", required=True, type=Path)
     check.add_argument("--domain", required=True)
     check.add_argument("--json", action="store_true", help="Emit JSON (also the default)")
+    for action in ("install-controller", "uninstall-controller"):
+        controller = commands.add_parser(action)
+        controller.add_argument("--state-root", required=True, type=Path)
+        controller.add_argument("--domain", required=True)
     args = parser.parse_args()
     if args.action == "prepare":
         command = args.command[1:] if args.command[:1] == ["--"] else args.command
@@ -669,6 +807,12 @@ def main() -> int:
         report = health(args.state_root, args.domain)
         print(json.dumps(report, allow_nan=False), flush=True)
         return int(report["state"] != "PASS")
+    elif args.action == "install-controller":
+        report = install_controller(args.state_root, args.domain)
+        print(json.dumps(report, allow_nan=False), flush=True)
+    elif args.action == "uninstall-controller":
+        report = uninstall_controller(args.state_root, args.domain)
+        print(json.dumps(report, allow_nan=False), flush=True)
     elif args.action == "cancel":
         report = cancel(args.root, args.run)
         print(json.dumps(report, allow_nan=False), flush=True)

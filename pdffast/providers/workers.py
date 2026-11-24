@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from pdffast.runtime import ParseCancelledError, check_parse_cancelled
 
-from .base import ProviderPreflight, ProviderTask, RawProviderResult
+from .base import ProviderPreflight, ProviderTask, RawProviderResult, validate_asset_stat_snapshot
 
 SUPERVISED_CORE_PID = "PDFFAST_SUPERVISED_CORE_PID"
 MANAGED_JOB_PGID = "PDFFAST_MANAGED_JOB_PGID"
@@ -723,12 +723,16 @@ class IsolatedWorkerProvider:
         return self._worker
 
     def preflight(self) -> ProviderPreflight:
+        validate_asset_stat_snapshot(self.config)
         available, detail = self._get_worker().preflight()
+        validate_asset_stat_snapshot(self.config)
         return ProviderPreflight(self.name, available, detail)
 
     def initialize(self) -> None:
         if not self._started:
+            validate_asset_stat_snapshot(self.config)
             self._get_worker().start()
+            validate_asset_stat_snapshot(self.config)
             self._started = True
             self._closed = False
 
@@ -742,11 +746,13 @@ class IsolatedWorkerProvider:
         }
 
     def execute(self, task: ProviderTask) -> RawProviderResult:
+        validate_asset_stat_snapshot(self.config)
         self.initialize()
         response = self._get_worker().request(
             self.build_command(task),
             timeout_seconds=float(self.config.get("predict_timeout_seconds", 600)),
         )
+        validate_asset_stat_snapshot(self.config)
         if response.get("status") != "SUCCESS":
             raise RuntimeError(f"{self.name} parse failed: {response.get('error')}")
         output_path = Path(str(response.get(self.result_path_key) or ""))
@@ -784,7 +790,10 @@ class IsolatedWorkerProvider:
     def close(self) -> None:
         if self._closed:
             return
-        if self._worker is not None:
-            self._worker.close()
-        self._started = False
-        self._closed = True
+        try:
+            if self._worker is not None:
+                self._worker.close()
+        finally:
+            self._started = False
+            self._closed = True
+        validate_asset_stat_snapshot(self.config)

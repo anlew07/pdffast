@@ -143,11 +143,30 @@ def test_provenance_counts_dispatch_fallback_terminal_and_unresolved(tmp_path):
         normalizer=lambda result, task, **kwargs: result.payload,
         output_dir=tmp_path, locked_routes={"REGION_MULTIMODAL_PARSE": chain},
     )
-    stats = collect_execution_statistics(plan, run, (first, second), output_dir=tmp_path)
+    plan_path = tmp_path / "runtime_escalation_policy.json"
+    plan_path.write_text(json.dumps(plan.data), encoding="utf-8")
+    stats = collect_execution_statistics(
+        plan, run, (first, second), output_dir=tmp_path, plan_path=plan_path,
+    )
     assert stats["attempted_provider_counts"] == {first: 3, second: 3}
     assert stats["selected_provider_counts"] == {second: 1}
     assert stats["accepted_task_count"] == stats["pipeline_failure_count"] == stats["terminal_preserve_count"] == 1
     assert stats["execution_status"] == "COMPLETED_WITH_PIPELINE_FAILURES"
+    selected_file = tmp_path / "selected_predictions" / f"{tasks[0]['task_id']}.json"
+    saved_selected = json.loads(selected_file.read_text(encoding="utf-8"))
+    saved_selected["selected_provider"] = first
+    selected_file.write_text(json.dumps(saved_selected), encoding="utf-8")
+    with pytest.raises(ValueError, match="persisted selected prediction"):
+        collect_execution_statistics(
+            plan, run, (first, second), output_dir=tmp_path, plan_path=plan_path,
+        )
+    selected_file.write_text(json.dumps(run.selected_predictions[0]), encoding="utf-8")
+    plan_path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="persisted runtime escalation policy"):
+        collect_execution_statistics(
+            plan, run, (first, second), output_dir=tmp_path, plan_path=plan_path,
+        )
+    plan_path.write_text(json.dumps(plan.data), encoding="utf-8")
     run.selected_predictions[0]["selected_provider"] = first
     with pytest.raises(ValueError, match="differs from index"):
         collect_execution_statistics(plan, run, (first, second))

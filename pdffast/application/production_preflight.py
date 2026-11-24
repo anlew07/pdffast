@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import os
@@ -18,6 +19,7 @@ from pdffast.config import ParserConfig
 from pdffast.errors import ConfigurationError
 from pdffast.providers.profiles import decode_config_json
 from pdffast.providers.workers import worker_environment
+from pdffast.providers.base import asset_stat_identity
 
 from .production_identity import SCHEMA_VERSION, build_identity, digest, fingerprint
 from .production_profile import ProductionProfile, load_production_profile
@@ -67,6 +69,10 @@ def _packages(
 
 def _resolve_paths(snapshot: ProductionProfile, config: dict[str, Any]) -> None:
     registry = snapshot.registry
+    if config.get("model_asset_manifest"):
+        config["model_asset_manifest"] = str(
+            registry._resolve_path(config["model_asset_manifest"], field="model_asset_manifest")
+        )
     for key in ("required_artifacts", "required_artifact_manifests"):
         if key in config:
             config[key] = [str(registry._resolve_path(path, field=key)) for path in config[key]]
@@ -83,7 +89,79 @@ def _resolve_paths(snapshot: ProductionProfile, config: dict[str, Any]) -> None:
         }
 
 
-def _indra(config: dict[str, Any], packages: dict[str, str]) -> dict[str, Any]:
+def _sha256_file(path: Path) -> str:
+    from hashlib import sha256
+
+    value = sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            value.update(chunk)
+    return value.hexdigest()
+
+
+def _load_asset_manifest(
+    config: dict[str, Any],
+    *,
+    provider: str,
+    revision: str,
+    root: Path,
+    relative_files: list[str],
+    verify_hashes: bool,
+    tools_config_sha256: str | None = None,
+) -> dict[str, Any]:
+    raw_path = config.get("model_asset_manifest")
+    if not isinstance(raw_path, str) or not Path(raw_path).is_absolute():
+        raise RuntimeIdentityError(f"{provider} requires an absolute frozen model asset manifest")
+    manifest_path = Path(raw_path)
+    raw = manifest_path.read_bytes()
+    if manifest_path.stat().st_mode & 0o222:
+        raise RuntimeIdentityError(f"{provider} model asset manifest must be read-only")
+    data = decode_config_json(raw)
+    if (
+        data.get("schema_version") != "1.0"
+        or data.get("provider") != provider
+        or data.get("revision") != revision
+        or data.get("tools_config_sha256") != tools_config_sha256
+    ):
+        raise RuntimeIdentityError(f"{provider} frozen model asset manifest identity mismatch")
+    files = data.get("files")
+    expected_names = set(relative_files)
+    if not isinstance(files, dict) or set(files) != expected_names:
+        raise RuntimeIdentityError(f"{provider} frozen model asset manifest file set mismatch")
+    hashes: dict[str, str] = {}
+    stat_snapshot: dict[str, dict[str, int]] = {}
+    for name in sorted(expected_names):
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts or not name:
+            raise RuntimeIdentityError(f"{provider} model asset path is invalid: {name!r}")
+        record = files[name]
+        if not isinstance(record, dict):
+            raise RuntimeIdentityError(f"{provider} model asset record is invalid: {name}")
+        expected_sha = record.get("sha256")
+        expected_stat = record.get("stat")
+        if (
+            not isinstance(expected_sha, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", expected_sha)
+            or not isinstance(expected_stat, dict)
+        ):
+            raise RuntimeIdentityError(f"{provider} model asset digest or stat is invalid: {name}")
+        artifact = root / relative
+        actual_stat = asset_stat_identity(artifact)
+        if actual_stat != expected_stat:
+            raise RuntimeIdentityError(f"{provider} model asset changed since freeze: {name}")
+        if verify_hashes and _sha256_file(artifact) != expected_sha:
+            raise RuntimeIdentityError(f"{provider} model asset SHA-256 mismatch: {name}")
+        hashes[name] = expected_sha
+        stat_snapshot[str(artifact.resolve())] = actual_stat
+    stat_snapshot[str(manifest_path.resolve())] = asset_stat_identity(manifest_path)
+    config["_pdffast_asset_stat_snapshot"] = stat_snapshot
+    config["_pdffast_asset_manifest_sha256"] = digest(raw)
+    return {"asset_manifest_sha256": digest(raw), "asset_files_sha256": hashes}
+
+
+def _indra(
+    config: dict[str, Any], packages: dict[str, str], *, verify_assets: bool = False,
+) -> dict[str, Any]:
     model_dir = Path(config["model_dir"])
     manifest = model_dir.parents[1] / "install_manifest.json"
     raw = manifest.read_bytes()
@@ -111,13 +189,18 @@ def _indra(config: dict[str, Any], packages: dict[str, str]) -> dict[str, Any]:
     installed = {path.name for path in model_dir.iterdir() if path.is_file()}
     if installed - declared.keys():
         raise RuntimeIdentityError("Indra model directory has undeclared files")
+    assets = _load_asset_manifest(
+        config, provider="indra_local", revision=revision, root=model_dir,
+        relative_files=list(declared), verify_hashes=verify_assets,
+    )
     return {
         "revision": revision, "manifest_sha256": digest(raw),
+        **assets,
         "configuration_files_sha256": {
             name: digest((model_dir / name).read_bytes())
             for name in declared if name.endswith(".json")
         },
-        "verification": "DECLARED_AND_PRESENT",
+        "verification": "FROZEN_SHA256_AND_STAT",
     }
 
 
@@ -143,7 +226,9 @@ def _rapidocr(config: dict[str, Any], packages: dict[str, str]) -> dict[str, Any
     return {"declared_file_sha256": pins, "verification": "SHA256_VERIFIED"}
 
 
-def _mineru(config: dict[str, Any], packages: dict[str, str]) -> dict[str, Any]:
+def _mineru(
+    config: dict[str, Any], packages: dict[str, str], *, verify_assets: bool = False,
+) -> dict[str, Any]:
     if not {"mineru", "torch", "torchvision"} <= packages.keys():
         raise FileNotFoundError("MinerU, torch or torchvision is missing")
     env = config.get("env", {})
@@ -172,17 +257,28 @@ def _mineru(config: dict[str, Any], packages: dict[str, str]) -> dict[str, Any]:
         or str(root) not in trees or not trees[str(root)]
     ):
         raise RuntimeIdentityError("MinerU tools config does not select the declared model snapshot")
+    relative_files = trees[str(root)]
+    assets = _load_asset_manifest(
+        config, provider="mineru_local", revision=root.name, root=root,
+        relative_files=relative_files, verify_hashes=verify_assets,
+        tools_config_sha256=digest(raw),
+    )
+    config["_pdffast_mineru_tools_config_b64"] = base64.b64encode(raw).decode("ascii")
+    config["_pdffast_mineru_tools_config_sha256"] = digest(raw)
     return {
         "revision": root.name, "tools_config_sha256": digest(raw),
+        **assets,
         "configuration_files_sha256": {
             item: digest((root / item).read_bytes())
-            for item in trees[str(root)] if item.endswith(".json")
+            for item in relative_files if item.endswith(".json")
         },
-        "verification": "DECLARED_AND_PRESENT",
+        "verification": "FROZEN_SHA256_AND_STAT",
     }
 
 
-def inspect_runtime(snapshot: ProductionProfile, *, probe: bool) -> dict[str, Any]:
+def inspect_runtime(
+    snapshot: ProductionProfile, *, probe: bool, verify_assets: bool = False,
+) -> dict[str, Any]:
     runtimes = {}
     for name in snapshot.allowed:
         report: dict[str, Any] = {"status": "CHECK_ERROR", "dependency_probe": "NOT_RUN"}
@@ -208,11 +304,11 @@ def inspect_runtime(snapshot: ProductionProfile, *, probe: bool) -> dict[str, An
             if prepared["kind"] == "indra_worker":
                 if "indra-ocr" not in packages:
                     raise FileNotFoundError("indra-ocr is missing")
-                model = _indra(prepared, packages)
+                model = _indra(prepared, packages, verify_assets=verify_assets)
             elif prepared["kind"] == "rapidocr":
                 model = _rapidocr(prepared, packages)
             elif prepared["kind"] == "mineru_worker":
-                model = _mineru(prepared, packages)
+                model = _mineru(prepared, packages, verify_assets=verify_assets)
             else:
                 raise RuntimeIdentityError("no strict runtime identity verifier for this adapter")
             if prepared["kind"] == "indra_worker" and prepared.get("env"):
@@ -250,7 +346,8 @@ def inspect_runtime(snapshot: ProductionProfile, *, probe: bool) -> dict[str, An
 
 
 def preflight_snapshot(
-    snapshot: ProductionProfile, config: ParserConfig, *, probe: bool = False,
+    snapshot: ProductionProfile, config: ParserConfig, *,
+    probe: bool = False, verify_assets: bool = False,
 ) -> dict[str, Any]:
     runtimes = {}
     try:
@@ -258,7 +355,7 @@ def preflight_snapshot(
             "pdfplumber": "pdfplumber", "pypdfium2": "pypdfium2",
             "pdfminer.six": "pdfminer", "pillow": "PIL",
         })
-        runtimes = inspect_runtime(snapshot, probe=probe)
+        runtimes = inspect_runtime(snapshot, probe=probe, verify_assets=verify_assets)
         report = build_identity(snapshot, config, runtimes, core_dependencies)
     except (OSError, TypeError, ValueError, subprocess.SubprocessError) as exc:
         return {
@@ -281,6 +378,7 @@ def preflight_production_profile(
     provider_profile: Path | str | None = None,
     config: ParserConfig | None = None,
     probe: bool = False,
+    verify_assets: bool = False,
 ) -> dict[str, Any]:
     """Return a JSON-compatible V1 report for the same inputs accepted by Core."""
     try:
@@ -292,4 +390,4 @@ def preflight_production_profile(
         snapshot = load_production_profile(resolved)
     except ConfigurationError as exc:
         return {"schema_version": SCHEMA_VERSION, "status": "CONFIGURATION_FAILED", "error": str(exc)}
-    return preflight_snapshot(snapshot, resolved, probe=probe)
+    return preflight_snapshot(snapshot, resolved, probe=probe, verify_assets=verify_assets)

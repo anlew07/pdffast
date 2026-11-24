@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from pdffast.fallback.policy import ProviderExecutionPlan
-from pdffast.providers.base import Provider, ProviderTask, RawProviderResult
+from pdffast.providers.base import (
+    Provider, ProviderAssetIntegrityError, ProviderTask, RawProviderResult,
+)
 from pdffast.providers.registry import (
     ProviderClosureError,
     validate_runtime_provider_closure,
@@ -206,7 +208,7 @@ def execute_provider_plan(
                             or (canonical.get("provider") or {}).get("name") != provider_name
                         ):
                             raise ProviderClosureError(f"task={task_id}: normalized Provider identity mismatch")
-                    except (ProviderClosureError, WorkerShutdownError):
+                    except (ProviderClosureError, ProviderAssetIntegrityError, WorkerShutdownError):
                         raise
                     except Exception as exc:
                         if observation is not None:

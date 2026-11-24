@@ -26,10 +26,15 @@ def main() -> int:
     parser.add_argument("--provider-profile", type=Path, required=True)
     parser.add_argument("--json", action="store_true", help="emit the V1 JSON report (default)")
     parser.add_argument("--probe", action="store_true", help="also run dependency probes, without inference")
+    parser.add_argument(
+        "--verify-assets", action="store_true",
+        help="rehash frozen Indra and MinerU model files for an explicit release verification",
+    )
     args = parser.parse_args()
     with contextlib.redirect_stdout(sys.stderr):
         report = preflight_production_profile(
-            project_root=args.project_root, provider_profile=args.provider_profile, probe=args.probe,
+            project_root=args.project_root, provider_profile=args.provider_profile,
+            probe=args.probe, verify_assets=args.verify_assets,
         )
     print(json.dumps(report, ensure_ascii=False, allow_nan=False, sort_keys=True), flush=True)
     return {"PASS": 0, "CONFIGURATION_FAILED": 2, "PREFLIGHT_FAILED": 3}[report["status"]]

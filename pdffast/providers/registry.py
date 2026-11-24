@@ -10,7 +10,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from .base import Provider
+from .base import Provider, validate_asset_stat_snapshot
 
 ProviderFactory = Callable[[str, dict[str, Any]], Provider]
 
@@ -206,6 +206,7 @@ class ProviderRegistry:
             "layout_detection_model_dir",
             "vl_rec_model_dir",
             "model_dir",
+            "model_asset_manifest",
         ):
             if prepared.get(field):
                 prepared[field] = str(
@@ -312,6 +313,18 @@ class ProviderRegistry:
             raise ProviderConfigurationError(
                 "required artifact sha256 mismatch: " + "; ".join(mismatched)
             )
+        expected_manifest_sha = prepared.get("_pdffast_asset_manifest_sha256")
+        manifest_path = prepared.get("model_asset_manifest")
+        if expected_manifest_sha is not None:
+            if not manifest_path or not Path(str(manifest_path)).is_file():
+                raise ProviderConfigurationError("locked model asset manifest is missing")
+            actual_manifest_sha = sha256(Path(str(manifest_path)).read_bytes()).hexdigest()
+            if actual_manifest_sha != expected_manifest_sha:
+                raise ProviderConfigurationError("locked model asset manifest changed after preflight")
+        try:
+            validate_asset_stat_snapshot(prepared)
+        except RuntimeError as exc:
+            raise ProviderConfigurationError(str(exc)) from exc
         return prepared
 
     def create(self, name: str, config: dict[str, Any]) -> Provider:

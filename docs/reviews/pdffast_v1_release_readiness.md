@@ -69,7 +69,7 @@ Core 预检和当次解析共用代码路径与锁定快照。外部预检和解
 | MEDIUM | 候选将严格 BYE/退出码异常扩展到历史无 Profile Worker，可能改变既有调用的关闭语义。 | 已限定在锁定模式。锁定和默认模式均测试了 BYE 后退出 0、7 和 -6，历史模式继续按原语义关闭。 |
 | MEDIUM | Indra、MinerU 的 V1 身份级别为 `DECLARED_AND_PRESENT`。依赖清单标识包名与版本，无法证明同版本二进制、模型字节、驱动或重复发行包的实际选择完全相同。 | 发布环境须固定镜像、只读模型和解释器树，验证发行包来源与唯一性。Indra 可执行已存在的逐文件校验，MinerU 应用获批模型清单。RapidOCR 当次预检校验固定 ONNX 字节。 |
 | MEDIUM | 锁定 manifest 的 PDF SHA 是解析前观测值。解析会在多个阶段打开文件。一次前后都恢复原字节的外部修改可能越过观察。 | 直接调用依赖稳定的输入路径和文件。JudgeAI 和验收工具核对输入观测值，发布时用不可变输入存储。 |
-| MEDIUM | 现有 `fallback-crop-contract.yml`、`indra-contract.yml` 未覆盖全部治理测试。 | 发布审批须记录本报告对应的治理回归与真实验收。CI 门禁接入可独立安排。 |
+| MEDIUM | 现有 `fallback-crop-contract.yml`、`indra-contract.yml` 未覆盖全部治理测试。 | 已增加 `.github/workflows/production-governance-v1.yml`，分别运行离线治理单测和 macOS launchd 故障注入；真实 PDF 与真实模型验收仍需在目标部署环境执行。 |
 | MEDIUM | 历史 MiniCPM 导入断言违反 Core 既有边界，且六个历史结构测试无参考产物。 | 逐项在旧基线复现，详见归因表。发布审批须处理全量零失败门槛。 |
 | LOW | Core 进度日志的 `parse_finished` 可早于最终原子发布或最终环境校验异常。 | 使用最终 manifest、V1 状态及子进程退出码判定可接受结果。 |
 | LOW | 批量验收的控制台日志从 case 子目录移至批次目录。 | 批次索引已经输出新路径。按旧固定路径找日志的调用方应改用索引。 |

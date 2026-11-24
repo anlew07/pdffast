@@ -83,11 +83,13 @@ assert hashlib.sha256(encoded).hexdigest() == report["effective_config_fingerpri
 
 ## 模型与环境
 
+在安装或更新 Indra / MinerU 模型后，必须在目标部署 checkout 中执行一次 `python -B scripts/freeze_production_assets.py`。脚本只读取本地模型，不下载或修改模型文件；它校验 Indra 安装 Manifest 的 SHA，并为两个模型目录生成只读的 `model_assets_manifest.json`。普通预检将清单 SHA、模型文件 SHA 声明和文件 stat 纳入运行时身份，并在 Provider 创建、Worker 启动、每次执行前后及关闭时重新比较 stat。这样不需要每次解析重复读取 GB 级权重。正式发布验收另执行 `python -B -m pdffast.preflight --project-root "$PWD" --provider-profile "$PROFILE" --verify-assets --json`，显式重算所有冻结模型文件的 SHA-256。模型文件发生任何常规替换或修改后，必须重新冻结并重新批准身份。
+
 | Provider | 预检依据 | 模型字节验证 |
 | --- | --- | --- |
-| Indra | checkout 独立 Python、`indra-ocr` 版本、安装 Manifest、主模型和 Manifest 列出的本地文件、不可变 revision、小 JSON 配置。可参与自动权重选择的顶层目录须没有未声明文件 | `DECLARED_AND_PRESENT`。需要深度校验时，使用现有 `scripts/verify_indra_runtime.py --hashes` |
+| Indra | checkout 独立 Python、`indra-ocr` 版本、安装 Manifest、不可变 revision，以及由 `scripts/freeze_production_assets.py` 生成的 SHA-256 + 文件 stat 清单 | `FROZEN_SHA256_AND_STAT`。普通预检只比较文件 stat，不重复读取全部权重；发布验证使用 `--verify-assets` 重算 SHA-256 |
 | RapidOCR | 主 Python 中的 RapidOCR 与 ONNX Runtime、固定 Det/Rec/Cls 权重，各自 SHA-256 和实际 engine 绑定 | `SHA256_VERIFIED` |
-| MinerU | checkout 独立 Python、MinerU/Torch/Torchvision、离线选项、`mineru.json` 指向的 snapshot revision、必需文件与小 JSON 配置 | `DECLARED_AND_PRESENT` |
+| MinerU | checkout 独立 Python、MinerU/Torch/Torchvision、离线选项、冻结的 `mineru.json` 字节快照、revision，以及由 `scripts/freeze_production_assets.py` 生成的 SHA-256 + 文件 stat 清单 | `FROZEN_SHA256_AND_STAT`。普通预检只比较文件 stat；发布验证使用 `--verify-assets` 重算 SHA-256 |
 
 `READY` 表示该级别的身份与文件检查通过。其他状态为 `NOT_READY`、`NOT_INSTALLED`、`MISCONFIGURED`、`IDENTITY_UNVERIFIED`、`CHECK_ERROR`。选择缺少 V1 运行时身份验证器的适配器会使严格预检失败。部署策略如要求所有模型权重字节经过深度证明，应在安装或发布阶段另行校验 Indra 和 MinerU 的文件完整性。
 

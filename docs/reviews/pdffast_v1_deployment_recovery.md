@@ -19,7 +19,7 @@ Apple 文档描述 `AbandonProcessGroup=false` 的同组回收边界。首次本
 | launchd | 持有独立 Job、由标签定位任务、提供启动与实际退出状态，并负责 Job 的停止边界。 |
 | 组内清理进程 | 依赖内核管道 EOF 处理单次 Supervisor 死亡，忽略 TERM，只向自身所在任务组发 KILL。它与任务共用同一 Job。 |
 | Supervisor / Core | 延续单次超时、协作取消、Worker 退出码、产物与 V1 合同。受管路径让 Worker 继承已经核验的 Job 组。 |
-| 持久回收控制器 | `reconcile-all` 可独立启动和重启。逐项读取持久意图，根据租约处理注册过期任务，只向 Manager 已验证的标签发 `bootout`。 |
+| 持久回收控制器 | `install-controller` 安装当前用户 LaunchAgent，使用 `RunAtLoad` 和 20 秒 `StartInterval` 周期执行 `reconcile-all`。Health 同时核验 plist 身份、launchd 加载状态和 60 秒内的成功扫描。控制器逐项读取持久意图，根据租约处理注册过期任务，只向 Manager 已验证的标签发 `bootout`。 |
 | JudgeAI | 检查部署门禁，提交任务、读取回执并按现有 V1 合同复查本次产物。 |
 
 ### 登记、启动与恢复边界

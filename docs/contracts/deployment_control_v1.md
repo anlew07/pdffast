@@ -7,6 +7,7 @@
 部署账号在 PDFFast checkout 根目录执行下列命令。所有控制进程使用同一部署解释器、工作目录、当前用户域和登记目录。`ROOT` 为已经创建、由当前账号独占的 `0700` 目录。`PY` 为部署解释器的绝对路径。`DOMAIN` 选用当前用户的 `gui/<uid>` 或 `user/<uid>`。部署前在实际目标域验证。
 
 ```bash
+"$PY" -B -m pdffast.deployment_recovery install-controller --state-root "$ROOT" --domain "$DOMAIN"
 "$PY" -B -m pdffast.deployment_recovery health --state-root "$ROOT" --domain "$DOMAIN" --json
 "$PY" -B -m pdffast.deployment_recovery cancel "$ROOT" "$JOB_ID"
 "$PY" -B -m pdffast.deployment_recovery reconcile "$ROOT" "$JOB_ID"
@@ -26,11 +27,11 @@
 | `state_root` 检查 | 检查目录归属、私有权限和本次实际的持久登记能力。 |
 | `launchd` 检查 | 实际查询指定当前用户域。 |
 | `process_observation` 检查 | 验证本机可观察任务范围所需的进程能力。 |
-| `controller` 检查 | 核对 `reconcile-all` 完成的近期扫描。扫描覆盖指定登记目录，包括其中登记的当前账号各用户域。扫描身份绑定当前系统启动标识、源码、Git Commit、解释器、工作目录、规范化登记目录路径和 UID。 |
+| `controller` 检查 | 核对专用 LaunchAgent 已按当前 checkout、解释器和登记目录加载，且以 `RunAtLoad` 和 20 秒 `StartInterval` 周期执行；同时核对 `reconcile-all` 完成的近期扫描。扫描覆盖指定登记目录，包括其中登记的当前账号各用户域。扫描身份绑定当前系统启动标识、源码、Git Commit、解释器、工作目录、规范化登记目录路径和 UID。 |
 | `recovery_probe` 检查 | 使用独立 UUID 对实际 launchd Job 执行启动和回收探测，并验证回收。探测启动短时 Core 与一个拒绝 TERM 的同组子进程。检查同组子进程实际加载的源码身份与调用方一致。核验归属后，向该探测 Job 的 Supervisor 发 SIGKILL，确认组清空并撤销登记。 |
 | `code_identity` 检查 | 标记源码身份计算是否成功。 |
 
-六项检查位于 `checks`。各项含 `status` 和 `code`。`status` 为 `PASS`、`BLOCKED` 或 `NOT_CHECKED`。仅在六项均通过时报告总体 `PASS`。`controller` 对象给出最近一次扫描的 Unix 时间、按单调时间计算的扫描年龄和 60 秒有效期。最近扫描可以处在运行中或失败状态，此时检查仍为 `BLOCKED`。数据缺失时，时间及年龄可能为 `null`。定期用同一部署环境调用 `reconcile-all`，间隔应小于 60 秒，并给执行时间和调度抖动留下余量。成功扫描提供近期运行证据。持续调度状态由目标环境验证。
+六项检查位于 `checks`。各项含 `status` 和 `code`。`status` 为 `PASS`、`BLOCKED` 或 `NOT_CHECKED`。仅在六项均通过时报告总体 `PASS`。`controller` 对象给出最近一次扫描的 Unix 时间、按单调时间计算的扫描年龄和 60 秒有效期。最近扫描可以处在运行中或失败状态，此时检查仍为 `BLOCKED`。数据缺失时，时间及年龄可能为 `null`。首次部署必须执行 `install-controller`；它安装当前用户的 `~/Library/LaunchAgents/local.pdffast.v1.reconcile.plist`，设置 `RunAtLoad=true` 和 `StartInterval=20`，并等待首次成功扫描。Health 会验证该 plist 内容、launchd 加载状态和近期 heartbeat；仅手工运行一次 `reconcile-all` 不足以使 Health 通过。维护或卸载时执行 `uninstall-controller`。安装后由 launchd 持续调度，不再依赖外部 cron 或人工轮询。
 
 | 检查 | 可能的 `code` |
 | --- | --- |

@@ -246,6 +246,18 @@ def test_production_cli_edit_invalidates_clean_release_identity(tmp_path, monkey
     )
     assert_rejected_as_dirty()
 
+    # Clear the staged change, then hide the worktree edit from status. The
+    # actual CLI bytes must still be compared with the committed Git blob.
+    subprocess.run(
+        ["git", "-C", str(checkout), "reset", "HEAD", "--", "scripts/run_pipeline.py"],
+        check=True, capture_output=True, timeout=15,
+    )
+    subprocess.run(
+        ["git", "-C", str(checkout), "update-index", "--assume-unchanged", "--", "scripts/run_pipeline.py"],
+        check=True, capture_output=True, timeout=15,
+    )
+    assert_rejected_as_dirty()
+
 
 def test_clean_release_commit_changes_fingerprint_even_with_same_source(monkeypatch):
     from pdffast.application import production_identity

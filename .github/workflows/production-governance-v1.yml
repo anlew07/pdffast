@@ -1,0 +1,70 @@
+name: Production governance V1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "pdffast/**"
+      - "configs/**"
+      - "scripts/**"
+      - "tests/unit/test_production_preflight.py"
+      - "tests/unit/test_parser_provenance.py"
+      - "tests/unit/test_model_asset_identity.py"
+      - "tests/unit/test_provider_lifecycle.py"
+      - "tests/unit/test_process_supervision.py"
+      - "tests/unit/test_deployment_recovery.py"
+      - ".github/workflows/production-governance-v1.yml"
+  push:
+    branches:
+      - "feat/pdffast-production-governance-v1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-governance-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install minimal test environment
+        run: python -m pip install -e . pytest jsonschema
+      - name: Compile production modules and scripts
+        run: python -m compileall -q pdffast scripts/freeze_production_assets.py
+      - name: Run production governance contracts
+        run: |
+          python -m pytest -q -p no:cacheprovider \
+            tests/unit/test_model_asset_identity.py \
+            tests/unit/test_production_preflight.py \
+            tests/unit/test_parser_provenance.py \
+            tests/unit/test_provider_profiles.py \
+            tests/unit/test_provider_lifecycle.py \
+            tests/unit/test_fallback_executor.py \
+            tests/unit/test_process_supervision.py \
+            tests/unit/test_native_only_provider_plan.py
+      - name: Check whitespace errors
+        run: git diff --check
+
+  macos-launchd-recovery:
+    runs-on: macos-14
+    timeout-minutes: 25
+    env:
+      PDFFAST_TEST_LAUNCHD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install minimal test environment
+        run: python -m pip install -e . pytest
+      - name: Run launchd and process supervision fault injection
+        run: |
+          python -m pytest -q -p no:cacheprovider \
+            tests/unit/test_deployment_recovery.py \
+            tests/unit/test_process_supervision.py

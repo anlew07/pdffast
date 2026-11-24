@@ -71,6 +71,17 @@ def code_identity() -> dict[str, Any]:
             raise ValueError("invalid PDFFast Git revision")
         dirty = bool(git("status", "--porcelain=v1", "--untracked-files=all", "--",
                          "pdffast", "configs", "scripts/run_pipeline.py", "pyproject.toml", "uv.lock"))
+        # Git's assume-unchanged / skip-worktree index bits can suppress status
+        # output. Bind the production CLI's actual bytes directly to HEAD.
+        cli_path = ROOT / "scripts/run_pipeline.py"
+        try:
+            committed_cli = subprocess.run(
+                ["git", "-C", str(ROOT), "show", "HEAD:scripts/run_pipeline.py"],
+                capture_output=True, check=True, timeout=15, env=git_env,
+            ).stdout
+            dirty = dirty or not cli_path.is_file() or cli_path.read_bytes() != committed_cli
+        except (OSError, subprocess.SubprocessError):
+            dirty = True
     algorithms = {}
     for label, directory in (
         ("native", "native"), ("evidence", "quality"), ("quality", "quality"),

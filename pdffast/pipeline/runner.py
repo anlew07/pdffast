@@ -299,7 +299,9 @@ def run_core_pipeline(
             statistics = None
             if locked_profile is not None:
                 statistics = collect_execution_statistics(
-                    execution_plan, production, locked_profile.allowed, output_dir=providers.execution_dir,
+                    execution_plan, production, locked_profile.allowed,
+                    output_dir=providers.execution_dir,
+                    plan_path=observable.execution_plan.parent / "runtime_escalation_policy.json",
                 )
             final = run_stage10(
                 context, selection=production, section_alignment=section_alignment,

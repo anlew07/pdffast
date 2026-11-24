@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import sys
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from .base import ProviderTask
@@ -17,13 +21,37 @@ class MinerUProvider(IsolatedWorkerProvider):
     worker_code = WORKER_CODE
     dependency_probe_code = "import torch; import torchvision; from mineru.cli.common import do_parse, read_fn; from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming; print('mineru=ok')"
 
+    def __init__(self, name: str, config: dict[str, Any], **kwargs: Any) -> None:
+        super().__init__(name, config, **kwargs)
+        self._tools_config_temp: tempfile.TemporaryDirectory[str] | None = None
+
     def _default_worker_factory(self, config: dict[str, Any]) -> WorkerProtocol:
+        environment = dict(config.get("env") or {})
+        if config.get("locked_runtime") is True:
+            encoded = config.get("_pdffast_mineru_tools_config_b64")
+            expected = config.get("_pdffast_mineru_tools_config_sha256")
+            if not isinstance(encoded, str) or not isinstance(expected, str):
+                raise ValueError("locked MinerU requires the preflight tools-config snapshot")
+            payload = base64.b64decode(encoded, validate=True)
+            if hashlib.sha256(payload).hexdigest() != expected:
+                raise ValueError("locked MinerU tools-config snapshot digest mismatch")
+            self._tools_config_temp = tempfile.TemporaryDirectory(prefix="pdffast-mineru-config-")
+            snapshot_path = Path(self._tools_config_temp.name) / "mineru.json"
+            snapshot_path.write_bytes(payload)
+            snapshot_path.chmod(0o400)
+            environment["MINERU_TOOLS_CONFIG_JSON"] = str(snapshot_path)
         if sys.platform == "darwin":
-            # Keep ORT's telemetry uploader out of native shutdown. The opt-out
-            # must be present before either child interpreter imports ORT.
-            environment = {**(config.get("env") or {}), "ORT_DISABLE_TELEMETRY": "1"}
-            config = {**config, "env": environment}
-        return super()._default_worker_factory(config)
+            # Set before the isolated interpreter imports ONNX Runtime.
+            environment["ORT_DISABLE_TELEMETRY"] = "1"
+        return super()._default_worker_factory({**config, "env": environment})
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            if self._tools_config_temp is not None:
+                self._tools_config_temp.cleanup()
+                self._tools_config_temp = None
 
     def build_command(self, task: ProviderTask) -> dict[str, Any]:
         command = super().build_command(task)

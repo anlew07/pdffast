@@ -2,6 +2,7 @@
 
 import json
 import os
+import plistlib
 import signal
 import subprocess
 import sys
