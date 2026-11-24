@@ -42,14 +42,14 @@ PDFFast 工作区为 `/Users/admin/Workspace/pdffast-v3`，分支 `main` 跟踪 
 | 字段 | V1 规则 |
 | --- | --- |
 | `pdffast_commit` | 已加载 PDFFast 源码所在 Git checkout 的 HEAD，40 或 64 位小写十六进制，须与 `code_identity.pdffast_commit` 相等。没有 Git 元数据时为 `null`。JudgeAI 当前部署 pin 使用已批准的 40 位 Commit。 |
-| `code_identity`、`source_dirty` | Git Checkout 返回布尔 dirty，盘上 PDFFast Python 源文件按相对 POSIX 路径映射到文件 SHA-256，再规范化为源码总 SHA。算法 SHA 用对应源码子集。Git 状态范围为源码、配置与项目锁文件，JudgeAI 另验整棵工作树干净。无 Git 元数据时 dirty 为 `null`。 |
+| `code_identity`、`source_dirty` | Git Checkout 返回布尔 dirty；`source_sha256` 覆盖盘上 `pdffast/**/*.py` 与 Git checkout 中的 `scripts/run_pipeline.py`，按相对 POSIX 路径映射到文件 SHA-256 后规范化。算法 SHA 仅覆盖对应包内算法源码。Git 状态范围为源码、配置、生产 CLI 与项目锁文件；CLI 字节还直接与 HEAD 比较，JudgeAI 另验整棵工作树干净。无 Git 元数据时 dirty 为 `null`。 |
 | `profile_sha256`、`providers_config_sha256` | 实际加载原始字节的 SHA-256，64 位小写。显式根目录与包内资源各用自己的配置，路径用作诊断。 |
 | `effective_config_fingerprint` | PDFFast 对规范化 `fingerprint_input` 计算 SHA-256。覆盖原始配置、冻结路由、候选顺序、适配器与 normalizer、语义参数、代码身份、模型与运行时身份、核心依赖、主机和语义环境。预检失败时为 `null` 或缺省。JudgeAI 消费返回值。 |
 | `allowed_providers`、`capability_routes` | 名单和所有候选链均为有序、唯一的非空名称数组。四条路线须完整，链内 Provider 属于已批准名单。预检和解析逐项比对，顺序有语义。 |
 | `attempted_provider_counts`、`selected_provider_counts` | Provider 到正整数的映射，零任务用空对象。实际进入执行计尝试，真实接受的唯一结果计选中。按执行计划、派发批次、索引、任务记录和汇总互证。选中总数等于接受数，三类结果总和等于任务总数。 |
 | `execution_status` | `COMPLETED` 或 `COMPLETED_WITH_PIPELINE_FAILURES`。后者为诊断产物。JudgeAI 要求前者、零失败、Audit 通过和实际退出码 0。配置、环境、执行、输出异常沿独立失败路径传播。 |
 
-相同源码字节可在提交前后得到相同 `source_sha256`。新 HEAD 进入指纹输入，因而批准的新 Commit 会产生新有效指纹。单独改变 dirty 标签不会改变指纹。源码字节变化会改变源码 SHA。发布 pin 还会随真实运行时、路径、语义环境或模型身份变化。安装包的 null Git 身份有明确定义，当前 JudgeAI 发布锁要求可验证的干净 Git checkout。
+相同包源码和 CLI 入口字节可在提交前后得到相同 `source_sha256`。新 HEAD 进入指纹输入，因而批准的新 Commit 会产生新有效指纹。单独改变 dirty 标签不会改变指纹；但修改 `scripts/run_pipeline.py` 会改变源码 SHA 和有效指纹。发布 pin 还会随真实运行时、路径、语义环境或模型身份变化。安装包的 null Git 身份有明确定义，当前 JudgeAI 发布锁要求可验证的干净 Git checkout。
 
 Core 预检和当次解析共用代码路径与锁定快照。外部预检和解析内部预检分别执行，JudgeAI 用 pin 及最终 provenance 交叉核验。Profile、Provider 配置、路由、适配器及已捕获的 Worker 环境统一消费。已验证运行时资产应在部署期间保持不可变，尤其是声明级模型文件、解释器与第三方包。
 

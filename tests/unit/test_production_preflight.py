@@ -232,19 +232,20 @@ def test_production_cli_edit_invalidates_clean_release_identity(tmp_path, monkey
     with cli.open("a", encoding="utf-8") as stream:
         stream.write("\n# Local production entry point edit\n")
 
-    def assert_rejected_as_dirty():
+    def assert_reports_cli_edit_as_dirty():
         report = preflight_production_profile(config=config)
-        assert report["status"] == "PASS"
-        assert report["code_identity"] == {**clean["code_identity"], "source_dirty": True}
+        assert report["status"] == "PASS"  # Dirty state is explicit; the release pin gate rejects it.
+        assert report["code_identity"]["source_dirty"] is True
+        assert report["code_identity"]["source_sha256"] != clean["code_identity"]["source_sha256"]
         assert report["profile_sha256"] == clean["profile_sha256"]
-        assert report["effective_config_fingerprint"] == clean["effective_config_fingerprint"]
+        assert report["effective_config_fingerprint"] != clean["effective_config_fingerprint"]
 
-    assert_rejected_as_dirty()
+    assert_reports_cli_edit_as_dirty()
     subprocess.run(
         ["git", "-C", str(checkout), "add", "--", "scripts/run_pipeline.py"],
         check=True, capture_output=True, timeout=15,
     )
-    assert_rejected_as_dirty()
+    assert_reports_cli_edit_as_dirty()
 
     # Clear the staged change, then hide the worktree edit from status. The
     # actual CLI bytes must still be compared with the committed Git blob.
@@ -256,7 +257,7 @@ def test_production_cli_edit_invalidates_clean_release_identity(tmp_path, monkey
         ["git", "-C", str(checkout), "update-index", "--assume-unchanged", "--", "scripts/run_pipeline.py"],
         check=True, capture_output=True, timeout=15,
     )
-    assert_rejected_as_dirty()
+    assert_reports_cli_edit_as_dirty()
 
 
 def test_clean_release_commit_changes_fingerprint_even_with_same_source(monkeypatch):

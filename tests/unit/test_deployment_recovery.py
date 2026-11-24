@@ -30,12 +30,12 @@ def wait_for(predicate, timeout=8):
 
 
 class Job:
-    def __init__(self, root, name, mode="A", lease=25):
+    def __init__(self, root, name, mode="A", lease=25, timeout=18):
         self.fixture = root / name
         self.fixture.mkdir(mode=0o700)
         self.run = recovery.prepare(
             root, domain=f"gui/{os.getuid()}", log=self.fixture / "core.log",
-            timeout=18, lease_seconds=lease,
+            timeout=timeout, lease_seconds=lease,
             command=[sys.executable, "-B", "-m", "scripts.verify_process_supervision",
                      "--core", mode, str(self.fixture)],
         )
@@ -92,8 +92,8 @@ def spool(tmp_path):
     path.mkdir(mode=0o700)
     jobs = []
 
-    def make(name, mode="A", lease=25):
-        job = Job(path, name, mode, lease)
+    def make(name, mode="A", lease=25, timeout=18):
+        job = Job(path, name, mode, lease=lease, timeout=timeout)
         jobs.append(job)
         return job
 
@@ -122,14 +122,30 @@ def test_launchd_recovers_supervisor_failures(spool, mode, marker, sig):
 
 
 def test_launchd_concurrent_completion_and_single_use(spool):
-    victim, peer = spool("victim"), spool("peer")
+    # The peer must outlive the full victim-recovery path, including a slow launchctl call.
+    # This is a concurrency-isolation test, not a test of the 18-second job deadline.
+    victim = spool("victim", lease=90, timeout=60)
+    peer = spool("peer", lease=90, timeout=60)
     for job in (victim, peer):
         job.submit()
         job.observe("inference")
     assert victim.pgid != peer.pgid
     victim.fail("SIGKILL")
     wait_for(victim.recovered)
-    assert all(JsonLineWorker._current_identity(pid) == ident for pid, ident in peer.identities.items())
+    peer_alive = {
+        pid: JsonLineWorker._current_identity(pid) == ident
+        for pid, ident in peer.identities.items()
+    }
+    if not all(peer_alive.values()):
+        raise AssertionError(json.dumps({
+            "peer_target": peer.target,
+            "peer_alive": peer_alive,
+            "peer_launchd_state": recovery._inspect(peer.path, peer.target),
+            "peer_result": (
+                json.loads((peer.path / "result.json").read_bytes())
+                if (peer.path / "result.json").exists() else None
+            ),
+        }, default=str))
     (peer.fixture / "release").touch()
     wait_for(peer.recovered)
     observed = peer.state()

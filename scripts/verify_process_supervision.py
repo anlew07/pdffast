@@ -107,7 +107,7 @@ def _wait(predicate, timeout=6):
 
 
 class Run:
-    def __init__(self, root: Path, scenario: str):
+    def __init__(self, root: Path, scenario: str, *, timeout_seconds: int = 12):
         root.mkdir()
         self.root = root
         self.owned = {}
@@ -129,7 +129,7 @@ class Run:
         try:
             self.process = subprocess.Popen([
                 sys.executable, "-B", "-m", "pdffast.process_supervisor",
-                "--timeout", "1.3" if scenario == "F" else "12", "--log", str(root / "core.log"),
+                "--timeout", "1.3" if scenario == "F" else str(timeout_seconds), "--log", str(root / "core.log"),
                 *owner_option, "--", sys.executable, "-B", "-m", "scripts.verify_process_supervision",
                 "--core", scenario, str(root),
             ], stdout=subprocess.PIPE, text=True, pass_fds=descriptors, start_new_session=True)
@@ -201,7 +201,9 @@ class Run:
 
 
 def scenario(root: Path, name: str) -> dict:
-    run = Run(root / name, name)
+    # Scenario G deliberately keeps an independent peer alive while the first
+    # Supervisor finishes cleanup. Give both jobs a deadline beyond the harness.
+    run = Run(root / name, name, timeout_seconds=60 if name == "G" else 12)
     try:
         if name == "H":
             # Hold the fault until the controller has recorded the live identities.
@@ -211,14 +213,23 @@ def scenario(root: Path, name: str) -> dict:
         else:
             run.capture()
         if name == "G":
-            other = Run(root / "G-peer", "A")
+            other = Run(root / "G-peer", "A", timeout_seconds=60)
             try:
                 other.capture()
                 assert run.core_pid != other.core_pid
                 run.fault(signal.SIGKILL)
                 result = run.result()
                 assert result["core_returncode"] == -signal.SIGKILL
-                assert all(other.alive(pid) for pid in other.owned)
+                peer_alive = {pid: other.alive(pid) for pid in other.owned}
+                if not all(peer_alive.values()):
+                    raise AssertionError(json.dumps({
+                        "peer_alive": peer_alive,
+                        "peer_supervisor_returncode": other.process.poll(),
+                        "peer_core_log": (
+                            (other.root / "core.log").read_text()
+                            if (other.root / "core.log").exists() else None
+                        ),
+                    }, default=str))
                 (other.root / "release").touch()
                 peer = other.result()
                 assert peer["accepted_exit"]

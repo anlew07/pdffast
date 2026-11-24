@@ -45,12 +45,20 @@ def semantic_environment_digest(environment: Mapping[str, str]) -> str:
 
 def code_identity() -> dict[str, Any]:
     package = Path(__file__).resolve().parents[1]
-    sources = {
+    package_sources = {
         path.relative_to(package).as_posix(): digest(path.read_bytes())
         for path in sorted(package.rglob("*.py"))
     }
-    if not sources or "application/production_identity.py" not in sources:
+    if not package_sources or "application/production_identity.py" not in package_sources:
         raise ValueError("cannot identify loaded PDFFast package source")
+
+    # The standalone CLI is a production execution entrypoint, not part of the
+    # importable package tree. Bind its actual bytes into the same source identity.
+    cli_path = ROOT / "scripts" / "run_pipeline.py"
+    cli_bytes = cli_path.read_bytes() if cli_path.is_file() else None
+    sources = {f"pdffast/{name}": value for name, value in package_sources.items()}
+    if cli_bytes is not None:
+        sources["scripts/run_pipeline.py"] = digest(cli_bytes)
     commit = None
     dirty = None
     if (ROOT / ".git").exists():
@@ -72,14 +80,13 @@ def code_identity() -> dict[str, Any]:
         dirty = bool(git("status", "--porcelain=v1", "--untracked-files=all", "--",
                          "pdffast", "configs", "scripts/run_pipeline.py", "pyproject.toml", "uv.lock"))
         # Git's assume-unchanged / skip-worktree index bits can suppress status
-        # output. Bind the production CLI's actual bytes directly to HEAD.
-        cli_path = ROOT / "scripts/run_pipeline.py"
+        # output. Compare the production CLI's actual bytes directly to HEAD too.
         try:
             committed_cli = subprocess.run(
                 ["git", "-C", str(ROOT), "show", "HEAD:scripts/run_pipeline.py"],
                 capture_output=True, check=True, timeout=15, env=git_env,
             ).stdout
-            dirty = dirty or not cli_path.is_file() or cli_path.read_bytes() != committed_cli
+            dirty = dirty or cli_bytes is None or cli_bytes != committed_cli
         except (OSError, subprocess.SubprocessError):
             dirty = True
     algorithms = {}
@@ -88,10 +95,13 @@ def code_identity() -> dict[str, Any]:
         ("fallback_policy", "fallback"), ("canonical", "canonical"), ("renderer", "render"),
         ("audit", "audit"), ("structure_reconciliation", "structure_reconciliation"),
     ):
-        relevant = {name: value for name, value in sources.items() if name.startswith(f"{directory}/")}
+        relevant = {
+            name: value for name, value in package_sources.items()
+            if name.startswith(f"{directory}/")
+        }
         if label in {"evidence", "quality"}:
             name = "quality/evidence.py" if label == "evidence" else "quality/gate.py"
-            relevant = {name: sources[name]}
+            relevant = {name: package_sources[name]}
         algorithms[label] = fingerprint(relevant)
     return {
         "pdffast_commit": commit, "source_dirty": dirty,
