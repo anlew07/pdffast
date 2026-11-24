@@ -63,7 +63,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install core test environment
-        run: python -m pip install -e . pytest jsonschema fastapi httpx
+        run: python -m pip install -e ".[service]" pytest jsonschema httpx
       - name: Compile current runtime and scripts
         run: python -m compileall -q pdffast scripts
       - name: Run deterministic V3 default suite
