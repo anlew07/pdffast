@@ -28,6 +28,18 @@ from pdffast.result import ParseResult
 from pdffast.runtime import observe_parse
 
 
+def _validate_run_id(run_id: str) -> None:
+    if (
+        not isinstance(run_id, str)
+        or not run_id
+        or run_id in {".", ".."}
+        or "/" in run_id
+        or "\\" in run_id
+        or "\x00" in run_id
+    ):
+        raise ConfigurationError("run_id must be a single safe directory name")
+
+
 def _locked_run_marker(run_dir: Path) -> Path:
     return run_dir.parent / f".{run_dir.name}.pdffast-locked"
 
@@ -37,9 +49,16 @@ class ParseService:
     config: ParserConfig
 
     def parse(self, pdf_path: Path, *, run_id: str = "parse", case_id: str | None = None) -> ParseResult:
+        _validate_run_id(run_id)
         if self.config.provider_profile is not None:
             return self._parse_locked(pdf_path, run_id=run_id, case_id=case_id)
-        run_dir = (Path(self.config.output_root).resolve() / run_id).resolve()
+        output_root = Path(self.config.output_root).expanduser().resolve()
+        run_path = output_root / run_id
+        if run_path.is_symlink():
+            raise ConfigurationError(f"run directory cannot be a symlink: {run_id}")
+        run_dir = run_path.resolve()
+        if run_dir.parent != output_root:
+            raise ConfigurationError(f"run directory escapes output root: {run_id}")
         run_dir.mkdir(parents=True, exist_ok=True)
         marker = _locked_run_marker(run_dir)
         if marker.exists() or marker.is_symlink():
@@ -59,9 +78,7 @@ class ParseService:
 
     def _parse_locked(self, pdf_path: Path, *, run_id: str, case_id: str | None) -> ParseResult:
         snapshot = load_production_profile(self.config)
-        if not run_id or Path(run_id).name != run_id or run_id in {".", ".."}:
-            raise ConfigurationError("locked run_id must be a single run directory name")
-        run_dir = Path(self.config.output_root).resolve() / run_id
+        run_dir = Path(self.config.output_root).expanduser().resolve() / run_id
         if run_dir.exists() or run_dir.is_symlink():
             raise ConfigurationError(f"locked run directory already exists: {run_id}")
         report = preflight_snapshot(snapshot, self.config)

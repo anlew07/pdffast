@@ -248,7 +248,7 @@ def _mineru(
     if not path.is_absolute():
         raise RuntimeIdentityError("MinerU tools config must resolve to an absolute path")
     raw = path.read_bytes()
-    data = json.loads(raw)
+    data = decode_config_json(raw)
     root = Path(data["models-dir"]["pipeline"]).expanduser()
     trees = config.get("required_artifact_trees", {})
     if (
