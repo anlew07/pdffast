@@ -7,9 +7,9 @@ silently depend on untracked data under `outputs/`.
 For PDF-backed cases, set `PDFFAST_TEST_DATA_ROOT` to a directory containing
 `benchmark/samples/real/case_003.pdf` and related samples.
 
-For artifact-backed case_003 / case_004 checks, set `PDFFAST_REGRESSION_ARTIFACTS_ROOT` to a
-directory containing `template_removal_review/case_003` and/or
-`template_removal_review/case_004`.
+For artifact-backed checks, set `PDFFAST_REGRESSION_ARTIFACTS_ROOT` to a directory containing
+`final_structure_regression/case_002`, `case_003`, `case_004` and/or
+`template_removal_review/case_003`, `case_004`.
 
 Run explicitly:
 

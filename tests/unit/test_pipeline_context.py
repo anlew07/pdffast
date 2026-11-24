@@ -14,7 +14,7 @@ def _context_type():
 def test_context_resolves_paths_and_sanitizes_case_id(tmp_path: Path) -> None:
     """Catches unstable defaults or unsafe case IDs entering run paths."""
     PipelineContext = _context_type()
-    project = tmp_path / "pdffast-v2"
+    project = tmp_path / "pdffast-v3-test"
     pdf = project / "benchmark/samples/科研 case 007.pdf"
     ctx = PipelineContext.create(
         project_root=project,

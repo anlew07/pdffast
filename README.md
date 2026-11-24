@@ -127,8 +127,9 @@ PDFFAST_TEST_DATA_ROOT=/path/to/test-data \
 ```
 
 依赖既有 case_003 / case_004 产物的回归测试还需要设置
-`PDFFAST_REGRESSION_ARTIFACTS_ROOT`，其目录下应包含
-`template_removal_review/case_003` 和/或 `case_004`。
+`PDFFAST_REGRESSION_ARTIFACTS_ROOT`，其目录下可包含
+`final_structure_regression/case_002`、`case_003`、`case_004`，以及
+`template_removal_review/case_003`、`case_004`。
 
 V2 → V3 的历史迁移对照测试已隔离到 `tests/migration`，不参与默认测试。只有需要复核历史迁移
 时才运行：
