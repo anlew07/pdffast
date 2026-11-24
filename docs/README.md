@@ -26,5 +26,6 @@
 ## 测试分层
 
 - 默认测试：`uv run pytest -q`，只运行当前 V3 单元/合同测试和确定性离线测试。
+- 可选 Provider Runtime：`uv run pytest -q -m provider`，需安装相应隔离 Runtime。
 - [真实数据回归说明](../tests/regression/README.md)：真实 PDF 与既有回归产物的准备方式。
 - [历史迁移测试说明](../tests/migration/README.md)：只读旧 V2 checkout 的可选对照，不属于当前运行依赖。

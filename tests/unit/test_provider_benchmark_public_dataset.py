@@ -7,6 +7,7 @@ import pytest
 from tools.provider_benchmark.prepare_omnidocbench import select_and_prepare
 
 
+@pytest.mark.provider
 def test_public_subset_is_deterministic_and_preserves_gt(tmp_path):
     fitz = pytest.importorskip("fitz")
     images = tmp_path / "images"

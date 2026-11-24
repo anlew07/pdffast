@@ -40,6 +40,7 @@ def test_short_ids_are_unique_and_exception_is_full(capsys):
     assert 'same_prefix_a' in capsys.readouterr().err
 
 
+@pytest.mark.provider
 @pytest.mark.parametrize('mode', ['quiet','normal','debug'])
 def test_mineru_local_logging_keeps_jsonl_and_errors(mode):
     from pdffast.providers.worker_logging import MINERU_LOGGING_CODE

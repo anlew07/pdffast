@@ -31,7 +31,7 @@ runtime-main = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra -m \"not migration and not regression\""
+addopts = "-ra -m \"not migration and not regression and not provider\""
 markers = [
   "integration: multi-component tests without external provider cost",
   "regression: old-vs-new artifact comparison requiring local samples",
