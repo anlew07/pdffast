@@ -377,31 +377,61 @@ def _control(action, *args):
     return result.returncode, json.loads(result.stdout)
 
 
+def _install_reconciler(root):
+    domain = f"gui/{os.getuid()}"
+    status, report = _control(
+        "install-controller", "--state-root", root, "--domain", domain,
+    )
+    assert status == 0, report
+    assert report["state"] == "INSTALLED"
+    return domain
+
+
+def _uninstall_reconciler(root, domain):
+    root.chmod(0o700)
+    status, report = _control(
+        "uninstall-controller", "--state-root", root, "--domain", domain,
+    )
+    assert status == 0, report
+    assert report["state"] == "UNINSTALLED"
+
+
 def test_deployment_health_checks_current_gui_and_controller(tmp_path):
     root = tmp_path / "spool"
     root.mkdir(mode=0o700)
-    args = ("--state-root", root, "--domain", f"gui/{os.getuid()}", "--json")
+    domain = f"gui/{os.getuid()}"
+    args = ("--state-root", root, "--domain", domain, "--json")
     status, absent = _control("health", *args)
     assert status == 1 and absent["state"] == "BLOCKED"
     assert absent["checks"]["controller"]["code"] == "SWEEP_MISSING"
-    assert _control("reconcile-all", root) == (0, [])
-    status, healthy = _control("health", *args)
-    assert status == 0 and healthy["state"] == "PASS"
-    assert healthy["environment"]["uid"] == os.getuid()
-    assert all(item["status"] == "PASS" for item in healthy["checks"].values())
-    assert healthy["code_identity"]["source_sha256"]
-    assert 0 <= healthy["controller"]["age_seconds"] <= healthy["controller"]["freshness_seconds"]
-    heartbeat = root / "reconcile-heartbeat.json"
-    sweep = json.loads(heartbeat.read_bytes())
-    recovery._write(heartbeat, {**sweep, "monotonic_seconds": time.monotonic() - 61}, replace=True)
-    status, stale = _control("health", *args)
-    assert status == 1 and stale["checks"]["controller"]["code"] == "SWEEP_STALE"
-    recovery._write(heartbeat, {**sweep, "status": "FAILED"}, replace=True)
-    status, failed = _control("health", *args)
-    assert status == 1 and failed["checks"]["controller"]["code"] == "SWEEP_NOT_SUCCESSFUL"
-    root.chmod(0o755)
-    status, insecure = _control("health", *args)
-    assert status == 1 and insecure["checks"]["state_root"]["status"] == "BLOCKED"
+
+    installed_domain = _install_reconciler(root)
+    try:
+        assert installed_domain == domain
+        status, healthy = _control("health", *args)
+        assert status == 0 and healthy["state"] == "PASS"
+        assert healthy["environment"]["uid"] == os.getuid()
+        assert all(item["status"] == "PASS" for item in healthy["checks"].values())
+        assert healthy["code_identity"]["source_sha256"]
+        assert 0 <= healthy["controller"]["age_seconds"] <= healthy["controller"]["freshness_seconds"]
+        plist = plistlib.loads(recovery._controller_plist_path().read_bytes())
+        assert plist["StartInterval"] == recovery.CONTROLLER_INTERVAL_SECONDS == 20
+        assert plist["RunAtLoad"] is True
+
+        heartbeat = root / "reconcile-heartbeat.json"
+        sweep = json.loads(heartbeat.read_bytes())
+        recovery._write(heartbeat, {**sweep, "monotonic_seconds": time.monotonic() - 61}, replace=True)
+        status, stale = _control("health", *args)
+        assert status == 1 and stale["checks"]["controller"]["code"] == "SWEEP_STALE"
+        recovery._write(heartbeat, {**sweep, "status": "FAILED"}, replace=True)
+        status, failed = _control("health", *args)
+        assert status == 1 and failed["checks"]["controller"]["code"] == "SWEEP_NOT_SUCCESSFUL"
+        root.chmod(0o755)
+        status, insecure = _control("health", *args)
+        assert status == 1 and insecure["checks"]["state_root"]["status"] == "BLOCKED"
+    finally:
+        root.chmod(0o700)
+        _uninstall_reconciler(root, domain)
 
 
 def test_job_cancel_cli_confirms_group_and_preserves_concurrent_job(spool):
@@ -504,21 +534,27 @@ def test_job_cancel_durable_during_manager_outage_and_refuses_foreign_scope(spoo
     assert confirmed["receipt"]["verification"] == "NEVER_SUBMITTED"
 
 
-def test_health_refuses_different_managed_code_identity(tmp_path, monkeypatch):
+def test_health_reports_canary_code_identity_mismatch(tmp_path, monkeypatch):
     root = tmp_path / "spool"
     root.mkdir(mode=0o700)
-    actual = recovery.code_identity()
-    monkeypatch.setattr(recovery, "code_identity", lambda: {**actual, "source_sha256": "0" * 64})
-    assert recovery.reconcile_all(root) == []
-    report = recovery.health(root, f"gui/{os.getuid()}")
-    assert report["state"] == "BLOCKED"
-    assert report["checks"]["recovery_probe"]["code"] == "CANARY_CODE_IDENTITY_MISMATCH"
+    domain = _install_reconciler(root)
+
+    def mismatched_canary(*args):
+        raise recovery.ControlError("CANARY_CODE_IDENTITY_MISMATCH")
+
+    monkeypatch.setattr(recovery, "_check_recovery", mismatched_canary)
+    try:
+        report = recovery.health(root, domain)
+        assert report["state"] == "BLOCKED"
+        assert report["checks"]["recovery_probe"]["code"] == "CANARY_CODE_IDENTITY_MISMATCH"
+    finally:
+        _uninstall_reconciler(root, domain)
 
 
 def test_health_checks_controller_again_after_live_probe(tmp_path, monkeypatch):
     root = tmp_path / "spool"
     root.mkdir(mode=0o700)
-    assert recovery.reconcile_all(root) == []
+    domain = _install_reconciler(root)
     canary = recovery._check_recovery
 
     def complete_then_expire(*args):
@@ -528,7 +564,10 @@ def test_health_checks_controller_again_after_live_probe(tmp_path, monkeypatch):
         recovery._write(path, {**record, "monotonic_seconds": time.monotonic() - 61}, replace=True)
 
     monkeypatch.setattr(recovery, "_check_recovery", complete_then_expire)
-    report = recovery.health(root, f"gui/{os.getuid()}")
-    assert report["state"] == "BLOCKED"
-    assert report["checks"]["recovery_probe"]["status"] == "PASS"
-    assert report["checks"]["controller"]["code"] == "SWEEP_STALE"
+    try:
+        report = recovery.health(root, domain)
+        assert report["state"] == "BLOCKED"
+        assert report["checks"]["recovery_probe"]["status"] == "PASS"
+        assert report["checks"]["controller"]["code"] == "SWEEP_STALE"
+    finally:
+        _uninstall_reconciler(root, domain)
