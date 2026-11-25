@@ -74,6 +74,8 @@
         "execution_status",
         "pdffast_commit",
         "source_sha256",
+        "source_dirty",
+        "algorithm_sha256",
         "profile_name",
         "profile_sha256",
         "providers_config_sha256",
@@ -235,6 +237,20 @@
         },
         "outputs_written": {
           "const": true
+        },
+        "source_dirty": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "algorithm_sha256": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
         }
       }
     },
