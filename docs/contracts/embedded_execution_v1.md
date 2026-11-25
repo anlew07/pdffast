@@ -58,12 +58,12 @@
 
 **兼容性提醒：** deployment control V1 的 JSON 回执字段名 `run_id` 历史上承载的是 `JOB_ID`。它不能被解释为 Core 解析 `run_id`。本阶段不擅自改写已存在的 V1 回执字段；新合同和 JudgeAI 持久化字段必须明确使用 `job_id` 与 `core_run_id` 两个名字。
 
-## 3. 当前缺口
+## 3. 基线缺口（本分支正在补充）
 
 1. `result/manifest.json` 目前没有统一的 Execution Contract Schema 标识。
 2. 公开 Manifest 有输入 SHA 和结果路径，但没有对交付产物逐项提供 SHA-256、字节数和相对路径清单。
 3. 公开 Manifest 没有明确引用 `production_execution_manifest.json`、`selected_prediction_index.json`、实际执行策略及任务级 attempts 证据。
-4. `parser_provenance` 有 attempted/selected Provider 计数和 effective fingerprint，但当前没有把 Preflight 返回的各 Provider runtime identity 明确纳入 provenance；具体包版本、模型 revision/资产身份主要由 fingerprint 间接绑定。
+4. `parser_provenance` 有 attempted/selected Provider 计数和 effective fingerprint，但没有把 Preflight 返回的各 Provider runtime identity 明确写入自身；本分支选择将这些身份放入新的 Execution Contract，避免改写现有 Provenance V1。
 5. `ParseResult.artifacts` 在 minimal 模式只公开最终结果文件路径，不直接公开全部关键执行证据路径。
 6. 解析异常、Audit 失败、进程被强杀时，不保证存在最终结果 Manifest；这属于现有合同明确的失败边界，需要由 typed error、进程退出码和 JOB_ID 持久回执共同表达，不能伪造成功 Manifest。
 
@@ -77,11 +77,11 @@
 - Parser Provenance V1
 - Deployment Control V1
 
-建议继续以 `result/manifest.json` 作为每次成功/部分完成解析的权威结果入口，在现有字段上增加 Execution Contract 字段；不另造一套互相竞争的 Manifest。
+继续以 `result/manifest.json` 作为每次成功/部分完成解析的权威结果入口，在现有字段上增加 `execution_contract` 字段；不另造一套互相竞争的 Manifest。Schema 草案位于 [`embedded_execution.v1.schema.json`](embedded_execution.v1.schema.json)。
 
 ### 4.2 建议的核心结构
 
-以下为结构草图，字段细节和 Schema 仍待评审：
+以下为结构草图；字段约束以同目录 JSON Schema 草案为准，仍待最终评审：
 
 ```json
 {
@@ -114,7 +114,9 @@
     "escalated_count": 0,
     "terminal_preserve_count": 0,
     "pipeline_failure_count": 0,
-    "audit_passed": true
+    "preflight_status": "PASS",
+    "audit_passed": true,
+    "outputs_written": true
   },
   "execution_evidence": {
     "production_manifest": "09_8_production_fallback/production_execution_manifest.json",
@@ -186,9 +188,9 @@ review_task_id
 - 用户主动重新解析：创建新的 `core_run_id` 和 `job_id`，保留旧运行证据。
 - 不要求 PDFFast 根据 run_id 自动重放或从中间 Stage 恢复。
 
-## 7. ParseResult 的兼容扩展方向
+## 7. ParseResult 的兼容扩展（本分支已初步实现）
 
-建议在现有 `ParseResult` 上增加只读的 `execution_contract` 访问入口，并在 minimal 输出模式下公开关键执行证据路径。
+本分支已在现有 `ParseResult` 上增加 `execution_contract` 访问入口，并在锁定生产模式的 minimal 输出中公开关键执行证据路径。
 
 要求：
 
@@ -197,15 +199,15 @@ review_task_id
 - Embedded runner 从稳定对象/最终 Manifest 消费合同，不解析终端人类可读日志。
 - 当前 JudgeAI 生产路径使用 JudgeAI 自己的 Embedded Runner；本任务不把 PDFFast 的 standalone `scripts/run_pipeline.py` 误当作 JudgeAI 唯一入口，也不为其新增不必要的 HTTP/CLI 适配层。
 
-## 8. 实施顺序
+## 8. 实施顺序与当前进度
 
-1. 先补 Schema 与合同测试（成功、Native-only、发生回退、部分失败、产物篡改、输入变化、路径逃逸）。
-2. 扩展 `parser_provenance`，显式携带当次 Provider runtime identity 和策略版本；保持现有统计校验。
-3. 扩展最终 `result/manifest.json`，增加 Execution Contract、关键执行证据引用和产物摘要。
-4. 扩展 `ParseResult`，保持现有 API 兼容。
-5. 为失败和进程中断路径补充合同级测试；不得声称所有异常都能产生最终 Manifest。
-6. 更新 Embedded 集成合同文档；不修改 HTTP。
-7. 在目标 macOS 环境使用五份真实 PDF 回归，并由 JudgeAI 在后续集成阶段独立复核输入与产物摘要。
+1. **Schema 与合同测试：已初步完成。** 新增 `embedded_execution.v1.schema.json` 和 `test_embedded_execution_contract.py`，覆盖 Native-only、部分失败、无效身份、路径逃逸和产物摘要。
+2. **Execution Contract Builder：已初步完成。** 新增 `pdffast/application/execution_contract.py`，复用当次 Preflight runtime identity、Production Profile 身份、实际策略版本、执行统计和既有 Manifest。
+3. **最终 Manifest：已初步接入。** 锁定生产模式在 `result/manifest.json` 中增加 `execution_contract`；不改变非锁定默认模式。
+4. **ParseResult：已初步接入。** 增加 `execution_contract` 属性和关键执行证据路径；保留既有 mapping 键。
+5. **失败/中断边界：仍需补充。** typed error、进程退出码和 JOB_ID 回执仍是异常路径的依据；不承诺强杀后一定存在最终 Manifest。
+6. **HTTP：不实施。** 本阶段不修改 HTTP Adapter。
+7. **真实样本：待 Mac 验收。** 使用五份真实 PDF 在目标 macOS Embedded/Core 子进程环境回归，并由 JudgeAI 后续独立复核输入与产物摘要。
 
 ## 9. 验收门禁
 
@@ -229,4 +231,4 @@ review_task_id
 - A03 Manifest：已有多层证据，但缺少统一外部结果入口、Provider runtime 可读身份和产物摘要清单。
 - A04 HTTP：本阶段明确 DEFERRED，不作为验收项。
 
-本文件是设计草案。完成文件级审查、用户确认和 Schema 评审前，不应据此批量修改解析核心。
+本文件和 Schema 仍是 Draft。当前分支已经开始做 additive implementation；在 Schema、CI、真实 PDF 回归和跨仓库消费方评审全部通过前，不得视为生产合同冻结，也不得合并到 main。
