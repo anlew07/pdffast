@@ -82,6 +82,18 @@ class ConfigurationError(PDFFastError, ValueError):
     risk_flags = ("REQUEST_REJECTED",)
 
 
+class InputUnavailableError(ConfigurationError):
+    """The requested PDF cannot be read before production execution."""
+
+    error_code = "INPUT_UNAVAILABLE"
+    default_stage = "input_validation"
+    risk_flags = ("INPUT_UNAVAILABLE",)
+
+    def __init__(self, details: dict[str, Any]) -> None:
+        self.details = details
+        super().__init__("input PDF is unavailable or could not be fingerprinted")
+
+
 class InputIdentityMismatchError(ConfigurationError):
     """The supplied PDF does not match the caller's expected SHA-256."""
 
