@@ -176,6 +176,7 @@ def _read_run_relative_files(
     file_flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | nofollow
 
     try:
+        root_before = os.stat(root, follow_symlinks=False)
         root_fd = os.open(root, directory_flags)
     except OSError as exc:
         raise ValueError("unable to safely open run directory") from exc
@@ -183,8 +184,12 @@ def _read_run_relative_files(
     payloads: dict[str, bytes] = {}
     try:
         root_stat = os.fstat(root_fd)
-        if not stat.S_ISDIR(root_stat.st_mode):
-            raise ValueError("run root is not a directory")
+        if (
+            not stat.S_ISDIR(root_stat.st_mode)
+            or (root_before.st_dev, root_before.st_ino)
+            != (root_stat.st_dev, root_stat.st_ino)
+        ):
+            raise ValueError("run directory changed while opening")
         root_identity = (root_stat.st_dev, root_stat.st_ino)
         if expected_root_identity is not None and root_identity != expected_root_identity:
             raise ValueError("run directory changed during verification")
