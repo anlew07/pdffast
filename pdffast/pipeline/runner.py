@@ -13,6 +13,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
+from pdffast.application.execution_contract import build_execution_contract
 from pdffast.application.parser_provenance import (
     build_parser_provenance,
     collect_execution_statistics,
@@ -318,6 +319,15 @@ def run_core_pipeline(
                 provenance = build_parser_provenance(production_identity, statistics)
                 final["parser_provenance"] = provenance
                 final["public_manifest"]["parser_provenance"] = provenance
+                execution_contract = build_execution_contract(
+                    context,
+                    production_identity=production_identity,
+                    statistics=statistics,
+                    execution_plan=execution_plan,
+                    production_manifest=production.manifest,
+                )
+                final["execution_contract"] = execution_contract
+                final["public_manifest"]["execution_contract"] = execution_contract
             result = ParseResult.from_pipeline(context, final)
         if locked_profile is not None:
             _check_locked_environment(locked_profile)
