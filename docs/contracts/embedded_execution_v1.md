@@ -102,6 +102,8 @@
     "execution_status": "COMPLETED",
     "pdffast_commit": "40-char-commit",
     "source_sha256": "64-char-sha256",
+    "source_dirty": false,
+    "algorithm_sha256": {},
     "profile_name": "production-profile-name",
     "profile_sha256": "64-char-sha256",
     "providers_config_sha256": "64-char-sha256",
@@ -146,6 +148,7 @@
 - `provider_runtime` 应复用当次 Preflight 的实际 runtime identity（包版本、模型 revision/资产验证信息）；实际使用哪些 Provider 仍以 attempted/selected 计数为准。
 - 当前 `ParseService` 调用生产 Preflight 时使用默认 `probe=False`：因此 `status=READY` 表示严格运行时身份/资产检查通过，`dependency_probe=NOT_RUN` 表示尚未调用 Provider 自身的 `preflight()`。实际执行阶段仍会执行 Provider preflight；消费者不得把 `READY` 或 `preflight_status=PASS` 解释为已完成 OCR 推理或已证明 Provider 可成功处理任务。
 - `policy_version` 从实际执行的 runtime escalation policy 读取，不由 JudgeAI 推断。
+- `source_dirty` 与 `algorithm_sha256` 复用现有 `code_identity`：前者显式说明 PDFFast checkout 是否存在受监控的未提交改动，后者保留 Native、Quality、Fallback Policy、Canonical、Renderer、Audit 等算法源码指纹。dirty 状态不在本阶段自动拒绝，但 JudgeAI 应保留该信息用于审计和复现判断。
 - `execution_evidence` 只引用现有执行证据，不复制或重写整个 fallback 历史。
 
 ### 4.3 状态语义
