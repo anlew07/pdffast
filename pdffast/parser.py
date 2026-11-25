@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from pdffast.application.parse_service import ParseService
 from pdffast.config import ParserConfig
+from pdffast.errors import ConfigurationError, is_execution_run_id
 from pdffast.result import ParseResult
 
 
@@ -27,8 +29,18 @@ class PDFFastParser:
     provider_chain_overrides: dict[str, list[str]] | None = None
     provider_profile: Path | None = None
 
-    def parse(self, pdf_path: Path, *, run_id: str = "parse", case_id: str | None = None) -> ParseResult:
+    def _resolved_config(self) -> ParserConfig:
         config = self.config
+        if config is not None and (
+            self.provider_profile is not None
+            or config.provider_profile is not None and any(
+                value is not None for value in (
+                    self.project_root, self.provider_configs, self.registry, self.normalizer,
+                    self.provider_plugins, self.provider_chain_overrides,
+                )
+            )
+        ):
+            raise ConfigurationError("provider_profile cannot be split between config and facade options")
         if config is None:
             config = ParserConfig(
                 project_root=self.project_root,
@@ -42,4 +54,20 @@ class PDFFastParser:
                 provider_chain_overrides=self.provider_chain_overrides,
                 provider_profile=self.provider_profile,
             )
-        return ParseService(config=config).parse(pdf_path, run_id=run_id, case_id=case_id)
+        return config
+
+    def parse(self, pdf_path: Path, *, run_id: str = "parse", case_id: str | None = None) -> ParseResult:
+        return ParseService(config=self._resolved_config()).parse(pdf_path, run_id=run_id, case_id=case_id)
+
+    def parse_request(
+        self, pdf_path: Path, request: Mapping[str, Any], *, case_id: str | None = None,
+    ) -> ParseResult:
+        """Execute a versioned request with the deployment's locked Production Profile."""
+        try:
+            config = self._resolved_config()
+        except ConfigurationError as exc:
+            run_id = request.get("run_id") if isinstance(request, Mapping) else None
+            if is_execution_run_id(run_id):
+                exc.run_id = run_id
+            raise
+        return ParseService(config=config).parse_request(pdf_path, request, case_id=case_id)

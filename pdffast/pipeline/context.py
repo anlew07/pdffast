@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from pdffast.pipeline.artifacts import ArtifactPaths
 from pdffast.config import OutputMode
@@ -28,6 +29,8 @@ class PipelineContext:
     output_mode: OutputMode = "minimal"
     capture_output: bool = True
     input_metadata: dict = field(default_factory=dict)
+    defer_result_manifest: bool = False
+    execution_request: dict[str, Any] | None = None
 
     @classmethod
     def create(

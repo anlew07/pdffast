@@ -1,15 +1,28 @@
-# 快速上手
+# PDFFast V3 快速上手
 
 ## 前置条件
 
-- Python 3.12；
-- 项目主环境 `/Users/admin/Workspace/pdffast-v2/.venv`；
-- 已按生产配置准备 Provider 环境和现有用户级模型缓存；
-- 待解析 PDF 是调用进程可读取的本地文件。
+- Python 3.12+；
+- 从仓库根目录运行；
+- 使用仓库 `uv.lock` 管理主环境依赖；
+- 已准备本次 Profile 允许使用的 Provider Runtime 和模型资产；
+- 输入 PDF 是调用进程可读取的本地文件。
 
-Provider 的包版本、隔离环境和缓存位置见
-[Provider 运行环境说明](PROVIDER_RUNTIME_ENVIRONMENTS.md)。不要把旧工程 `.venv` 加入
-`PYTHONPATH`，也不要把模型复制进仓库。
+开发与服务依赖：
+
+```bash
+uv sync --extra dev --extra service
+```
+
+若主环境要运行 RapidOCR / PaddleOCR：
+
+```bash
+uv sync --extra runtime-main
+```
+
+Docling、MinerU、Marker Worker 环境由 `runtimes/<provider>/pyproject.toml` 和各自
+`uv.lock` 管理。Indra 的安装与模型冻结步骤见
+[Provider Runtime 环境说明](PROVIDER_RUNTIME_ENVIRONMENTS.md)。
 
 ## 最小调用
 
@@ -18,14 +31,16 @@ from pathlib import Path
 
 from pdffast import PDFFastParser
 
+project_root = Path.cwd()
 parser = PDFFastParser(
-    project_root=Path("/Users/admin/Workspace/pdffast-v2"),
-    output_root=Path("./outputs"),
+    project_root=project_root,
+    output_root=project_root / "outputs",
+    output_mode="minimal",
 )
 
 result = parser.parse(
     Path("./合同.pdf"),
-    run_id="contract_20260923_001",
+    run_id="contract_001",
 )
 
 markdown = result.markdown
@@ -34,28 +49,52 @@ audit = result.audit
 result_dir = result.artifacts["result_dir"]
 ```
 
-`run_id` 会成为输出子目录名。批处理或服务调用应为每次运行生成唯一且可追踪的 ID，避免多个
-任务写入同一目录。`case_id` 可选，用于传递业务侧案例标识；不提供时使用 PDF 文件名。
+`project_root` 应显式指向当前 V3 checkout。Provider 相对解释器路径由该根目录解析；
+不要依赖个人机器的绝对路径、其他 checkout 或旧虚拟环境。
 
-## 查看结果
+## 正式结果
 
 调用方通常只需使用：
 
-- `result.markdown`：已渲染 Markdown 文本；
-- `result.canonical`：Canonical JSON 对应的 Python 字典；
-- `result.audit`：结构边界审计；
+- `result.markdown`：已渲染 Markdown；
+- `result.canonical`：Canonical 对应的 Python 字典；
+- `result.audit`：结构、来源和渲染边界审计；
 - `result.artifacts`：稳定结果文件路径。
 
-旧代码可继续使用 `result["markdown"]`、`result["canonical"]` 和
-`result["structure_audit"]`。新接入不要读取 `01_stage1` 等编号目录。
+正式结果位于：
 
-## 切换输出模式
-
-```python
-from pdffast import PDFFastParser
-
-parser = PDFFastParser(output_mode="diagnostic")
+```text
+outputs/<run_id>/result/
+  document.json
+  document.md
+  audit.json
+  manifest.json
 ```
 
-`minimal`、`diagnostic` 和 `full` 的区别见[输出模式说明](OUTPUT_MODES_ZH.md)。模式不会改变
-解析内容，只改变返回结果公开的产物路径范围。
+过程 JSON、Provider 原始输出和诊断事件用于审计、排障及回放，不是同一次 V3 解析的内部
+数据总线。正常接入不要从上一次运行的 Stage 目录读取输入，也不要把历史 Benchmark 输出
+当作当前任务的输入。
+
+## CLI
+
+```bash
+uv run python scripts/run_pipeline.py ./合同.pdf \
+  --project-root "$PWD" \
+  --output-root ./outputs
+```
+
+需要使用生产 Profile 时显式指定：
+
+```bash
+uv run python scripts/run_pipeline.py ./合同.pdf \
+  --project-root "$PWD" \
+  --provider-profile configs/profiles/production.indra-triple.json
+```
+
+Profile 与自定义 Provider 配置不能同时指定。Profile、Provider 配置、模型资产身份和预检
+失败时应停止执行，不要通过默认配置或旧运行产物绕过。
+
+## 输出模式
+
+`minimal`、`diagnostic` 和 `full` 的区别见[输出模式说明](OUTPUT_MODES_ZH.md)。
+输出模式影响公开诊断路径范围，不改变 Provider 选择或解析内容。

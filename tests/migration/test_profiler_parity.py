@@ -9,6 +9,8 @@ from tools.migration.baseline import capture_manifest
 from tools.migration.compare_artifacts import RootMapping, compare_json
 
 
+pytestmark = pytest.mark.migration
+
 def test_profiler_artifacts_match_reference(tmp_path: Path) -> None:
     """Catches Stage 1 drift while allowing only the output snapshot path."""
     reference_root_raw = os.environ.get("PDFFAST_REFERENCE_ROOT")

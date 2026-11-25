@@ -20,7 +20,7 @@ from pathlib import Path
 
 DEFAULT_CASES = ("case_001", "case_003", "case_004", "case_005")
 ALL_CASES = ("case_001", "case_002", "case_003", "case_004", "case_005")
-DEFAULT_PDF_DIR = Path.home() / "Workspace/resource"
+DEFAULT_PDF_DIR = Path("benchmark/samples/real")
 PROFILE = Path("configs/profiles/production.indra-triple.json")
 CONFIG = Path("configs/providers.json")
 
@@ -226,8 +226,7 @@ def run_batch(root: Path, pdf_dir: Path, output_root: Path,
     for i, case in enumerate(cases, start=1):
         pdf = pdf_dir / f"{case}.pdf"
         target = folder / case
-        target.mkdir(parents=True, exist_ok=False)
-        log_path = target / "console.log"
+        log_path = folder / f"{case}.console.log"
         cmd = [str(py), str(entry), str(pdf),
                "--project-root", str(root), "--output-root", str(folder),
                "--run-id", case, "--case-id", case,
@@ -243,6 +242,7 @@ def run_batch(root: Path, pdf_dir: Path, output_root: Path,
             log_path.write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
         elapsed = time.monotonic() - started
         row = inspect_run(target, case, pdf, exitcode, elapsed)
+        row["artifacts"]["log"] = str(log_path)
         row["source"] = "NEW_RUN"
         batch["cases"].append(row)
         save_report(batch, folder)
@@ -275,7 +275,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR,
-                        help="PDF source directory (default: ~/Workspace/resource)")
+                        help="PDF source directory (default: <project-root>/benchmark/samples/real)")
     parser.add_argument("--output-root", type=Path, default=Path("outputs/indra_triple_regression"))
     parser.add_argument("--all", action="store_true", help="Run all five PDFs including case_002")
     parser.add_argument("--case-002-existing", type=Path,

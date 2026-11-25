@@ -22,6 +22,8 @@ PROVIDER_DOCUMENT = json.loads(
 )
 PROVIDER_CONFIGS = PROVIDER_DOCUMENT["providers"]
 
+pytestmark = pytest.mark.provider
+
 
 @pytest.mark.parametrize("provider_name", sorted(PROVIDER_CONFIGS))
 def test_real_provider_preflight_is_explicit_pass_or_skip(provider_name: str) -> None:

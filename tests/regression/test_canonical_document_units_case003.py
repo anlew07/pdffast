@@ -1,6 +1,7 @@
 """Compare the real case_003 Canonical payload before and after additive metadata."""
 
 import json
+import os
 import re
 from dataclasses import replace
 from pathlib import Path
@@ -14,6 +15,8 @@ from pdffast.pipeline.runner import run_stage10
 from pdffast.render.llm_ready import build_rendered_document
 
 
+pytestmark = pytest.mark.regression
+
 def _without_document_boundary_metadata(markdown: str) -> tuple[str, int]:
     """Remove only the new, delimited presentation blocks for parity checks."""
     return re.subn(
@@ -26,7 +29,10 @@ def _without_document_boundary_metadata(markdown: str) -> tuple[str, int]:
 
 
 def test_case003_adds_only_confirmed_document_units_to_canonical() -> None:
-    root = Path(__file__).resolve().parents[2] / "outputs/template_removal_review/case_003"
+    raw_root = os.environ.get("PDFFAST_REGRESSION_ARTIFACTS_ROOT")
+    if not raw_root:
+        pytest.skip("PDFFAST_REGRESSION_ARTIFACTS_ROOT is required for artifact-backed regression")
+    root = Path(raw_root).resolve() / "template_removal_review/case_003"
     stage3 = root / "03_stage3/section_alignment.json"
     flow = root / "06_stage6/normalized_text_flow.json"
     quality = root / "08_stage8/quality_gate.json"
@@ -65,7 +71,10 @@ def test_case003_adds_only_confirmed_document_units_to_canonical() -> None:
 
 
 def test_case003_runner_publishes_markers_without_changing_original_body(tmp_path: Path) -> None:
-    root = Path(__file__).resolve().parents[2] / "outputs/template_removal_review/case_003"
+    raw_root = os.environ.get("PDFFAST_REGRESSION_ARTIFACTS_ROOT")
+    if not raw_root:
+        pytest.skip("PDFFAST_REGRESSION_ARTIFACTS_ROOT is required for artifact-backed regression")
+    root = Path(raw_root).resolve() / "template_removal_review/case_003"
     files = {
         "section_alignment": root / "03_stage3/section_alignment.json",
         "normalized_flow": root / "06_stage6/normalized_text_flow.json",
@@ -93,7 +102,10 @@ def test_case003_runner_publishes_markers_without_changing_original_body(tmp_pat
 
 
 def test_case004_publishes_only_units_admitted_by_its_real_evidence_chain() -> None:
-    root = Path(__file__).resolve().parents[2] / "outputs/template_removal_review/case_004"
+    raw_root = os.environ.get("PDFFAST_REGRESSION_ARTIFACTS_ROOT")
+    if not raw_root:
+        pytest.skip("PDFFAST_REGRESSION_ARTIFACTS_ROOT is required for artifact-backed regression")
+    root = Path(raw_root).resolve() / "template_removal_review/case_004"
     stage3 = root / "03_stage3/section_alignment.json"
     flow = root / "06_stage6/normalized_text_flow.json"
     quality = root / "08_stage8/quality_gate.json"

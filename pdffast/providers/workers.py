@@ -9,20 +9,34 @@ import string
 import subprocess
 import sys
 import time
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
-from .base import ProviderPreflight, ProviderTask, RawProviderResult
+from pdffast.runtime import ParseCancelledError, check_parse_cancelled
+
+from .base import ProviderPreflight, ProviderTask, RawProviderResult, validate_asset_stat_snapshot
+
+SUPERVISED_CORE_PID = "PDFFAST_SUPERVISED_CORE_PID"
+MANAGED_JOB_PGID = "PDFFAST_MANAGED_JOB_PGID"
+
+
+def worker_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    result = dict(environment)
+    for key in ("VIRTUAL_ENV", "PYTHONHOME", "PYTHONPATH", "__PYVENV_LAUNCHER__"):
+        result.pop(key, None)
+    return result
 
 
 @dataclass(frozen=True)
 class _ProcessIdentity:
+    """Stable process identity; command is diagnostic and may change at runtime."""
+
     pid: int
     started_at: str
-    command: str
+    command: str = field(compare=False)
 
 
 class _DarwinProcBSDInfo(ctypes.Structure):
@@ -42,6 +56,17 @@ class _DarwinProcBSDInfo(ctypes.Structure):
         ("start_sec", ctypes.c_uint64),
         ("start_usec", ctypes.c_uint64),
     ]
+
+
+class WorkerShutdownError(RuntimeError):
+    """Worker did not complete its shutdown protocol and exit successfully."""
+
+    def __init__(self, *, acknowledged: bool, returncode: int | None, stage: str = "close") -> None:
+        self.acknowledged = acknowledged
+        self.returncode = returncode
+        super().__init__(
+            f"Worker shutdown failed: stage={stage}, bye={acknowledged}, returncode={returncode}"
+        )
 
 
 class WorkerProtocol(Protocol):
@@ -65,6 +90,8 @@ class JsonLineWorker:
         env: dict[str, str] | None = None,
         process_sentinel_paths: tuple[Path, ...] = (),
         force_child_process_group: bool = False,
+        locked_runtime: bool = False,
+        environment: Mapping[str, str] | None = None,
     ) -> None:
         self.python_executable = Path(python_executable).absolute()
         self.worker_code = worker_code
@@ -75,6 +102,9 @@ class JsonLineWorker:
         self.worker_id = uuid4().hex
         self.process_sentinel_paths = tuple(process_sentinel_paths)
         self.force_child_process_group = force_child_process_group
+        self.locked_runtime = locked_runtime
+        self.environment = environment
+        self._python_flags = ("-I", "-B") if locked_runtime else ()
         self._process: subprocess.Popen[str] | None = None
         self._process_group_id: int | None = None
         self._owned_descendants: dict[int, _ProcessIdentity] = {}
@@ -87,9 +117,11 @@ class JsonLineWorker:
         self._response_buffer = b""
 
     def _env(self) -> dict[str, str]:
-        env = os.environ.copy()
-        for key in ("VIRTUAL_ENV", "PYTHONHOME", "PYTHONPATH", "__PYVENV_LAUNCHER__"):
-            env.pop(key, None)
+        env = worker_environment(os.environ if self.environment is None else self.environment)
+        if self.environment is not None:
+            env.update(self.extra_env)
+            env["PDFFAST_WORKER_ID"] = self.worker_id
+            return env
         substitutions = dict(env)
         substitutions["PDFFAST_WORKER_ID"] = self.worker_id
         env["PDFFAST_WORKER_ID"] = self.worker_id
@@ -154,12 +186,11 @@ class JsonLineWorker:
     def preflight(self) -> tuple[bool, str]:
         if not self.python_executable.exists():
             return False, f"python executable not found: {self.python_executable}"
-        from pdffast.runtime import check_parse_cancelled
         process = None
         try:
             check_parse_cancelled()
             process = subprocess.Popen(
-                [str(self.python_executable), "-c", self.dependency_probe_code],
+                [str(self.python_executable), *self._python_flags, "-c", self.dependency_probe_code],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._env(),
             )
             deadline = time.monotonic() + self.preflight_timeout_seconds
@@ -202,19 +233,34 @@ class JsonLineWorker:
         try:
             while b"\n" not in self._response_buffer:
                 if cancellable:
-                    from pdffast.runtime import check_parse_cancelled
                     check_parse_cancelled()
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError(f"worker response timeout after {timeout_seconds:g}s")
                 ready, _, _ = select.select([process.stdout], [], [], min(remaining, 0.1))
                 if not ready:
+                    # A descendant can keep the pipe open after the Worker dies.
+                    # Observe the direct child's OS status without waiting for EOF.
+                    if self.locked_runtime and (returncode := process.poll()) is not None:
+                        raise WorkerShutdownError(
+                            acknowledged=False, returncode=returncode, stage="response",
+                        )
                     continue
                 self._capture_process_group()
                 self._capture_descendants()
                 chunk = os.read(process.stdout.fileno(), 65536)
                 if not chunk:
-                    raise RuntimeError(f"worker exited before response: exit={process.poll()}")
+                    returncode = process.poll()
+                    if self.locked_runtime:
+                        if returncode is None:
+                            try:
+                                returncode = process.wait(timeout=0.2)
+                            except subprocess.TimeoutExpired:
+                                pass
+                        raise WorkerShutdownError(
+                            acknowledged=False, returncode=returncode, stage="response",
+                        )
+                    raise RuntimeError(f"worker exited before response: exit={returncode}")
                 self._response_buffer += chunk
             encoded, self._response_buffer = self._response_buffer.split(b"\n", 1)
             self._capture_process_group()
@@ -224,13 +270,26 @@ class JsonLineWorker:
                 response = json.loads(line)
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise RuntimeError(f"invalid worker JSON: {encoded[:500]!r}") from exc
-        except BaseException:
+        except BaseException as exc:
             self._terminate()
+            if (
+                self.locked_runtime
+                and isinstance(exc, Exception)
+                and not isinstance(exc, WorkerShutdownError)
+            ):
+                raise WorkerShutdownError(
+                    acknowledged=False, returncode=process.returncode, stage="response",
+                ) from exc
             raise
-        if not isinstance(response, dict):
-            self._terminate()
-            raise RuntimeError("worker response must be a JSON object")
-        return response
+        if isinstance(response, dict):
+            return response
+        self._terminate()
+        error = RuntimeError("worker response must be a JSON object")
+        if self.locked_runtime:
+            raise WorkerShutdownError(
+                acknowledged=False, returncode=process.returncode, stage="response",
+            ) from error
+        raise error
 
     def start(self) -> dict[str, Any]:
         if self._process is not None:
@@ -238,15 +297,31 @@ class JsonLineWorker:
                 require_continuity=self._process.returncode is not None
             )
             self._capture_descendants()
-            if self._process.poll() is None:
+            returncode = self._process.poll()
+            if returncode is None:
                 return {"status": "READY", "reused": True}
             self._terminate()
+            if self.locked_runtime:
+                raise WorkerShutdownError(acknowledged=False, returncode=returncode, stage="reuse")
         if not self.python_executable.exists():
             raise FileNotFoundError(self.python_executable)
-        self._snapshot_sentinels()
+        job = os.environ.get(MANAGED_JOB_PGID)
+        core = os.environ.get(SUPERVISED_CORE_PID)
+        # The verified run scope owns the worker regardless of profile policy.
+        supervised = job is not None or core is not None
+        if supervised:
+            pid = os.getpid()
+            grouped = (
+                job == str(os.getpgid(pid)) == str(os.getppid())
+                if job is not None else os.getpgid(pid) == os.getsid(pid) == pid
+            )
+            if core != str(pid) or not grouped:
+                raise RuntimeError("invalid supervised Core session")
+        else:
+            self._snapshot_sentinels()
         self._response_buffer = b""
         worker_code = self.worker_code
-        if self.force_child_process_group:
+        if self.force_child_process_group or supervised:
             worker_code = r'''
 import subprocess as _pdffast_subprocess
 _pdffast_original_popen = _pdffast_subprocess.Popen
@@ -257,18 +332,18 @@ def _pdffast_grouped_popen(*args, **kwargs):
         kwargs["process_group"] = None
     return _pdffast_original_popen(*args, **kwargs)
 _pdffast_subprocess.Popen = _pdffast_grouped_popen
-''' + worker_code
+''' + f"\nexec(compile({worker_code!r}, '<pdffast-worker>', 'exec'))\n"
         self._process = subprocess.Popen(
-            [str(self.python_executable), "-u", "-c", worker_code],
+            [str(self.python_executable), *self._python_flags, "-u", "-c", worker_code],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=None,
             text=True,
             bufsize=1,
             env=self._env(),
-            start_new_session=True,
+            start_new_session=not supervised,
         )
-        self._process_group_id = self._process.pid
+        self._process_group_id = None if supervised else self._process.pid
         self._closed = False
         try:
             response = self._read_response(self.init_timeout_seconds)
@@ -289,10 +364,31 @@ _pdffast_subprocess.Popen = _pdffast_grouped_popen
             process.stdin.write(json.dumps(command, ensure_ascii=False) + "\n")
             process.stdin.flush()
             return self._read_response(timeout_seconds)
-        except BaseException:
+        except BaseException as exc:
             if self._process is not None:
                 self._terminate()
+            if self.locked_runtime and isinstance(exc, OSError):
+                raise WorkerShutdownError(
+                    acknowledged=False, returncode=process.returncode, stage="request",
+                ) from exc
             raise
+
+    def _wait_for_worker_exit(self, process: subprocess.Popen[str], timeout_seconds: float) -> None:
+        if not self.locked_runtime:
+            process.wait(timeout=timeout_seconds)
+            return
+
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            check_parse_cancelled()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(process.args, timeout_seconds)
+            try:
+                process.wait(timeout=min(remaining, 0.1))
+                return
+            except subprocess.TimeoutExpired:
+                continue
 
     def _terminate(self) -> None:
         process = self._process
@@ -302,19 +398,37 @@ _pdffast_subprocess.Popen = _pdffast_grouped_popen
         self._capture_descendants()
         self._capture_sentinel_processes()
         self._process = None
+        forced = self.locked_runtime and process is not None and process.returncode not in (None, 0)
         try:
+            if self.locked_runtime:
+                check_parse_cancelled()
             if process is not None and process.poll() is None:
                 process.terminate()
                 try:
-                    process.wait(timeout=5)
+                    self._wait_for_worker_exit(process, 5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                    process.wait(timeout=5)
-            self._capture_process_group(require_continuity=True)
-            self._terminate_descendants()
-            self._process_group_id = None
+                    self._wait_for_worker_exit(process, 5)
+        except ParseCancelledError:
+            forced = True
+            if process is not None and process.poll() is None:
+                try:
+                    # An unreaped, running leader still owns its dedicated session.
+                    if self._process_group_id is None:
+                        # The Supervisor owns the shared run group.
+                        process.kill()
+                    else:
+                        os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=1)
         finally:
-            self._close_pipes(process)
+            try:
+                self._capture_process_group(require_continuity=True)
+                self._terminate_descendants(force=forced)
+                self._process_group_id = None
+            finally:
+                self._close_pipes(process)
 
     @staticmethod
     def _close_pipes(process: subprocess.Popen[str] | None) -> None:
@@ -478,27 +592,31 @@ _pdffast_subprocess.Popen = _pdffast_grouped_popen
             self._owned_descendants[identity.pid] = identity
             self._owned_group_members[identity.pid] = identity
 
-    def _terminate_descendants(self) -> None:
+    def _terminate_descendants(self, *, force: bool = False) -> None:
         remaining = dict(self._owned_descendants)
         self._owned_descendants.clear()
-        for identity in reversed(tuple(remaining.values())):
-            if self._current_identity(identity.pid) != identity:
-                remaining.pop(identity.pid, None)
-                continue
-            try:
-                os.kill(identity.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                remaining.pop(identity.pid, None)
-            except PermissionError:
-                remaining.pop(identity.pid, None)
+        if not force:
+            for identity in reversed(tuple(remaining.values())):
+                if self._current_identity(identity.pid) != identity:
+                    remaining.pop(identity.pid, None)
+                    continue
+                try:
+                    os.kill(identity.pid, signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    remaining.pop(identity.pid, None)
 
-        deadline = time.monotonic() + 5.0
-        while remaining and time.monotonic() < deadline:
-            for pid, identity in tuple(remaining.items()):
-                if self._current_identity(pid) != identity:
-                    remaining.pop(pid, None)
-            if remaining:
-                time.sleep(0.05)
+            deadline = time.monotonic() + 5.0
+            while remaining and time.monotonic() < deadline:
+                if self.locked_runtime:
+                    try:
+                        check_parse_cancelled()
+                    except ParseCancelledError:
+                        break
+                for pid, identity in tuple(remaining.items()):
+                    if self._current_identity(pid) != identity:
+                        remaining.pop(pid, None)
+                if remaining:
+                    time.sleep(0.05)
 
         for pid, identity in remaining.items():
             if self._current_identity(pid) != identity:
@@ -526,28 +644,40 @@ _pdffast_subprocess.Popen = _pdffast_grouped_popen
         self._capture_process_group()
         self._capture_descendants()
         self._capture_sentinel_processes()
-        exited_cleanly = False
-        if process is not None and process.poll() is None and process.stdin is not None:
-            try:
-                process.stdin.write(json.dumps({"op": "close"}) + "\n")
-                process.stdin.flush()
-                response = self._read_response(5.0, cancellable=False)
-                if response.get("status") == "BYE":
-                    process.wait(timeout=5.0)
-                    exited_cleanly = True
-            except Exception:
-                pass
-        if exited_cleanly:
-            self._process = None
-            try:
-                self._capture_process_group(require_continuity=True)
-                self._terminate_descendants()
-                self._process_group_id = None
-            finally:
-                self._close_pipes(process)
-        else:
-            self._terminate()
-        self._closed = True
+        acknowledged = False
+        error: Exception | None = None
+        try:
+            if self.locked_runtime and process is not None:
+                check_parse_cancelled()
+            if process is not None and process.poll() is None and process.stdin is not None:
+                try:
+                    process.stdin.write(json.dumps({"op": "close"}) + "\n")
+                    process.stdin.flush()
+                    response = self._read_response(5.0, cancellable=self.locked_runtime)
+                    acknowledged = response.get("status") == "BYE"
+                    if acknowledged:
+                        self._wait_for_worker_exit(process, 5)
+                except Exception as exc:
+                    if self.locked_runtime:
+                        error = exc
+                        raise
+        finally:
+            # Also reap owned descendants if the leader already exited after BYE.
+            if self._process is not None or self._process_group_id is not None:
+                self._terminate()
+            self._closed = True
+            if error is not None:
+                # Use the final OS status after reaping, even on protocol errors.
+                raise WorkerShutdownError(
+                    acknowledged=acknowledged, returncode=process.returncode,
+                ) from error
+
+        if self.locked_runtime and process is not None and (
+            not acknowledged or process.returncode != 0
+        ):
+            raise WorkerShutdownError(
+                acknowledged=acknowledged, returncode=process.returncode,
+            )
 
 
 class IsolatedWorkerProvider:
@@ -578,6 +708,8 @@ class IsolatedWorkerProvider:
             init_timeout_seconds=float(config.get("worker_init_timeout_seconds", 300)),
             preflight_timeout_seconds=float(config.get("preflight_timeout_seconds", 60)),
             env={str(k): str(v) for k, v in (config.get("env") or {}).items()},
+            locked_runtime=config.get("locked_runtime") is True,
+            environment=config.get("runtime_environment"),
             process_sentinel_paths=tuple(
                 Path(str(value))
                 for value in config.get("process_sentinel_paths") or ()
@@ -593,12 +725,16 @@ class IsolatedWorkerProvider:
         return self._worker
 
     def preflight(self) -> ProviderPreflight:
+        validate_asset_stat_snapshot(self.config)
         available, detail = self._get_worker().preflight()
+        validate_asset_stat_snapshot(self.config)
         return ProviderPreflight(self.name, available, detail)
 
     def initialize(self) -> None:
         if not self._started:
+            validate_asset_stat_snapshot(self.config)
             self._get_worker().start()
+            validate_asset_stat_snapshot(self.config)
             self._started = True
             self._closed = False
 
@@ -612,11 +748,13 @@ class IsolatedWorkerProvider:
         }
 
     def execute(self, task: ProviderTask) -> RawProviderResult:
+        validate_asset_stat_snapshot(self.config)
         self.initialize()
         response = self._get_worker().request(
             self.build_command(task),
             timeout_seconds=float(self.config.get("predict_timeout_seconds", 600)),
         )
+        validate_asset_stat_snapshot(self.config)
         if response.get("status") != "SUCCESS":
             raise RuntimeError(f"{self.name} parse failed: {response.get('error')}")
         output_path = Path(str(response.get(self.result_path_key) or ""))
@@ -654,7 +792,10 @@ class IsolatedWorkerProvider:
     def close(self) -> None:
         if self._closed:
             return
-        if self._worker is not None:
-            self._worker.close()
-        self._started = False
-        self._closed = True
+        try:
+            if self._worker is not None:
+                self._worker.close()
+        finally:
+            self._started = False
+            self._closed = True
+        validate_asset_stat_snapshot(self.config)

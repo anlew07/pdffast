@@ -635,6 +635,152 @@ def test_json_line_worker_does_not_own_unchanged_preexisting_sentinel(
         child.wait(timeout=2)
 
 
+@pytest.mark.parametrize("exit_code", [0, 7, -6])
+@pytest.mark.parametrize("locked_runtime", [False, True], ids=["legacy", "locked"])
+def test_json_line_worker_distinguishes_bye_from_successful_exit(exit_code, locked_runtime):
+    from pdffast.providers.workers import JsonLineWorker
+
+    code = """
+import json, os, resource, signal, sys
+resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+print(json.dumps({"status": "READY"}), flush=True)
+sys.stdin.readline()
+print(json.dumps({"status": "BYE"}), flush=True)
+if sys.argv[1] == "-6":
+    os.kill(os.getpid(), signal.SIGABRT)
+raise SystemExit(int(sys.argv[1]))
+"""
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable),
+        worker_code=code.replace('sys.argv[1]', repr(str(exit_code))),
+        dependency_probe_code="print('probe=ok')",
+        init_timeout_seconds=2,
+        locked_runtime=locked_runtime,
+    )
+    worker.start()
+    if locked_runtime and exit_code:
+        with pytest.raises(RuntimeError, match=f"returncode={exit_code}"):
+            worker.close()
+    else:
+        worker.close()
+    assert worker._process is None
+    worker.close()
+
+
+def test_locked_worker_cannot_import_from_cwd(tmp_path, monkeypatch):
+    from pdffast.providers.workers import JsonLineWorker
+
+    (tmp_path / "pdffast_shadow_marker.py").write_text("raise RuntimeError('shadowed')\n")
+    monkeypatch.chdir(tmp_path)
+    check = "import importlib.util; assert importlib.util.find_spec('pdffast_shadow_marker') is None"
+    code = check + """
+import json, sys
+print(json.dumps({"status": "READY"}), flush=True)
+sys.stdin.readline()
+print(json.dumps({"status": "BYE"}), flush=True)
+"""
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable), worker_code=code, dependency_probe_code=check,
+        locked_runtime=True,
+    )
+    assert worker.preflight()[0] is True
+    worker.start()
+    worker.close()
+
+
+def test_locked_worker_cannot_restart_after_unexpected_exit(tmp_path):
+    from pdffast.providers.workers import JsonLineWorker, WorkerShutdownError
+
+    code = """
+import json, sys
+print(json.dumps({"status": "READY"}), flush=True)
+sys.stdin.readline()
+print(json.dumps({"status": "SUCCESS"}), flush=True)
+raise SystemExit(7)
+"""
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable), worker_code=code, dependency_probe_code="",
+        locked_runtime=True,
+    )
+    worker.start()
+    assert worker.request({"op": "parse"}, timeout_seconds=2)["status"] == "SUCCESS"
+    assert worker._process.wait(timeout=2) == 7
+    with pytest.raises(WorkerShutdownError, match="returncode=7"):
+        worker.request({"op": "parse"}, timeout_seconds=2)
+    assert worker._process is None
+
+
+@pytest.mark.parametrize(
+    ("worker_action", "timeout_seconds", "cause_type"),
+    [
+        ("time.sleep(30)", 0.2, TimeoutError),
+        ("print('not JSON', flush=True)", 2, RuntimeError),
+        ("print('[]', flush=True)", 2, RuntimeError),
+    ],
+    ids=["timeout", "malformed-json", "non-object-response"],
+)
+def test_locked_worker_transport_fault_is_fatal_and_reaps_process(
+    worker_action, timeout_seconds, cause_type,
+):
+    from pdffast.providers.workers import JsonLineWorker, WorkerShutdownError
+
+    code = """
+import json, sys, time
+print(json.dumps({"status": "READY"}), flush=True)
+sys.stdin.readline()
+""" + worker_action + "\nsys.stdin.readline()\n"
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable), worker_code=code, dependency_probe_code="",
+        locked_runtime=True,
+    )
+    worker.start()
+    process = worker._process
+    try:
+        with pytest.raises(WorkerShutdownError, match="stage=response") as failure:
+            worker.request({"op": "parse"}, timeout_seconds=timeout_seconds)
+        assert isinstance(failure.value.__cause__, cause_type)
+        assert process is not None and process.poll() is not None
+        assert worker._process is None
+    finally:
+        worker.close()
+
+
+@pytest.mark.parametrize("operation", ["request", "close"])
+def test_locked_cancel_reaps_uncooperative_process_before_outer_grace(operation):
+    from threading import Event
+
+    from pdffast.providers.workers import JsonLineWorker
+    from pdffast.runtime import ParseCancelledError, cancellable_parse
+
+    code = """
+import json, signal, sys, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+print(json.dumps({"status": "READY"}), flush=True)
+sys.stdin.readline()
+time.sleep(60)
+"""
+    worker = JsonLineWorker(
+        python_executable=Path(sys.executable), worker_code=code, dependency_probe_code="",
+        locked_runtime=True,
+    )
+    worker.start()
+    process = worker._process
+    assert process is not None
+    cancelled = Event()
+    cancelled.set()
+    started = time.monotonic()
+    try:
+        with cancellable_parse(cancelled), pytest.raises(ParseCancelledError):
+            if operation == "request":
+                worker.request({"op": "parse"}, timeout_seconds=30)
+            else:
+                worker.close()
+        assert process.returncode is not None
+        assert time.monotonic() - started < 4
+    finally:
+        worker.close()
+
+
 def test_worker_receives_offline_environment_from_production_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -767,3 +913,36 @@ def test_post_reap_group_scan_rejects_recycled_pgid(
 
     assert replacement.pid not in worker._owned_descendants
     assert signals == []
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS ONNX Runtime shutdown policy")
+def test_mineru_disables_ort_telemetry_before_either_child_starts() -> None:
+    import base64
+    import hashlib
+
+    from pdffast.providers.mineru import MinerUProvider
+
+    tools_config = b'{"models-dir":{"pipeline":"/frozen/snapshot"}}'
+    provider = MinerUProvider("mineru_local", {
+        "python_executable": str(sys.executable),
+        "locked_runtime": True,
+        "env": {"ORT_DISABLE_TELEMETRY": "0"},
+        "_pdffast_mineru_tools_config_b64": base64.b64encode(tools_config).decode("ascii"),
+        "_pdffast_mineru_tools_config_sha256": hashlib.sha256(tools_config).hexdigest(),
+    })
+    provider.dependency_probe_code = "import os; print(os.environ['ORT_DISABLE_TELEMETRY'])"
+    provider.worker_code = """
+import json
+import os
+import sys
+
+print(json.dumps({"status": "READY", "telemetry_disabled": os.environ["ORT_DISABLE_TELEMETRY"]}))
+if json.loads(sys.stdin.readline())["op"] == "close":
+    print(json.dumps({"status": "BYE"}))
+"""
+    worker = provider._get_worker()
+    try:
+        assert worker.preflight() == (True, "1")
+        assert worker.start() == {"status": "READY", "telemetry_disabled": "1"}
+    finally:
+        provider.close()

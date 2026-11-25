@@ -7,6 +7,8 @@ import sys
 import pytest
 
 
+pytestmark = pytest.mark.migration
+
 def test_reference_source_matches_committed_manifest() -> None:
     """Catches reference drift before a parity comparison becomes misleading."""
     raw_root = os.environ.get("PDFFAST_REFERENCE_ROOT")

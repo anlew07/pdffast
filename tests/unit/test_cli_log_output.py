@@ -44,6 +44,32 @@ def test_run_pipeline_prints_artifact_paths_not_document_body(tmp_path, monkeypa
     assert "SECRET_AUDIT_BODY_SENTINEL" not in stdout
 
 
+def test_locked_cli_reports_pipeline_failure_and_nonzero_exit(tmp_path, monkeypatch, capsys):
+    from pdffast import ParseResult
+    from scripts import run_pipeline
+
+    pdf = tmp_path / "fixture.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    result = ParseResult(
+        canonical={}, markdown="body", audit={"validation": {"pass": True}},
+        artifacts={f"result_{key}": tmp_path / key for key in ("document", "markdown", "audit", "manifest")},
+        parser_provenance={"execution_status": "COMPLETED_WITH_PIPELINE_FAILURES"},
+    )
+
+    class FakeParser:
+        def parse(self, *args, **kwargs):
+            return result
+
+    monkeypatch.setattr(run_pipeline, "PDFFastParser", lambda **kwargs: FakeParser())
+    monkeypatch.setattr(sys, "argv", [
+        "run_pipeline.py", str(pdf), "--provider-profile", "production.json",
+    ])
+    assert run_pipeline.main() == 3
+    output = capsys.readouterr().out
+    assert "Status: COMPLETED_WITH_PIPELINE_FAILURES" in output
+    assert "Status: PASS" not in output
+
+
 def test_indra_smoke_keeps_full_log_and_prints_only_summary(tmp_path, monkeypatch, capsys):
     from scripts import verify_indra_runtime
 
@@ -88,3 +114,58 @@ def test_indra_smoke_failure_keeps_full_log_but_tails_error(tmp_path, monkeypatc
     logs = list((tmp_path / "outputs/indra_triple_smoke").glob("*/smoke_console.log"))
     assert len(logs) == 1
     assert logs[0].read_text(encoding="utf-8").count("ERROR_SENTINEL") == 60
+
+
+@pytest.mark.parametrize(("name", "run_id", "digest", "code"), [
+    ("absent.pdf", "judge-missing", "a" * 64, "INPUT_UNAVAILABLE"),
+    ("fixture.pdf", "judge-mismatch", "a" * 64, "INPUT_SHA256_MISMATCH"),
+    ("fixture.pdf", "../invalid", "a" * 64, "INVALID_CONFIGURATION_OR_REQUEST"),
+    ("fixture.pdf", "judge-bad-digest", "not-hex", "INVALID_CONFIGURATION_OR_REQUEST"),
+])
+def test_embedded_cli_serializes_blocked_requests(tmp_path, name, run_id, digest, code):
+    from jsonschema import Draft202012Validator
+
+    root = Path(__file__).resolve().parents[2]
+    (tmp_path / "fixture.pdf").write_bytes(b"fixture")
+    output = tmp_path / "runs"
+    entry_point = ["scripts/run_pipeline.py"] if name == "absent.pdf" else ["-m", "scripts.run_pipeline"]
+    child = subprocess.run([
+        sys.executable, *entry_point, str(tmp_path / name),
+        "--provider-profile", str(root / "configs/profiles/production.indra-triple.json"),
+        "--output-root", str(output), "--run-id", run_id, "--expected-input-sha256", digest,
+    ], cwd=root, text=True, capture_output=True)
+    assert child.returncode == 2
+    response = json.loads(child.stdout)
+    schema = json.loads((root / "docs/contracts/embedded_execution_error.v1.schema.json").read_bytes())
+    Draft202012Validator(schema).validate(response)
+    assert response["status"] == "BLOCKED"
+    assert response["error"]["code"] == code
+    assert response["run_id"] == (None if run_id == "../invalid" else run_id)
+    assert str(tmp_path) not in child.stdout
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(("status", "exit_code"), [("SUCCESS", 0), ("PARTIAL_SUCCESS", 4)])
+def test_embedded_cli_status_and_single_json_output(tmp_path, monkeypatch, capsys, status, exit_code):
+    from types import SimpleNamespace
+
+    from scripts import run_pipeline
+
+    class FakeParser:
+        def parse_request(self, path, request, *, case_id):
+            assert request["run_id"] == "judge-cli"
+            assert request["input"]["sha256"] == "a" * 64
+            print("internal parser progress")
+            return SimpleNamespace(execution_contract={
+                "schema_version": "pdffast.execution.v1", "status": status, "run_id": "judge-cli",
+            })
+
+    monkeypatch.setattr(run_pipeline, "PDFFastParser", lambda **kwargs: FakeParser())
+    monkeypatch.setattr(sys, "argv", [
+        "run_pipeline.py", str(tmp_path / "fixture.pdf"), "--provider-profile", "profile.json",
+        "--run-id", "judge-cli", "--expected-input-sha256", "a" * 64,
+    ])
+    assert run_pipeline.main() == exit_code
+    output = capsys.readouterr()
+    assert json.loads(output.out)["status"] == status
+    assert "internal parser progress" in output.err

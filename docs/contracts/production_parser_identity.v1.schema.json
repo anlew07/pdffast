@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PDFFast production parser identity preflight V1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "CONFIGURATION_FAILED",
+        "PREFLIGHT_FAILED"
+      ]
+    },
+    "profile_locked": {
+      "const": true
+    },
+    "profile_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profile_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "providers_config_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "effective_config_fingerprint": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "allowed_providers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "capability_routes": {
+      "type": "object",
+      "required": [
+        "PAGE_DOCUMENT_OCR",
+        "PAGE_DOCUMENT_LAYOUT_PARSE",
+        "REGION_MULTIMODAL_PARSE",
+        "INLINE_CONTEXT_PARSE"
+      ],
+      "properties": {
+        "PAGE_DOCUMENT_OCR": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "PAGE_DOCUMENT_LAYOUT_PARSE": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "REGION_MULTIMODAL_PARSE": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "INLINE_CONTEXT_PARSE": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "pdffast_commit": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+    },
+    "code_identity": {
+      "type": "object",
+      "required": [
+        "pdffast_commit",
+        "source_dirty",
+        "source_sha256",
+        "algorithm_sha256"
+      ],
+      "properties": {
+        "pdffast_commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "source_dirty": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "algorithm_sha256": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "profile_path": {
+      "type": "string"
+    },
+    "providers_config_path": {
+      "type": "string"
+    },
+    "inference_performed": {
+      "const": false
+    },
+    "fingerprint_input": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "profile_sha256",
+        "providers_config_sha256",
+        "route_candidates_sha256",
+        "allowed_providers",
+        "capability_routes",
+        "adapter_bindings",
+        "provider_effective_config_sha256",
+        "code_identity",
+        "parser_options",
+        "runtime_identity",
+        "core_dependencies",
+        "host",
+        "semantic_env_sha256"
+      ]
+    },
+    "provider_runtime": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "status",
+          "dependency_probe"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "READY",
+              "NOT_READY",
+              "NOT_INSTALLED",
+              "MISCONFIGURED",
+              "IDENTITY_UNVERIFIED",
+              "CHECK_ERROR"
+            ]
+          },
+          "dependency_probe": {
+            "enum": [
+              "NOT_RUN",
+              "PASS",
+              "FAIL"
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "identity": {
+            "type": "object"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "READY"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "identity"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "error": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "profile_locked",
+          "profile_name",
+          "profile_sha256",
+          "providers_config_sha256",
+          "effective_config_fingerprint",
+          "allowed_providers",
+          "capability_routes",
+          "pdffast_commit",
+          "code_identity",
+          "profile_path",
+          "providers_config_path",
+          "fingerprint_input",
+          "provider_runtime",
+          "inference_performed"
+        ],
+        "properties": {
+          "effective_config_fingerprint": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "provider_runtime": {
+            "minProperties": 1,
+            "additionalProperties": {
+              "properties": {
+                "status": {
+                  "const": "READY"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "CONFIGURATION_FAILED",
+              "PREFLIGHT_FAILED"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effective_config_fingerprint": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}
