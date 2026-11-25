@@ -127,6 +127,23 @@ def test_native_only_execution_contract_is_valid() -> None:
     assert contract["execution"]["selected_provider_counts"] == {}
 
 
+def test_terminal_preservation_remains_explicit_under_completed_status() -> None:
+    contract = _contract()
+    execution = contract["execution"]
+    execution.update(
+        attempted_provider_counts={"rapidocr_ch_light": 1},
+        planned_task_count=1,
+        accepted_task_count=0,
+        terminal_preserve_count=1,
+        pipeline_failure_count=0,
+        escalated_count=0,
+    )
+
+    VALIDATOR.validate(contract)
+    assert execution["execution_status"] == "COMPLETED"
+    assert execution["terminal_preserve_count"] == 1
+
+
 def test_partial_pipeline_failure_is_preserved_not_flattened() -> None:
     contract = _contract()
     execution = contract["execution"]
