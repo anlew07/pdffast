@@ -89,6 +89,13 @@ class InputIdentityMismatchError(ConfigurationError):
     default_stage = "input_validation"
     risk_flags = ("INPUT_SHA256_MISMATCH",)
 
+    def __init__(self, expected_sha256: str, actual_sha256: str | None) -> None:
+        self.details = {
+            "expected_sha256": expected_sha256,
+            "actual_sha256": actual_sha256,
+        }
+        super().__init__("input PDF SHA-256 does not match the execution request")
+
 
 class ProductionPreflightError(PDFFastError, RuntimeError):
     """Production readiness could not be established before parsing."""
