@@ -338,14 +338,27 @@ def test_execution_contract_builder_rejects_artifact_symlink_escape(tmp_path) ->
     identity = {
         "status": "PASS",
         "pdffast_commit": COMMIT,
-        "code_identity": {"source_sha256": SHA256},
+        "code_identity": {
+            "source_sha256": SHA256,
+            "source_dirty": False,
+            "algorithm_sha256": {"native": SHA256, "canonical": SHA256},
+        },
         "profile_name": "production.indra-triple",
         "profile_sha256": SHA256,
         "providers_config_sha256": SHA256,
         "effective_config_fingerprint": SHA256,
         "allowed_providers": list(PROVIDERS),
         "provider_runtime": {
-            name: {"status": "READY", "identity": {}}
+            name: {
+                "status": "READY",
+                "dependency_probe": "NOT_RUN",
+                "identity": {
+                    "python": "3.12.13",
+                    "package_inventory_sha256": SHA256,
+                    "packages": {"example": "1.2.3"},
+                    "model": {"revision": "test-fixture"},
+                },
+            }
             for name in PROVIDERS
         },
     }
