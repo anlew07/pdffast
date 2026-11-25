@@ -199,6 +199,8 @@ def build_execution_contract(
         "execution_status": statistics["execution_status"],
         "pdffast_commit": production_identity.get("pdffast_commit"),
         "source_sha256": code_identity["source_sha256"],
+        "source_dirty": code_identity.get("source_dirty"),
+        "algorithm_sha256": code_identity["algorithm_sha256"],
         "profile_name": production_identity["profile_name"],
         "profile_sha256": production_identity["profile_sha256"],
         "providers_config_sha256": production_identity["providers_config_sha256"],
