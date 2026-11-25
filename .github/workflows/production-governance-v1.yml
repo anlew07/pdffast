@@ -20,6 +20,7 @@ on:
   push:
     branches:
       - "feat/pdffast-production-governance-v1"
+      - "feat/pdffast-execution-contract-v1"
   workflow_dispatch:
 
 permissions:
