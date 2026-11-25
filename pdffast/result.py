@@ -58,7 +58,6 @@ class ParseResult:
             "markdown": self.markdown,
             "structure_audit": self.audit,
             "production_manifest": self.production_manifest,
-            "parser_provenance": self.parser_provenance,
             "execution_contract": self.execution_contract,
             **self.artifacts,
         }
@@ -73,5 +72,5 @@ class ParseResult:
     def __iter__(self) -> Iterator[str]:
         return iter((
             "canonical", "markdown", "structure_audit", "production_manifest",
-            "parser_provenance", "execution_contract", *self.artifacts,
+            "execution_contract", *self.artifacts,
         ))
