@@ -19,6 +19,7 @@ class ParseResult:
     artifacts: dict[str, Path]
     production_manifest: dict[str, Any] | None = None
     parser_provenance: dict[str, Any] | None = None
+    execution_contract: dict[str, Any] | None = None
 
     @classmethod
     def from_pipeline(cls, context: PipelineContext, payload: dict[str, Any]) -> "ParseResult":
@@ -34,6 +35,13 @@ class ParseResult:
             artifacts["pipeline_log"] = a.pipeline_log
         if context.output_mode == "full":
             artifacts.update(a.as_dict())
+        if payload.get("execution_contract") is not None:
+            artifacts.update({
+                "production_execution_manifest": a.providers.production_manifest,
+                "selected_prediction_index": a.providers.selected_index,
+                "runtime_escalation_policy": a.observability.execution_plan,
+                "selected_predictions_dir": a.providers.selected_dir,
+            })
         return cls(
             canonical=payload["canonical"],
             markdown=str(payload["markdown"]),
@@ -41,6 +49,7 @@ class ParseResult:
             artifacts=artifacts,
             production_manifest=payload.get("production_manifest"),
             parser_provenance=payload.get("parser_provenance"),
+            execution_contract=payload.get("execution_contract"),
         )
 
     def __getitem__(self, key: str) -> Any:
@@ -49,6 +58,8 @@ class ParseResult:
             "markdown": self.markdown,
             "structure_audit": self.audit,
             "production_manifest": self.production_manifest,
+            "parser_provenance": self.parser_provenance,
+            "execution_contract": self.execution_contract,
             **self.artifacts,
         }
         return values[key]
@@ -60,4 +71,7 @@ class ParseResult:
             return default
 
     def __iter__(self) -> Iterator[str]:
-        return iter(("canonical", "markdown", "structure_audit", "production_manifest", *self.artifacts))
+        return iter((
+            "canonical", "markdown", "structure_audit", "production_manifest",
+            "parser_provenance", "execution_contract", *self.artifacts,
+        ))
