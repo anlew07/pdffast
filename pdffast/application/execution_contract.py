@@ -6,6 +6,8 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
+from pdffast.application.input_fingerprint import fingerprint_input
+
 
 def _relative_path(run_dir: Path, path: Path) -> str:
     root = Path(run_dir).resolve(strict=True)
@@ -75,6 +77,17 @@ def build_execution_contract(
         or input_metadata["byte_size"] < 1
     ):
         raise ValueError("locked execution requires a complete SHA-256 input identity")
+
+    # The start-of-run fingerprint is not an immutable snapshot. Re-read the
+    # source after all stages finish and before publishing the final manifest.
+    final_input = fingerprint_input(Path(context.pdf))
+    if (
+        final_input.get("status") != "COMPLETE"
+        or final_input.get("algorithm") != input_metadata["algorithm"]
+        or final_input.get("sha256") != input_metadata["sha256"]
+        or final_input.get("byte_size") != input_metadata["byte_size"]
+    ):
+        raise ValueError("input PDF changed or became unavailable during locked parse")
 
     if production_identity.get("status") != "PASS":
         raise ValueError("execution contract requires a passing production preflight")
