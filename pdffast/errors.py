@@ -139,7 +139,8 @@ class ParseExecutionError(PDFFastError, RuntimeError):
             self.error_code = error_code
         elif self.stage == "provider_initialization":
             self.error_code = "PROVIDER_INITIALIZATION_FAILED"
-        self.risk_flags = tuple(risk_flags) or (
+        inherited_risk_flags = tuple(getattr(type(self), "risk_flags", ()))
+        self.risk_flags = tuple(risk_flags) or inherited_risk_flags or (
             ("PROVIDER_STARTUP_FAILED",)
             if self.stage == "provider_initialization" else ()
         )
