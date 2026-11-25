@@ -3,10 +3,85 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from pdffast.application.input_fingerprint import fingerprint_input
+
+
+
+
+REQUEST_SCHEMA_VERSION = "pdffast.execution.request.v1"
+_REQUEST_OPTION_NAMES = {
+    "page_dpi", "region_dpi", "rapidocr_workers", "table_mode",
+}
+
+
+def validate_execution_request(value: Any) -> dict[str, Any]:
+    """Validate and normalize the versioned, transport-neutral parse request.
+
+    Provider selection, provider chains, profiles, and runtime configuration
+    are deliberately excluded: those remain controlled by the PDFFast
+    deployment and its locked Production Profile.
+    """
+    if not isinstance(value, Mapping):
+        raise ValueError("execution request must be an object")
+    if set(value) != {"schema_version", "run_id", "input", "options"}:
+        raise ValueError("execution request has missing or unknown top-level fields")
+    if value.get("schema_version") != REQUEST_SCHEMA_VERSION:
+        raise ValueError("unsupported execution request schema_version")
+
+    run_id = value.get("run_id")
+    if (
+        not isinstance(run_id, str)
+        or not run_id
+        or run_id in {".", ".."}
+        or "/" in run_id
+        or chr(92) in run_id
+        or chr(0) in run_id
+    ):
+        raise ValueError("execution request run_id must be a single safe directory name")
+
+    input_identity = value.get("input")
+    if (
+        not isinstance(input_identity, Mapping)
+        or set(input_identity) != {"sha256"}
+        or not isinstance(input_identity.get("sha256"), str)
+        or len(input_identity["sha256"]) != 64
+        or any(char not in "0123456789abcdef" for char in input_identity["sha256"])
+    ):
+        raise ValueError("execution request input.sha256 must be a lowercase SHA-256 digest")
+
+    options = value.get("options")
+    if not isinstance(options, Mapping) or set(options) - _REQUEST_OPTION_NAMES:
+        raise ValueError("execution request options contain unsupported fields")
+    normalized_options: dict[str, Any] = {}
+    for name in ("page_dpi", "region_dpi", "rapidocr_workers"):
+        if name in options:
+            number = options[name]
+            if type(number) is not int or number < 1:
+                raise ValueError(f"execution request options.{name} must be a positive integer")
+            normalized_options[name] = number
+    if "table_mode" in options:
+        table_mode = options["table_mode"]
+        if table_mode not in {"off", "auto", "all"}:
+            raise ValueError("execution request options.table_mode must be off, auto, or all")
+        normalized_options["table_mode"] = table_mode
+
+    return {
+        "schema_version": REQUEST_SCHEMA_VERSION,
+        "run_id": run_id,
+        "input": {"sha256": input_identity["sha256"]},
+        "options": normalized_options,
+    }
+
+
+def _warning(code: str, stage: str, message: str, **details: Any) -> dict[str, Any]:
+    item: dict[str, Any] = {"code": code, "stage": stage, "message": message}
+    if details:
+        item["details"] = details
+    return item
 
 
 def _relative_path(run_dir: Path, path: Path) -> str:
@@ -219,7 +294,53 @@ def build_execution_contract(
         "audit_passed": True,
         "outputs_written": True,
     }
-    return {
+    warnings: list[dict[str, Any]] = []
+    risk_flags: set[str] = {"INPUT_NOT_SNAPSHOTTED"}
+    request = getattr(context, "execution_request", None)
+    if request is None:
+        warnings.append(_warning(
+            "EXPECTED_INPUT_SHA256_NOT_SUPPLIED",
+            "request_validation",
+            "The caller did not supply an expected input SHA-256 digest.",
+        ))
+        risk_flags.add("EXPECTED_INPUT_SHA256_NOT_SUPPLIED")
+    dependency_probe_skipped = sorted(
+        name for name, runtime in provider_runtime.items()
+        if runtime.get("dependency_probe") == "NOT_RUN"
+    )
+    if dependency_probe_skipped:
+        warnings.append(_warning(
+            "PROVIDER_DEPENDENCY_PROBE_NOT_RUN",
+            "production_preflight",
+            "Strict runtime identity was checked, but Provider preflight probes were not run during production preflight.",
+            providers=dependency_probe_skipped,
+        ))
+        risk_flags.add("PROVIDER_DEPENDENCY_PROBE_NOT_RUN")
+    if terminal_count:
+        warnings.append(_warning(
+            "TERMINAL_PRESERVATION_PRESENT",
+            "provider_execution",
+            "One or more tasks retained terminal source evidence without an accepted Provider result.",
+            count=terminal_count,
+        ))
+        risk_flags.add("TERMINAL_PRESERVATION_PRESENT")
+    if failure_count:
+        warnings.append(_warning(
+            "PIPELINE_FAILURES_PRESENT",
+            "provider_execution",
+            "One or more Provider tasks ended without an accepted result or terminal preservation.",
+            count=failure_count,
+        ))
+        risk_flags.add("PIPELINE_FAILURES_PRESENT")
+    if code_identity.get("source_dirty") is True:
+        warnings.append(_warning(
+            "PDFFAST_SOURCE_DIRTY",
+            "production_identity",
+            "The PDFFast source checkout contains monitored uncommitted changes.",
+        ))
+        risk_flags.add("PDFFAST_SOURCE_DIRTY")
+
+    contract = {
         "schema_version": "pdffast.execution.v1",
         "run_id": context.run_id,
         "input": {
@@ -240,4 +361,10 @@ def build_execution_contract(
             "runtime_policy": relative(artifacts.observability.execution_plan),
         },
         "artifacts": required,
+        "warnings": warnings,
+        "risk_flags": sorted(risk_flags),
+        "error": None,
     }
+    if request is not None:
+        contract["request"] = request
+    return contract
