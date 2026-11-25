@@ -263,6 +263,7 @@ def test_execution_contract_builder_hashes_required_and_task_evidence(tmp_path) 
     assert contract["execution"]["provider_runtime"]["indra_local"]["identity"]["model"]["revision"] == "test-revision"
     by_path = {item["path"]: item for item in contract["artifacts"]}
     selected_path = "09_8_production_fallback/selected_predictions/task-1.json"
+    assert by_path[selected_path]["task_id"] == "task-1"
     assert by_path[selected_path]["sha256"] == hashlib.sha256(payloads[paths.providers.selected_dir / "task-1.json"]).hexdigest()
     assert contract["execution_evidence"]["production_manifest"] in by_path
     assert "result/manifest.json" not in by_path
@@ -457,6 +458,7 @@ def test_execution_contract_matches_real_provider_execution_evidence(tmp_path) -
         item for item in contract["artifacts"]
         if item["name"] == "selected_prediction"
     )
+    assert selected["task_id"] == "provider-fallback"
     assert selected["path"].endswith("selected_predictions/provider-fallback.json")
     assert selected["sha256"] == hashlib.sha256(
         paths.providers.selected_prediction("provider-fallback").read_bytes()
