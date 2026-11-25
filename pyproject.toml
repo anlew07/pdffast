@@ -13,7 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 
-dev = ["pytest>=8.0", "httpx2>=2.13.1"]
+dev = ["pytest>=8.0", "httpx2>=2.13.1", "jsonschema>=4.23"]
 
 service = [
     "fastapi>=0.115",

@@ -183,3 +183,42 @@ def test_cli_missing_pdf_does_not_advertise_unimplemented_artifact_mode() -> Non
     assert result.returncode == 2
     assert "PDF 不存在" in result.stderr
     assert "--from-artifacts" not in result.stderr
+
+
+def test_only_verified_machine_code_counts_as_rendered_content(tmp_path, v3_pipeline_inputs):
+
+    from pdffast.render._stage10_renderer import MODE_REGION_TEXT
+
+    document = _build_canonical(v3_pipeline_inputs, tmp_path)
+    document["sections"][0]["section_title"] = None
+    document["summary"]["terminal_preserve_count"] = 0
+    document["records"][0]["text"] = ""
+    region = document["records"][1]
+    original_resolution = deepcopy(region["stage10_resolution"])
+    overlay = document["fallback_overlays"]["region_fallbacks"][0]
+
+    for detached in (False, True):
+        for verified in (False, True):
+            action = "USE_VERIFIED_MACHINE_CODE_DECODE" if verified else "SUPPRESS_UNVERIFIED_MACHINE_CODE_OCR"
+            fallback = {
+                "text": {"availability": "AVAILABLE", "content": "suppressed-numeric-candidate"},
+                "diagnostics": {"machine_code": {
+                    "action": action, "kind": "BARCODE",
+                    "decoded_values": ["verified-decoded-value"] if verified else [],
+                }},
+            }
+            if detached:
+                region["stage10_resolution"] = {"mode": "PRESERVED_VISUAL"}
+            else:
+                region["stage10_resolution"] = {
+                    **original_resolution, "mode": MODE_REGION_TEXT, "fallback_content": fallback,
+                }
+            overlay["source_native_record_id"] = None if detached else region["record_id"]
+            overlay["terminal_fallback_applied"] = False
+            overlay["fallback_content"] = fallback
+            document["summary"]["detached_region_fallback_count"] = int(detached)
+
+            markdown, report = build_rendered_document(document)
+            assert report["summary"]["has_usable_content"] is verified
+            assert ("verified-decoded-value" in markdown) is verified
+            assert "suppressed-numeric-candidate" not in markdown

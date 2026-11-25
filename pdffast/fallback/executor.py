@@ -158,7 +158,7 @@ def execute_provider_plan(
                 provider = providers.get(provider_name)
                 if provider is None:
                     if observation is not None:
-                        observation.provider_started(provider_name)
+                        observation.provider_started(provider_name, groups[provider_name])
                     config = provider_configs.get(provider_name)
                     if not isinstance(config, dict):
                         raise ValueError(f"missing provider config: {provider_name}")
@@ -267,12 +267,12 @@ def execute_provider_plan(
             observation.failure("provider_execution_failed", exc)
         raise
     finally:
-        cleanup_errors: list[BaseException] = []
+        cleanup_errors: list[tuple[str, BaseException]] = []
         for provider_name, provider in providers.items():
             try:
                 provider.close()
             except BaseException as exc:
-                cleanup_errors.append(exc)
+                cleanup_errors.append((provider_name, exc))
                 if observation is not None:
                     observation.failure("provider_cleanup_failed", exc, provider=provider_name)
                 else:
@@ -280,7 +280,10 @@ def execute_provider_plan(
                         "Provider cleanup failed: %s", provider_name, exc_info=True,
                     )
         if cleanup_errors and execution_error is None:
-            raise cleanup_errors[0]
+            failed_provider, cleanup_error = cleanup_errors[0]
+            if observation is not None:
+                observation.mark_provider_cleanup_failure(failed_provider)
+            raise cleanup_error
 
     selected_counts: Counter[str] = Counter()
     attempt_counts: Counter[str] = Counter()

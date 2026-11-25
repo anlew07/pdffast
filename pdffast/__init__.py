@@ -5,6 +5,8 @@ from .application.production_preflight import preflight_production_profile
 from .config import ParserConfig
 from .errors import (
     ConfigurationError,
+    InputIdentityMismatchError,
+    InputUnavailableError,
     OutputValidationError,
     ParseExecutionError,
     PDFFastError,
@@ -16,6 +18,8 @@ from .result import ParseResult
 
 __all__ = [
     "ConfigurationError",
+    "InputIdentityMismatchError",
+    "InputUnavailableError",
     "OutputValidationError",
     "PDFFastError",
     "PDFFastParser",

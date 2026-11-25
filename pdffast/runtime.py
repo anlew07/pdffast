@@ -15,12 +15,8 @@ import time
 from pathlib import Path
 from typing import Any, Iterator, TextIO
 
-from pdffast.errors import ParseExecutionError
+from pdffast.errors import ParseCancelledError, ParseExecutionError
 from pdffast.runtime_format import ChineseRuntimeFormatter, CompactRuntimeFormatter, ConsoleRuntimeFilter, log_mode
-
-
-class ParseCancelledError(BaseException):
-    """Explicitly aborted work, never a recoverable Provider result."""
 
 
 _cancellation: ContextVar[threading.Event | None] = ContextVar("pdffast_cancellation", default=None)
@@ -163,6 +159,7 @@ class ParseObservation:
         self._started = self._last_progress = time.monotonic()
         self._phase = "parse_preparation"
         self._provider: str | None = None
+        self._initialization_task_ids: tuple[str, ...] = ()
         self._task_id: str | None = None
         self._task_started: float | None = None
         self._completed: int | None = None
@@ -226,10 +223,33 @@ class ParseObservation:
             self._last_progress = time.monotonic()
         self._emit(event, **fields)
 
-    def provider_started(self, provider: str) -> None:
+    def provider_started(self, provider: str, task_ids: list[str] | None = None) -> None:
         with self._lock:
             self._provider = provider
+            self._initialization_task_ids = tuple(task_ids or ())
         self.progress("provider_initialization_started", "provider_initialization")
+
+    def failure_context(self) -> tuple[str, dict[str, Any]]:
+        """Return safe diagnostic fields even once the observation scope exits."""
+        with self._lock:
+            details: dict[str, Any] = {}
+            if self._provider is not None:
+                details["provider"] = self._provider
+            if self._task_id is not None:
+                details["task_id"] = self._task_id
+            if self._phase == "provider_initialization":
+                details.update(
+                    initialization_started=True,
+                    initialization_succeeded=False,
+                    task_ids=list(self._initialization_task_ids),
+                )
+            return self._phase, details
+
+    def mark_provider_cleanup_failure(self, provider: str) -> None:
+        with self._lock:
+            self._phase = "provider_cleanup"
+            self._provider = provider
+            self._task_id = self._task_started = None
 
     def tasks_known(self, total: int) -> None:
         with self._lock:

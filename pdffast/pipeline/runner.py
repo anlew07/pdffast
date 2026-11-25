@@ -13,6 +13,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
+from pdffast.application.execution_contract import build_execution_contract
 from pdffast.application.parser_provenance import (
     build_parser_provenance,
     collect_execution_statistics,
@@ -23,7 +24,14 @@ from pdffast.application.production_profile import ProductionProfile
 from pdffast.audit.structure_boundary import audit
 from pdffast.canonical.builder import build_document
 from pdffast.canonical.document_units import resolve_document_units_from_artifacts
-from pdffast.errors import OutputValidationError, ParseExecutionError
+from pdffast.errors import (
+    NoUsableResultError,
+    OutputValidationError,
+    ParseCancelledError,
+    ParseExecutionError,
+    ProviderExecutionError,
+    ProviderUnavailableError,
+)
 from pdffast.fallback.executor import ProviderExecutionResult, execute_provider_plan
 from pdffast.fallback.planner import create_fallback_plan, write_fallback_plan
 from pdffast.fallback.policy import (
@@ -214,6 +222,8 @@ def run_core_pipeline(
     observable = a.observability
     providers = a.providers
     diagnostics = a.diagnostics
+    observation = None
+    publication_started = False
     try:
         if locked_profile is not None and (
             production_identity is None or production_identity["status"] != "PASS"
@@ -226,7 +236,7 @@ def run_core_pipeline(
         with observe_parse(
             context.run_id,
             log_path=diagnostics.pipeline_log if context.capture_output else None,
-        ), capture_runtime_output(diagnostics.pipeline_log, enabled=context.capture_output):
+        ) as observation, capture_runtime_output(diagnostics.pipeline_log, enabled=context.capture_output):
             runtime_progress("native_analysis_started", "native_observation")
             snapshot_pages: dict[int, dict[str, Any]] = {}
             snapshot_meta: dict[str, Any] = {}
@@ -303,6 +313,20 @@ def run_core_pipeline(
                     output_dir=providers.execution_dir,
                     plan_path=observable.execution_plan.parent / "runtime_escalation_policy.json",
                 )
+                if statistics["pipeline_failure_count"]:
+                    # Stage 10 requires a selected result or a prescribed terminal outcome
+                    # for every task. This run has no deliverable audited result.
+                    raise ProviderExecutionError(
+                        "Required Provider tasks exhausted their execution chains",
+                        run_dir=context.run_dir,
+                        log_path=diagnostics.pipeline_log,
+                        details={
+                            "pipeline_failure_count": statistics["pipeline_failure_count"],
+                            "attempted_provider_counts": statistics["attempted_provider_counts"],
+                            "task_ids": [item["task_id"] for item in production.selected_predictions
+                                         if item["pipeline_failure"]],
+                        },
+                    )
             final = run_stage10(
                 context, selection=production, section_alignment=section_alignment,
                 text_flow=text_flow_result, quality_report=quality_report,
@@ -315,23 +339,67 @@ def run_core_pipeline(
                         "Locked parse failed structure audit", run_dir=context.run_dir,
                         log_path=diagnostics.pipeline_log,
                     )
+                render_manifest = final["render_manifest"]
+                versioned = context.execution_request is not None
+                if versioned and render_manifest["validation"]["pass"] is not True:
+                    raise OutputValidationError(
+                        "Locked parse failed renderer validation", run_dir=context.run_dir,
+                        log_path=diagnostics.pipeline_log,
+                    )
+                requires_content = versioned or statistics["terminal_preserve_count"] > 0
+                if not final["markdown"].strip() or (
+                    requires_content and render_manifest["summary"]["has_usable_content"] is not True
+                ):
+                    raise NoUsableResultError(
+                        "No usable Markdown was rendered", run_dir=context.run_dir,
+                        log_path=diagnostics.pipeline_log,
+                    )
                 provenance = build_parser_provenance(production_identity, statistics)
                 final["parser_provenance"] = provenance
                 final["public_manifest"]["parser_provenance"] = provenance
+                runtime_progress("execution_contract_started", "execution_contract")
+                execution_contract = build_execution_contract(
+                    context,
+                    production_identity=production_identity,
+                    statistics=statistics,
+                    execution_plan=execution_plan,
+                    production_manifest=production.manifest,
+                )
+                final["execution_contract"] = execution_contract
+                final["public_manifest"]["execution_contract"] = execution_contract
             result = ParseResult.from_pipeline(context, final)
         if locked_profile is not None:
+            publication_started = True
             _check_locked_environment(locked_profile)
             publish_manifest(a.result.manifest_json, final["public_manifest"])
         return result
+    except ParseCancelledError as exc:
+        exc.run_id = context.run_id
+        exc.run_dir = context.run_dir
+        exc.log_path = diagnostics.pipeline_log
+        raise
     except ParseExecutionError:
         raise
     except Exception as exc:
         if context.capture_output:
-            diagnostics.pipeline_log.parent.mkdir(parents=True, exist_ok=True)
-            with diagnostics.pipeline_log.open("a", encoding="utf-8") as stream:
-                traceback.print_exc(file=stream)
-        raise ParseExecutionError(
+            try:
+                diagnostics.pipeline_log.parent.mkdir(parents=True, exist_ok=True)
+                with diagnostics.pipeline_log.open("a", encoding="utf-8") as stream:
+                    traceback.print_exc(file=stream)
+            except OSError:
+                pass
+        stage, details = observation.failure_context() if observation is not None else ("parse_preparation", {})
+        if publication_started:
+            stage = "manifest_publication"
+        details["cause_type"] = type(exc).__name__
+        error_type = {
+            "provider_initialization": ProviderUnavailableError,
+            "provider_execution": ProviderExecutionError,
+        }.get(stage, ParseExecutionError)
+        raise error_type(
             f"PDF 解析失败：{type(exc).__name__}: {exc}",
             run_dir=context.run_dir,
             log_path=diagnostics.pipeline_log,
+            stage=stage,
+            details=details,
         ) from exc
