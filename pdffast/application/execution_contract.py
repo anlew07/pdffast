@@ -29,6 +29,7 @@ def _artifact(
     name: str,
     path: Path,
     media_type: str,
+    task_id: str | None = None,
 ) -> dict[str, Any]:
     relative = _relative_path(run_dir, path)
     resolved = Path(run_dir).resolve(strict=True) / relative
@@ -42,13 +43,18 @@ def _artifact(
     after_identity = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
     if before_identity != after_identity:
         raise ValueError(f"execution artifact changed while hashing: {relative}")
-    return {
+    artifact = {
         "name": name,
         "path": relative,
         "media_type": media_type,
         "byte_size": after.st_size,
         "sha256": digest.hexdigest(),
     }
+    if task_id is not None:
+        if not task_id:
+            raise ValueError("selected prediction artifact has an empty task_id")
+        artifact["task_id"] = task_id
+    return artifact
 
 
 def build_execution_contract(
@@ -178,7 +184,7 @@ def build_execution_contract(
         required.append(
             _artifact(
                 run_dir, name="selected_prediction", path=path,
-                media_type="application/json",
+                media_type="application/json", task_id=path.stem,
             )
         )
     required.sort(key=lambda item: item["path"])
