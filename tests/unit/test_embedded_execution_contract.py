@@ -338,3 +338,115 @@ def test_execution_contract_builder_rejects_artifact_symlink_escape(tmp_path) ->
             execution_plan=SimpleNamespace(data={"version": "9.6.3"}),
             production_manifest={"summary": {"escalated_count": 0}},
         )
+
+
+def test_execution_contract_matches_real_provider_execution_evidence(tmp_path) -> None:
+    from test_fallback_executor import FakeProvider, FakeRegistry, _canonical, _task
+
+    from pdffast.application.parser_provenance import collect_execution_statistics
+    from pdffast.fallback.executor import execute_provider_plan
+    from pdffast.fallback.policy import ProviderExecutionPlan
+
+    run_dir = tmp_path / "provider-run"
+    run_dir.mkdir()
+    paths = ArtifactPaths.for_run(run_dir)
+    input_bytes = b"%PDF-1.7\\nprovider-execution-fixture\\n"
+    input_pdf = tmp_path / "provider-input.pdf"
+    input_pdf.write_bytes(input_bytes)
+    input_metadata = {
+        "algorithm": "sha256",
+        "sha256": hashlib.sha256(input_bytes).hexdigest(),
+        "byte_size": len(input_bytes),
+        "status": "COMPLETE",
+    }
+
+    first, second = "rapidocr_ch_light", "mineru_local"
+    task = _task("provider-fallback", [first, second])
+    plan = ProviderExecutionPlan({
+        "version": "0.1.2",
+        "source_file": input_pdf.name,
+        "tasks": [task],
+        "summary": {"task_count": 1},
+    })
+    first_provider = FakeProvider(first, {"provider-fallback": RuntimeError("retry me")})
+    second_provider = FakeProvider(
+        second,
+        {"provider-fallback": _canonical("provider-fallback", second, "recovered text")},
+    )
+    execution = execute_provider_plan(
+        execution_plan=plan,
+        provider_configs={
+            first: {"kind": "rapidocr", "runtime_enabled": True},
+            second: {"kind": "mineru_worker", "runtime_enabled": True},
+        },
+        registry=FakeRegistry({first: first_provider, second: second_provider}),
+        normalizer=lambda raw, metadata, **kwargs: raw.payload,
+        output_dir=paths.providers.execution_dir,
+        locked_routes={"REGION_MULTIMODAL_PARSE": [first, second]},
+    )
+    paths.observability.execution_plan.parent.mkdir(parents=True, exist_ok=True)
+    paths.observability.execution_plan.write_text(
+        json.dumps(plan.data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    for path, payload in (
+        (paths.result.document_json, b'{"page_count": 1}'),
+        (paths.result.document_md, b"# Parsed document\\n"),
+        (paths.result.audit_json, b'{"validation": {"pass": true}}'),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+    statistics = collect_execution_statistics(
+        plan,
+        execution,
+        (first, second),
+        output_dir=paths.providers.execution_dir,
+        plan_path=paths.observability.execution_plan,
+    )
+    identity = {
+        "status": "PASS",
+        "pdffast_commit": COMMIT,
+        "code_identity": {"source_sha256": SHA256},
+        "profile_name": "production.test-profile",
+        "profile_sha256": SHA256,
+        "providers_config_sha256": SHA256,
+        "effective_config_fingerprint": SHA256,
+        "allowed_providers": [first, second],
+        "provider_runtime": {
+            name: {
+                "status": "READY",
+                "dependency_probe": "NOT_RUN",
+                "identity": {"python": "3.12.13", "revision": "fixture"},
+            }
+            for name in (first, second)
+        },
+    }
+    context = SimpleNamespace(
+        run_id="provider-run",
+        run_dir=run_dir,
+        pdf=input_pdf,
+        artifacts=paths,
+        input_metadata=input_metadata,
+    )
+
+    contract = build_execution_contract(
+        context,
+        production_identity=identity,
+        statistics=statistics,
+        execution_plan=plan,
+        production_manifest=execution.manifest,
+    )
+
+    VALIDATOR.validate(contract)
+    assert statistics["attempted_provider_counts"] == {first: 1, second: 1}
+    assert statistics["selected_provider_counts"] == {second: 1}
+    assert contract["execution"]["escalated_count"] == 1
+    selected = next(
+        item for item in contract["artifacts"]
+        if item["name"] == "selected_prediction"
+    )
+    assert selected["path"].endswith("selected_predictions/provider-fallback.json")
+    assert selected["sha256"] == hashlib.sha256(
+        paths.providers.selected_prediction("provider-fallback").read_bytes()
+    ).hexdigest()
