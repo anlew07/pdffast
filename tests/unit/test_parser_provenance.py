@@ -96,6 +96,28 @@ raise SystemExit(int(sys.argv[2]))
         assert summary["acceptance"] == "FAIL"
     assert summarize_parse(manifest.parents[1], 0, expected, input_sha256=input_sha256)["acceptance"] == "PASS"
 
+    # The verifier independently re-hashes every declared artifact.
+    document_path = result.artifacts["result_document"]
+    document_bytes = document_path.read_bytes()
+    document_path.write_bytes(document_bytes + b"tampered")
+    tampered_report = summarize_parse(
+        manifest.parents[1], 0, expected, input_sha256=input_sha256,
+    )
+    assert tampered_report["acceptance"] == "FAIL"
+    assert tampered_report["execution_contract_verified"] is False
+    document_path.write_bytes(document_bytes)
+
+    # It also rejects unsafe run-relative paths in the published contract.
+    tampered = json.loads(first_manifest)
+    tampered["execution_contract"]["artifacts"][0]["path"] = "../outside.json"
+    manifest.write_text(json.dumps(tampered))
+    tampered_report = summarize_parse(
+        manifest.parents[1], 0, expected, input_sha256=input_sha256,
+    )
+    assert tampered_report["acceptance"] == "FAIL"
+    assert tampered_report["execution_contract_verified"] is False
+    manifest.write_bytes(first_manifest)
+
     # The external release verifier must join execution evidence to this input
     # and run even when the child reported a normal exit.
     for mutate in (
