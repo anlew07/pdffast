@@ -547,3 +547,69 @@ def test_execution_contract_matches_real_provider_execution_evidence(tmp_path) -
         production_manifest=json.loads(paths.providers.production_manifest.read_text(encoding="utf-8")),
         selected_index=json.loads(paths.providers.selected_index.read_text(encoding="utf-8")),
     )
+
+    from scripts.verify_production_governance import _read_run_relative_files
+
+    artifact_bytes, _ = _read_run_relative_files(
+        run_dir, [item["path"] for item in contract["artifacts"]],
+    )
+    selected_file = paths.providers.selected_prediction("provider-fallback")
+    original_selected_bytes = selected_file.read_bytes()
+    selected_file.write_bytes(b"not-json")
+    try:
+        # Hash verification and semantic parsing must consume the same captured bytes.
+        assert _verify_execution_contract(
+            run_dir,
+            manifest=published_manifest,
+            provenance=provenance,
+            expected=identity,
+            input_sha256=input_metadata["sha256"],
+            audit=json.loads(paths.result.audit_json.read_bytes()),
+            execution_plan=json.loads(paths.observability.execution_plan.read_bytes()),
+            production_manifest=json.loads(paths.providers.production_manifest.read_bytes()),
+            selected_index=json.loads(paths.providers.selected_index.read_bytes()),
+            artifact_bytes=artifact_bytes,
+        )
+    finally:
+        selected_file.write_bytes(original_selected_bytes)
+
+
+def test_contract_verifier_rejects_schema_additional_properties(tmp_path) -> None:
+    from scripts.verify_production_governance import _verify_execution_contract
+
+    for mutate in (
+        lambda contract: contract.update(unexpected_field=True),
+        lambda contract: contract["execution"].update(unexpected_field=True),
+    ):
+        contract = _contract()
+        mutate(contract)
+        manifest = {
+            "run_id": contract["run_id"],
+            "input": {"sha256": SHA256, "byte_size": 4096},
+            "execution_contract": contract,
+        }
+        assert not _verify_execution_contract(
+            tmp_path / contract["run_id"],
+            manifest=manifest,
+            provenance={},
+            expected={},
+            input_sha256=SHA256,
+            audit={},
+            execution_plan={},
+            production_manifest={},
+            selected_index={},
+        )
+
+
+def test_contract_reader_rejects_symlinked_parent_directory(tmp_path) -> None:
+    from scripts.verify_production_governance import _read_run_relative_files
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "manifest.json").write_text("{}", encoding="utf-8")
+    (run_dir / "result").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="unsafe directory component"):
+        _read_run_relative_files(run_dir, ["result/manifest.json"])
