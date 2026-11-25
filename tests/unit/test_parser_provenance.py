@@ -17,7 +17,16 @@ def test_locked_native_only_manifest_and_exclusive_run(tmp_path, monkeypatch):
     from pdffast.application import production_preflight
 
     monkeypatch.setattr(production_preflight, "inspect_runtime", lambda snapshot, **kwargs: {
-        name: {"status": "READY", "identity": {"revision": "test-fixture"}}
+        name: {
+            "status": "READY",
+            "dependency_probe": "NOT_RUN",
+            "identity": {
+                "python": "3.12.13",
+                "package_inventory_sha256": "a" * 64,
+                "packages": {"test-package": "1.0"},
+                "model": {"revision": "test-fixture"},
+            },
+        }
         for name in snapshot.allowed
     })
     pdf = tmp_path / "native.pdf"
@@ -122,7 +131,16 @@ def test_audit_fault_leaves_no_final_locked_manifest(tmp_path, monkeypatch):
     from pdffast.application import production_preflight
 
     monkeypatch.setattr(production_preflight, "inspect_runtime", lambda snapshot, **kwargs: {
-        name: {"status": "READY", "identity": {"revision": "test-fixture"}}
+        name: {
+            "status": "READY",
+            "dependency_probe": "NOT_RUN",
+            "identity": {
+                "python": "3.12.13",
+                "package_inventory_sha256": "a" * 64,
+                "packages": {"test-package": "1.0"},
+                "model": {"revision": "test-fixture"},
+            },
+        }
         for name in snapshot.allowed
     })
     monkeypatch.setattr("pdffast.pipeline.runner.audit", lambda *args, **kwargs: {"validation": {"pass": False}})
