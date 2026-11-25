@@ -10,7 +10,10 @@
     "result",
     "execution",
     "execution_evidence",
-    "artifacts"
+    "artifacts",
+    "warnings",
+    "risk_flags",
+    "error"
   ],
   "properties": {
     "schema_version": {
@@ -280,9 +283,71 @@
       "items": {
         "$ref": "#/$defs/artifact"
       }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "input_sha256", "options"],
+      "properties": {
+        "schema_version": {
+          "const": "pdffast.execution.request.v1"
+        },
+        "input_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "options": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["page_dpi", "region_dpi", "rapidocr_workers", "table_mode"],
+          "properties": {
+            "page_dpi": {"type": "integer", "minimum": 1},
+            "region_dpi": {"type": "integer", "minimum": 1},
+            "rapidocr_workers": {"type": "integer", "minimum": 1},
+            "table_mode": {"enum": ["off", "auto", "all"]}
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/warning"}
+    },
+    "risk_flags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]+$"
+      }
+    },
+    "error": {
+      "type": "null"
     }
   },
   "$defs": {
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "stage", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]+$"
+        },
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "details": {
+          "type": "object"
+        }
+      }
+    },
     "relative_path": {
       "type": "string",
       "minLength": 1,
