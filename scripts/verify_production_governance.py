@@ -10,6 +10,7 @@ import resource
 import stat
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
@@ -389,8 +390,28 @@ def _verify_execution_contract(
             if not isinstance(task_id, str) or not task_id or task_id in selected_tasks:
                 return False
             selected_tasks[task_id] = item
-        if set(selected_artifacts) != set(selected_tasks):
+        if (
+            set(selected_artifacts) != set(selected_tasks)
+            or production_manifest.get("selected_predictions") != selected_items
+        ):
             return False
+
+        plan_items = execution_plan.get("tasks")
+        if not isinstance(plan_items, list) or len(plan_items) != planned:
+            return False
+        plan_tasks = {}
+        for task in plan_items:
+            task_id = task.get("task_id") if isinstance(task, dict) else None
+            if not isinstance(task_id, str) or not task_id or task_id in plan_tasks:
+                return False
+            plan_tasks[task_id] = task
+        if set(plan_tasks) != set(selected_tasks):
+            return False
+
+        observed_attempts: Counter[str] = Counter()
+        observed_selected: Counter[str] = Counter()
+        observed_dispatch = Counter()
+        observed_accepted = observed_terminal = observed_failures = observed_escalated = 0
         for task_id, raw_path in selected_artifacts.items():
             if raw_path != f"{selected_dir}/{task_id}.json":
                 return False
@@ -398,6 +419,94 @@ def _verify_execution_contract(
                 ArtifactPaths.for_run(run_dir).providers.selected_prediction(task_id)
             ):
                 return False
+            prediction = _read(_contract_artifact_path(run_dir, raw_path))
+            task = plan_tasks[task_id]
+            if prediction.get("task_id") != task_id:
+                return False
+            chain = [
+                item.get("provider") for item in task.get("provider_chain", [])
+                if isinstance(item, dict)
+            ]
+            attempts = prediction.get("attempts")
+            if not chain or not isinstance(attempts, list) or not 0 < len(attempts) <= len(chain):
+                return False
+            accepted_positions = []
+            for position, attempt in enumerate(attempts):
+                if not isinstance(attempt, dict):
+                    return False
+                provider = attempt.get("provider")
+                canonical = attempt.get("canonical")
+                if (
+                    type(attempt.get("chain_index")) is not int
+                    or attempt.get("chain_index") != position
+                    or provider != chain[position] or provider not in allowed
+                    or type(attempt.get("accepted")) is not bool
+                    or not isinstance(canonical, dict)
+                    or canonical.get("task_id") != task_id
+                    or (canonical.get("provider") or {}).get("name") != provider
+                ):
+                    return False
+                observed_attempts[provider] += 1
+                observed_dispatch[position, provider, task_id] += 1
+                if attempt["accepted"]:
+                    accepted_positions.append(position)
+
+            selected_provider = prediction.get("selected_provider")
+            is_terminal = prediction.get("terminal_fallback_applied")
+            is_failure = prediction.get("pipeline_failure")
+            index_item = selected_tasks[task_id]
+            if (
+                type(is_terminal) is not bool or type(is_failure) is not bool
+                or index_item.get("selected_provider") != selected_provider
+                or index_item.get("terminal_fallback_applied") is not is_terminal
+                or index_item.get("pipeline_failure") is not is_failure
+            ):
+                return False
+            if selected_provider is not None:
+                if (
+                    accepted_positions != [len(attempts) - 1]
+                    or selected_provider != attempts[-1]["provider"]
+                    or prediction.get("selected_canonical") != attempts[-1]["canonical"]
+                    or is_terminal or is_failure
+                ):
+                    return False
+                observed_accepted += 1
+                observed_selected[selected_provider] += 1
+            else:
+                terminal_action = (task.get("terminal_fallback") or {}).get("action")
+                if (
+                    accepted_positions or len(attempts) != len(chain)
+                    or prediction.get("selected_canonical") is not None
+                    or is_terminal is bool(terminal_action)
+                    or is_failure is is_terminal
+                    or prediction.get("terminal_fallback_action")
+                    != (terminal_action if is_terminal else None)
+                ):
+                    return False
+                observed_terminal += int(is_terminal)
+                observed_failures += int(is_failure)
+            observed_escalated += int(len(attempts) > 1)
+
+        batch_dispatch = Counter()
+        for batch in production_manifest.get("batch_history", []):
+            if (
+                not isinstance(batch, dict) or type(batch.get("wave")) is not int
+                or not isinstance(batch.get("provider"), str)
+                or not isinstance(batch.get("task_ids"), list)
+            ):
+                return False
+            batch_dispatch.update(
+                (batch["wave"], batch["provider"], task_id)
+                for task_id in batch["task_ids"]
+            )
+        if (
+            observed_dispatch != batch_dispatch
+            or dict(sorted(observed_attempts.items())) != attempted
+            or dict(sorted(observed_selected.items())) != selected
+            or observed_accepted != accepted or observed_terminal != terminal
+            or observed_failures != failures or observed_escalated != escalated
+        ):
+            return False
 
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
