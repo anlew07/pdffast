@@ -46,6 +46,7 @@ jobs:
             tests/unit/test_model_asset_identity.py \
             tests/unit/test_production_preflight.py \
             tests/unit/test_parser_provenance.py \
+            tests/unit/test_embedded_execution_contract.py \
             tests/unit/test_provider_profiles.py \
             tests/unit/test_provider_lifecycle.py \
             tests/unit/test_fallback_executor.py \
