@@ -198,6 +198,7 @@ def test_execution_contract_builder_hashes_required_and_task_evidence(tmp_path) 
         path.write_bytes(payload)
 
     context = SimpleNamespace(
+        run_id="run-1",
         run_dir=run_dir,
         artifacts=paths,
         input_metadata={
@@ -275,6 +276,7 @@ def test_execution_contract_builder_rejects_artifact_symlink_escape(tmp_path) ->
         path.write_text("{}", encoding="utf-8")
 
     context = SimpleNamespace(
+        run_id="run-2",
         run_dir=run_dir,
         artifacts=paths,
         input_metadata={
