@@ -25,8 +25,27 @@ def test_locked_native_only_manifest_and_exclusive_run(tmp_path, monkeypatch):
     parser = PDFFastParser(project_root=ROOT, provider_profile=PROFILE, output_root=tmp_path)
     result = parser.parse(pdf, run_id="locked")
     manifest = result.artifacts["result_manifest"]
-    provenance = json.loads(manifest.read_bytes())["parser_provenance"]
+    manifest_data = json.loads(manifest.read_bytes())
+    provenance = manifest_data["parser_provenance"]
+    contract = manifest_data["execution_contract"]
+    schema = json.loads(
+        (ROOT / "docs/contracts/embedded_execution.v1.schema.json").read_text(encoding="utf-8")
+    )
+    import jsonschema
+
+    jsonschema.validate(contract, schema)
     assert result.parser_provenance == provenance
+    assert result.execution_contract == contract
+    assert result["execution_contract"] == contract
+    assert contract["run_id"] == "locked"
+    assert contract["execution"]["execution_status"] == "COMPLETED"
+    assert contract["execution"]["planned_task_count"] == 0
+    assert contract["execution"]["attempted_provider_counts"] == {}
+    assert contract["execution"]["selected_provider_counts"] == {}
+    assert contract["input"]["sha256"] == manifest_data["input"]["sha256"]
+    assert result.artifacts["production_execution_manifest"].is_file()
+    assert result.artifacts["selected_prediction_index"].is_file()
+    assert result.artifacts["runtime_escalation_policy"].is_file()
     assert provenance["execution_status"] == "COMPLETED"
     assert provenance["planned_task_count"] == 0
     assert provenance["attempted_provider_counts"] == {}
