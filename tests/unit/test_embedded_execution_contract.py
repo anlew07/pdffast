@@ -260,7 +260,7 @@ def test_execution_contract_builder_hashes_required_and_task_evidence(tmp_path) 
     VALIDATOR.validate(contract)
     assert contract["run_id"] == "run-1"
     assert contract["execution"]["execution_status"] == "COMPLETED_WITH_PIPELINE_FAILURES"
-    assert contract["execution"]["provider_runtime"]["indra_local"]["identity"]["revision"] == "test-revision"
+    assert contract["execution"]["provider_runtime"]["indra_local"]["identity"]["model"]["revision"] == "test-revision"
     by_path = {item["path"]: item for item in contract["artifacts"]}
     selected_path = "09_8_production_fallback/selected_predictions/task-1.json"
     assert by_path[selected_path]["sha256"] == hashlib.sha256(payloads[paths.providers.selected_dir / "task-1.json"]).hexdigest()
