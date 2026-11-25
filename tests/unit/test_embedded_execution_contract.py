@@ -165,6 +165,22 @@ def test_execution_contract_rejects_invalid_identity_and_artifacts(mutate) -> No
         VALIDATOR.validate(contract)
 
 
+def test_selected_prediction_artifact_requires_task_id() -> None:
+    contract = _contract()
+    contract["artifacts"].append(
+        _artifact(
+            "selected_prediction",
+            "09_8_production_fallback/selected_predictions/task-1.json",
+        )
+    )
+
+    with pytest.raises(ValidationError):
+        VALIDATOR.validate(contract)
+
+    contract["artifacts"][-1]["task_id"] = "task-1"
+    VALIDATOR.validate(contract)
+
+
 def test_completed_contract_cannot_contain_pipeline_failures() -> None:
     contract = _contract()
     contract["execution"]["pipeline_failure_count"] = 1
