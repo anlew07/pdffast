@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import resource
+import stat
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
 from pdffast import ParserConfig, PDFFastParser, preflight_production_profile
@@ -122,6 +125,287 @@ def _child(args: argparse.Namespace) -> int:
                error_type=type(exc).__name__, cause_type=type(exc.__cause__).__name__,
                worker_returncode=getattr(exc, "returncode", getattr(exc.__cause__, "returncode", None)))
         raise SystemExit(1) from exc
+
+
+def _contract_artifact_path(run_dir: Path, raw_path: str) -> Path:
+    """Resolve one run-relative contract path without following symlinks."""
+    if (
+        not isinstance(raw_path, str) or not raw_path or "\\" in raw_path
+        or "\\x00" in raw_path
+    ):
+        raise ValueError("invalid contract artifact path")
+    relative = PurePosixPath(raw_path)
+    if (
+        relative.is_absolute() or relative.as_posix() != raw_path
+        or not relative.parts or any(part in {"", ".", ".."} for part in relative.parts)
+        or relative.parts[0].endswith(":")
+    ):
+        raise ValueError("contract artifact path is not normalized and relative")
+
+    root = Path(run_dir).resolve(strict=True)
+    candidate = root.joinpath(*relative.parts)
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("contract artifact path contains a symlink")
+    resolved = candidate.resolve(strict=True)
+    if not resolved.is_relative_to(root) or not resolved.is_file():
+        raise ValueError("contract artifact path escapes the run directory")
+    return resolved
+
+
+def _verify_execution_contract(
+    run_dir: Path,
+    *,
+    manifest: dict,
+    provenance: dict,
+    expected: dict,
+    input_sha256: str | None,
+    audit: dict,
+    execution_plan: dict,
+    production_manifest: dict,
+    selected_index: dict,
+) -> bool:
+    """Independently verify the published Embedded contract and its file hashes."""
+    try:
+        contract = manifest.get("execution_contract")
+        if not isinstance(contract, dict):
+            return False
+        if (
+            contract.get("schema_version") != "pdffast.execution.v1"
+            or contract.get("run_id") != run_dir.name
+            or manifest.get("run_id") != run_dir.name
+        ):
+            return False
+
+        manifest_input = manifest.get("input") or {}
+        contract_input = contract.get("input") or {}
+        if (
+            input_sha256 is None
+            or contract_input.get("algorithm") != "sha256"
+            or contract_input.get("status") != "COMPLETE"
+            or contract_input.get("sha256") != input_sha256
+            or manifest_input.get("sha256") != input_sha256
+            or type(contract_input.get("byte_size")) is not int
+            or contract_input.get("byte_size") < 1
+            or contract_input.get("byte_size") != manifest_input.get("byte_size")
+        ):
+            return False
+
+        result_paths = {
+            "document": pathsafe(run_dir, ArtifactPaths.for_run(run_dir).result.document_json),
+            "markdown": pathsafe(run_dir, ArtifactPaths.for_run(run_dir).result.document_md),
+            "audit": pathsafe(run_dir, ArtifactPaths.for_run(run_dir).result.audit_json),
+        }
+        evidence_paths = {
+            "production_manifest": pathsafe(
+                run_dir, ArtifactPaths.for_run(run_dir).providers.production_manifest,
+            ),
+            "selected_prediction_index": pathsafe(
+                run_dir, ArtifactPaths.for_run(run_dir).providers.selected_index,
+            ),
+            "runtime_policy": pathsafe(
+                run_dir, ArtifactPaths.for_run(run_dir).observability.execution_plan,
+            ),
+        }
+        if contract.get("result") != result_paths:
+            return False
+        if contract.get("execution_evidence") != evidence_paths:
+            return False
+
+        execution = contract.get("execution") or {}
+        code_identity = provenance.get("code_identity") or {}
+        identity_pairs = {
+            "pdffast_commit": provenance.get("pdffast_commit"),
+            "source_sha256": code_identity.get("source_sha256"),
+            "source_dirty": code_identity.get("source_dirty"),
+            "algorithm_sha256": code_identity.get("algorithm_sha256"),
+            "profile_name": provenance.get("profile_name"),
+            "profile_sha256": provenance.get("profile_sha256"),
+            "providers_config_sha256": provenance.get("providers_config_sha256"),
+            "effective_config_fingerprint": provenance.get("effective_config_fingerprint"),
+            "allowed_providers": provenance.get("allowed_providers"),
+        }
+        if any(execution.get(key) != value for key, value in identity_pairs.items()):
+            return False
+        if any(
+            expected.get(key) is not None and execution.get(key) != expected.get(key)
+            for key in (
+                "pdffast_commit", "profile_name", "profile_sha256",
+                "providers_config_sha256", "effective_config_fingerprint",
+                "allowed_providers",
+            )
+        ):
+            return False
+        expected_code = expected.get("code_identity")
+        if isinstance(expected_code, dict) and any(
+            code_identity.get(key) != expected_code.get(key)
+            for key in ("source_sha256", "source_dirty", "algorithm_sha256")
+        ):
+            return False
+        expected_runtime = expected.get("provider_runtime")
+        if expected_runtime is not None and execution.get("provider_runtime") != expected_runtime:
+            return False
+
+        allowed = set(execution.get("allowed_providers") or [])
+        runtime = execution.get("provider_runtime")
+        if (
+            not allowed or not isinstance(runtime, dict) or set(runtime) != allowed
+            or any(
+                not isinstance(value, dict) or value.get("status") != "READY"
+                or value.get("dependency_probe") not in {"PASS", "NOT_RUN"}
+                or not isinstance(value.get("identity"), dict)
+                for value in runtime.values()
+            )
+        ):
+            return False
+        if (
+            execution.get("policy_version") != execution_plan.get("version")
+            or execution.get("preflight_status") != "PASS"
+            or execution.get("audit_passed") is not True
+            or execution.get("outputs_written") is not True
+            or audit.get("validation", {}).get("pass") is not True
+        ):
+            return False
+
+        summary = production_manifest.get("summary") or {}
+        planned = execution.get("planned_task_count")
+        accepted = execution.get("accepted_task_count")
+        terminal = execution.get("terminal_preserve_count")
+        failures = execution.get("pipeline_failure_count")
+        escalated = execution.get("escalated_count")
+        attempted = execution.get("attempted_provider_counts")
+        selected = execution.get("selected_provider_counts")
+        if (
+            any(type(value) is not int or value < 0 for value in
+                (planned, accepted, terminal, failures, escalated))
+            or accepted + terminal + failures != planned
+            or not isinstance(attempted, dict) or not isinstance(selected, dict)
+            or any(type(value) is not int or value <= 0 for value in attempted.values())
+            or any(type(value) is not int or value <= 0 for value in selected.values())
+            or set(attempted) - allowed or set(selected) - allowed
+            or sum(selected.values()) != accepted
+            or (planned == 0 and (attempted or selected or escalated or terminal or failures))
+            or (planned > 0 and (not attempted or sum(attempted.values()) < planned))
+        ):
+            return False
+        status = "COMPLETED_WITH_PIPELINE_FAILURES" if failures else "COMPLETED"
+        if (
+            execution.get("execution_status") != status
+            or provenance.get("execution_status") != status
+            or production_manifest.get("status") != status
+            or provenance.get("planned_task_count") != planned
+            or provenance.get("accepted_task_count") != accepted
+            or provenance.get("terminal_preserve_count") != terminal
+            or provenance.get("pipeline_failure_count") != failures
+            or provenance.get("attempted_provider_counts") != attempted
+            or provenance.get("selected_provider_counts") != selected
+            or summary.get("task_count") != planned
+            or summary.get("accepted_task_count") != accepted
+            or summary.get("terminal_preserve_count") != terminal
+            or summary.get("pipeline_failure_count") != failures
+            or summary.get("attempt_provider_counts") != attempted
+            or summary.get("selected_provider_counts") != selected
+            or summary.get("escalated_count") != escalated
+            or execution_plan.get("summary", {}).get("task_count") != planned
+        ):
+            return False
+
+        artifacts = contract.get("artifacts")
+        if not isinstance(artifacts, list):
+            return False
+        required = {
+            "document": result_paths["document"],
+            "markdown": result_paths["markdown"],
+            "audit": result_paths["audit"],
+            "production_execution_manifest": evidence_paths["production_manifest"],
+            "selected_prediction_index": evidence_paths["selected_prediction_index"],
+            "runtime_escalation_policy": evidence_paths["runtime_policy"],
+        }
+        seen_paths = set()
+        by_name = {}
+        selected_artifacts = {}
+        for item in artifacts:
+            if not isinstance(item, dict):
+                return False
+            name = item.get("name")
+            raw_path = item.get("path")
+            sha = item.get("sha256")
+            size = item.get("byte_size")
+            media_type = item.get("media_type")
+            if (
+                not isinstance(name, str) or not isinstance(sha, str)
+                or len(sha) != 64 or any(char not in "0123456789abcdef" for char in sha)
+                or type(size) is not int or size < 0
+                or media_type not in {"application/json", "text/markdown", "text/plain"}
+            ):
+                return False
+            if raw_path in seen_paths or raw_path == "result/manifest.json":
+                return False
+            seen_paths.add(raw_path)
+            path = _contract_artifact_path(run_dir, raw_path)
+            digest = hashlib.sha256()
+            byte_count = 0
+            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(path, flags)
+            with os.fdopen(descriptor, "rb") as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode):
+                    return False
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+                    byte_count += len(chunk)
+                after = os.fstat(stream.fileno())
+            if (
+                (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+                != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+                or byte_count != size or after.st_size != size or digest.hexdigest() != sha
+                or (media_type == "application/json" and size < 1)
+            ):
+                return False
+            by_name.setdefault(name, []).append(raw_path)
+            if name == "selected_prediction":
+                task_id = item.get("task_id")
+                if not isinstance(task_id, str) or not task_id or task_id in selected_artifacts:
+                    return False
+                selected_artifacts[task_id] = raw_path
+        if any(by_name.get(name) != [path] for name, path in required.items()):
+            return False
+        if "result/manifest.json" in seen_paths:
+            return False
+
+        selected_items = selected_index.get("items")
+        if (
+            not isinstance(selected_items, list)
+            or selected_index.get("task_count") != planned
+            or len(selected_items) != planned
+        ):
+            return False
+        selected_tasks = {}
+        selected_dir = pathsafe(run_dir, ArtifactPaths.for_run(run_dir).providers.selected_dir)
+        for item in selected_items:
+            task_id = item.get("task_id") if isinstance(item, dict) else None
+            if not isinstance(task_id, str) or not task_id or task_id in selected_tasks:
+                return False
+            selected_tasks[task_id] = item
+        if set(selected_artifacts) != set(selected_tasks):
+            return False
+        for task_id, raw_path in selected_artifacts.items():
+            if raw_path != f"{selected_dir}/{task_id}.json":
+                return False
+            if selected_tasks[task_id].get("selected_prediction") != str(
+                ArtifactPaths.for_run(run_dir).providers.selected_prediction(task_id)
+            ):
+                return False
+
+        return True
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
+def pathsafe(run_dir: Path, path: Path) -> str:
+    return Path(path).resolve(strict=False).relative_to(Path(run_dir).resolve(strict=True)).as_posix()
 
 
 def summarize_parse(
