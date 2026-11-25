@@ -184,6 +184,15 @@ def test_execution_contract_builder_hashes_required_and_task_evidence(tmp_path) 
     run_dir = tmp_path / "run-1"
     run_dir.mkdir()
     paths = ArtifactPaths.for_run(run_dir)
+    input_bytes = b"%PDF-1.7\\nexecution-contract-fixture\\n"
+    input_pdf = tmp_path / "input.pdf"
+    input_pdf.write_bytes(input_bytes)
+    input_metadata = {
+        "algorithm": "sha256",
+        "sha256": hashlib.sha256(input_bytes).hexdigest(),
+        "byte_size": len(input_bytes),
+        "status": "COMPLETE",
+    }
     payloads = {
         paths.result.document_json: b'{"page_count": 1}',
         paths.result.document_md: b"# Parsed document\n",
@@ -200,13 +209,9 @@ def test_execution_contract_builder_hashes_required_and_task_evidence(tmp_path) 
     context = SimpleNamespace(
         run_id="run-1",
         run_dir=run_dir,
+        pdf=input_pdf,
         artifacts=paths,
-        input_metadata={
-            "algorithm": "sha256",
-            "sha256": SHA256,
-            "byte_size": 4096,
-            "status": "COMPLETE",
-        },
+        input_metadata=input_metadata,
     )
     identity = {
         "status": "PASS",
@@ -256,11 +261,30 @@ def test_execution_contract_builder_hashes_required_and_task_evidence(tmp_path) 
     assert contract["execution_evidence"]["production_manifest"] in by_path
     assert "result/manifest.json" not in by_path
 
+    input_pdf.write_bytes(b"%PDF-1.7\\nmutated-after-parse\\n")
+    with pytest.raises(ValueError, match="input PDF changed"):
+        build_execution_contract(
+            context,
+            production_identity=identity,
+            statistics=statistics,
+            execution_plan=execution_plan,
+            production_manifest=production_manifest,
+        )
+
 
 def test_execution_contract_builder_rejects_artifact_symlink_escape(tmp_path) -> None:
     run_dir = tmp_path / "run-2"
     run_dir.mkdir()
     paths = ArtifactPaths.for_run(run_dir)
+    input_bytes = b"%PDF-1.7\\nsymlink-fixture\\n"
+    input_pdf = tmp_path / "input.pdf"
+    input_pdf.write_bytes(input_bytes)
+    input_metadata = {
+        "algorithm": "sha256",
+        "sha256": hashlib.sha256(input_bytes).hexdigest(),
+        "byte_size": len(input_bytes),
+        "status": "COMPLETE",
+    }
     outside = tmp_path / "outside.json"
     outside.write_text("{}", encoding="utf-8")
     paths.result.document_json.parent.mkdir(parents=True, exist_ok=True)
@@ -278,13 +302,9 @@ def test_execution_contract_builder_rejects_artifact_symlink_escape(tmp_path) ->
     context = SimpleNamespace(
         run_id="run-2",
         run_dir=run_dir,
+        pdf=input_pdf,
         artifacts=paths,
-        input_metadata={
-            "algorithm": "sha256",
-            "sha256": SHA256,
-            "byte_size": 4096,
-            "status": "COMPLETE",
-        },
+        input_metadata=input_metadata,
     )
     identity = {
         "status": "PASS",
