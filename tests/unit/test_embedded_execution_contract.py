@@ -449,7 +449,11 @@ def test_execution_contract_matches_real_provider_execution_evidence(tmp_path) -
     identity = {
         "status": "PASS",
         "pdffast_commit": COMMIT,
-        "code_identity": {"source_sha256": SHA256},
+        "code_identity": {
+            "source_sha256": SHA256,
+            "source_dirty": False,
+            "algorithm_sha256": {"native": SHA256, "canonical": SHA256},
+        },
         "profile_name": "production.test-profile",
         "profile_sha256": SHA256,
         "providers_config_sha256": SHA256,
