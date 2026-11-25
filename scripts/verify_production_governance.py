@@ -14,6 +14,10 @@ from collections import Counter
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError as JSONSchemaSchemaError
+from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
+
 from pdffast import ParserConfig, PDFFastParser, preflight_production_profile
 from pdffast.application.input_fingerprint import fingerprint_input
 from pdffast.application.production_preflight import preflight_snapshot
@@ -156,6 +160,95 @@ def _contract_artifact_path(run_dir: Path, raw_path: str) -> Path:
     return resolved
 
 
+def _read_run_relative_files(
+    run_dir: Path,
+    raw_paths: list[str],
+    *,
+    expected_root_identity: tuple[int, int] | None = None,
+) -> tuple[dict[str, bytes], tuple[int, int]]:
+    """Read run artifacts through pinned directory descriptors without following links."""
+    original_root = Path(run_dir)
+    if original_root.is_symlink():
+        raise ValueError("run directory cannot be a symlink")
+    root = original_root.resolve(strict=True)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | nofollow
+    file_flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | nofollow
+
+    try:
+        root_fd = os.open(root, directory_flags)
+    except OSError as exc:
+        raise ValueError("unable to safely open run directory") from exc
+
+    payloads: dict[str, bytes] = {}
+    try:
+        root_stat = os.fstat(root_fd)
+        if not stat.S_ISDIR(root_stat.st_mode):
+            raise ValueError("run root is not a directory")
+        root_identity = (root_stat.st_dev, root_stat.st_ino)
+        if expected_root_identity is not None and root_identity != expected_root_identity:
+            raise ValueError("run directory changed during verification")
+
+        for raw_path in raw_paths:
+            if not isinstance(raw_path, str) or not raw_path or chr(92) in raw_path or chr(0) in raw_path:
+                raise ValueError("invalid run-relative artifact path")
+            if raw_path in payloads:
+                continue
+            relative = PurePosixPath(raw_path)
+            if (
+                relative.is_absolute()
+                or relative.as_posix() != raw_path
+                or not relative.parts
+                or any(part in {"", ".", ".."} for part in relative.parts)
+                or relative.parts[0].endswith(":")
+            ):
+                raise ValueError("artifact path is not normalized and relative")
+
+            parent_fd = os.dup(root_fd)
+            try:
+                for part in relative.parts[:-1]:
+                    try:
+                        next_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+                    except OSError as exc:
+                        raise ValueError("artifact path contains an unsafe directory component") from exc
+                    os.close(parent_fd)
+                    parent_fd = next_fd
+
+                file_fd = -1
+                try:
+                    try:
+                        file_fd = os.open(relative.parts[-1], file_flags, dir_fd=parent_fd)
+                    except OSError as exc:
+                        raise ValueError("unable to safely open run artifact") from exc
+                    with os.fdopen(file_fd, "rb") as stream:
+                        file_fd = -1
+                        before = os.fstat(stream.fileno())
+                        if not stat.S_ISREG(before.st_mode):
+                            raise ValueError("run artifact is not a regular file")
+                        payload = stream.read()
+                        after = os.fstat(stream.fileno())
+                    before_identity = (
+                        before.st_dev, before.st_ino, before.st_size,
+                        before.st_mtime_ns, before.st_ctime_ns,
+                    )
+                    after_identity = (
+                        after.st_dev, after.st_ino, after.st_size,
+                        after.st_mtime_ns, after.st_ctime_ns,
+                    )
+                    if before_identity != after_identity or len(payload) != after.st_size:
+                        raise ValueError("run artifact changed while being read")
+                    payloads[raw_path] = payload
+                finally:
+                    if file_fd >= 0:
+                        os.close(file_fd)
+            finally:
+                os.close(parent_fd)
+
+        return payloads, root_identity
+    finally:
+        os.close(root_fd)
+
+
 def _verify_execution_contract(
     run_dir: Path,
     *,
@@ -167,6 +260,7 @@ def _verify_execution_contract(
     execution_plan: dict,
     production_manifest: dict,
     selected_index: dict,
+    artifact_bytes: dict[str, bytes] | None = None,
 ) -> bool:
     """Independently verify the published Embedded contract and its file hashes."""
     try:
@@ -179,6 +273,14 @@ def _verify_execution_contract(
             or manifest.get("run_id") != run_dir.name
         ):
             return False
+
+        schema_path = (
+            Path(__file__).resolve().parents[1]
+            / "docs/contracts/embedded_execution.v1.schema.json"
+        )
+        schema = json.loads(schema_path.read_bytes())
+        Draft202012Validator.check_schema(schema)
+        Draft202012Validator(schema).validate(contract)
 
         manifest_input = manifest.get("input") or {}
         contract_input = contract.get("input") or {}
@@ -324,6 +426,15 @@ def _verify_execution_contract(
             "selected_prediction_index": evidence_paths["selected_prediction_index"],
             "runtime_escalation_policy": evidence_paths["runtime_policy"],
         }
+        if artifact_bytes is None:
+            raw_paths = [
+                item.get("path") if isinstance(item, dict) else None
+                for item in artifacts
+            ]
+            if any(not isinstance(raw_path, str) for raw_path in raw_paths):
+                return False
+            artifact_bytes, _ = _read_run_relative_files(run_dir, raw_paths)
+
         seen_paths = set()
         by_name = {}
         selected_artifacts = {}
@@ -342,26 +453,18 @@ def _verify_execution_contract(
                 or media_type not in {"application/json", "text/markdown", "text/plain"}
             ):
                 return False
+            if not isinstance(raw_path, str):
+                return False
             if raw_path in seen_paths or raw_path == "result/manifest.json":
                 return False
             seen_paths.add(raw_path)
-            path = _contract_artifact_path(run_dir, raw_path)
-            digest = hashlib.sha256()
-            byte_count = 0
-            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-            descriptor = os.open(path, flags)
-            with os.fdopen(descriptor, "rb") as stream:
-                before = os.fstat(stream.fileno())
-                if not stat.S_ISREG(before.st_mode):
-                    return False
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
-                    byte_count += len(chunk)
-                after = os.fstat(stream.fileno())
+            payload = artifact_bytes.get(raw_path)
+            if not isinstance(payload, bytes):
+                return False
+            byte_count = len(payload)
+            digest = hashlib.sha256(payload).hexdigest()
             if (
-                (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
-                != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
-                or byte_count != size or after.st_size != size or digest.hexdigest() != sha
+                byte_count != size or digest != sha
                 or (media_type == "application/json" and size < 1)
             ):
                 return False
@@ -419,7 +522,9 @@ def _verify_execution_contract(
                 ArtifactPaths.for_run(run_dir).providers.selected_prediction(task_id)
             ):
                 return False
-            prediction = _read(_contract_artifact_path(run_dir, raw_path))
+            prediction = json.loads(artifact_bytes[raw_path])
+            if not isinstance(prediction, dict):
+                return False
             task = plan_tasks[task_id]
             if prediction.get("task_id") != task_id:
                 return False
@@ -509,7 +614,10 @@ def _verify_execution_contract(
             return False
 
         return True
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+    except (
+        OSError, ValueError, KeyError, TypeError, AttributeError,
+        JSONSchemaValidationError, JSONSchemaSchemaError,
+    ):
         return False
 
 
@@ -520,99 +628,174 @@ def pathsafe(run_dir: Path, path: Path) -> str:
 def summarize_parse(
     run_dir: Path, returncode: int, expected: dict, *, input_sha256: str | None,
 ) -> dict:
-    paths = ArtifactPaths.for_run(run_dir.resolve())
-    manifest = _read(paths.result.manifest_json)
-    provenance = manifest.get("parser_provenance") or {}
-    audit = _read(paths.result.audit_json)
-    profile = _read(paths.native.profile)
-    execution = _read(paths.observability.execution_plan)
-    internal = _read(paths.providers.production_manifest)
-    selected_index = _read(paths.providers.selected_index)
-    contract_verified = _verify_execution_contract(
-        run_dir,
-        manifest=manifest,
-        provenance=provenance,
-        expected=expected,
-        input_sha256=input_sha256,
-        audit=audit,
-        execution_plan=execution,
-        production_manifest=internal,
-        selected_index=selected_index,
-    )
-    planned_routes: dict[str, int] = {}
-    planned_names = set()
-    for task in execution.get("tasks", []):
-        route = task["capability_route"]
-        planned_routes[route] = planned_routes.get(route, 0) + 1
-        planned_names.update(candidate["provider"] for candidate in task["provider_chain"])
-    summary = internal.get("summary", {})
-    attempted = summary.get("attempt_provider_counts")
-    selected = summary.get("selected_provider_counts")
-    allowed = set(expected.get("allowed_providers", []))
-    unexpected = (
-        sum(value for name, value in attempted.items() if name not in allowed)
-        if attempted is not None else None
-    )
-    document = _read(paths.result.document_json)
-    markdown_written = paths.result.document_md.is_file()
-    audit_passed = audit.get("validation", {}).get("pass")
-    page_count = profile.get("page_count")
-    outcome_fields = ("accepted_task_count", "terminal_preserve_count", "pipeline_failure_count")
-    outcomes = [summary.get(key) for key in outcome_fields]
-    planned = summary.get("task_count")
-    input_matches = (
-        input_sha256 is not None and manifest.get("input", {}).get("sha256") == input_sha256
-    )
-    ready = (
-        returncode == 0 and bool(document) and markdown_written and audit_passed is True
-        and contract_verified
-        and bool(paths.result.document_md.read_text(encoding="utf-8").strip())
-        and type(page_count) is int and page_count > 0
-        and document.get("page_count") == page_count
-        and isinstance(document.get("pages"), list) and len(document["pages"]) == page_count
-        and manifest.get("run_id") == run_dir.name and input_matches
-        and manifest.get("result") == {
-            "document": str(paths.result.document_json), "markdown": str(paths.result.document_md),
-            "audit": str(paths.result.audit_json),
+    try:
+        requested_run_dir = Path(run_dir)
+        if requested_run_dir.is_symlink():
+            raise ValueError("run directory cannot be a symlink")
+        resolved_run_dir = requested_run_dir.resolve(strict=True)
+        paths = ArtifactPaths.for_run(resolved_run_dir)
+
+        def relative(path: Path) -> str:
+            return Path(path).relative_to(resolved_run_dir).as_posix()
+
+        manifest_path = relative(paths.result.manifest_json)
+        initial_payloads, root_identity = _read_run_relative_files(
+            resolved_run_dir, [manifest_path],
+        )
+        manifest = json.loads(initial_payloads[manifest_path])
+        if not isinstance(manifest, dict):
+            raise ValueError("root manifest must be a JSON object")
+
+        contract = manifest.get("execution_contract")
+        descriptor_paths = []
+        if isinstance(contract, dict) and isinstance(contract.get("artifacts"), list):
+            for item in contract["artifacts"]:
+                if isinstance(item, dict) and isinstance(item.get("path"), str):
+                    descriptor_paths.append(item["path"])
+
+        fixed_paths = {
+            "audit": relative(paths.result.audit_json),
+            "profile": relative(paths.native.profile),
+            "execution_plan": relative(paths.observability.execution_plan),
+            "production_manifest": relative(paths.providers.production_manifest),
+            "selected_index": relative(paths.providers.selected_index),
+            "document": relative(paths.result.document_json),
+            "markdown": relative(paths.result.document_md),
         }
-        and provenance.get("schema_version") == expected.get("schema_version") == "1.0"
-        and type(planned) is int and planned == len(execution.get("tasks", []))
-        and provenance.get("planned_task_count") == planned
-        and provenance.get("provider_execution_required") is bool(planned)
-        and all(type(value) is int and value >= 0 for value in outcomes)
-        and sum(outcomes) == planned
-        and all(provenance.get(key) == summary[key] for key in outcome_fields)
-        and attempted == provenance.get("attempted_provider_counts")
-        and isinstance(selected, dict) and selected == provenance.get("selected_provider_counts")
-        and all(type(value) is int and value > 0 for value in selected.values())
-        and sum(selected.values()) == summary["accepted_task_count"]
-        and selected.keys() <= allowed
-        and provenance.get("execution_status") == "COMPLETED"
-        and provenance.get("profile_locked") is True
-        and provenance.get("preflight_status") == "PASS"
-        and provenance.get("outputs_written") is True
-        and provenance.get("audit_passed") is True
-        and provenance.get("pipeline_failure_count") == 0
-        and expected.get("status") == "PASS"
-        and all(provenance.get(key) == expected[key] for key in (
-            "profile_name", "profile_sha256", "providers_config_sha256", "effective_config_fingerprint",
-            "allowed_providers", "capability_routes", "pdffast_commit", "code_identity",
-        ))
-        and unexpected == 0 and planned_names <= allowed
-    )
-    return {
-        "acceptance": "PASS" if ready else "FAIL", "page_count": page_count,
-        "execution_contract_verified": contract_verified,
-        "input_sha256_matched": input_matches,
-        "profile_sha256": provenance.get("profile_sha256"),
-        "effective_config_fingerprint": provenance.get("effective_config_fingerprint"),
-        "execution_status": provenance.get("execution_status"),
-        "planned_task_count": summary.get("task_count"), "planned_routes": planned_routes,
-        "attempted_provider_counts": attempted, "selected_provider_counts": selected,
-        "audit_passed": audit_passed, "markdown_written": markdown_written,
-        "canonical_written": bool(document), "manifest_written": bool(manifest),
-        "forbidden_attempt_count": unexpected,
-    }
+        requested_paths = list(dict.fromkeys([
+            *fixed_paths.values(),
+            *descriptor_paths,
+        ]))
+        artifact_bytes, _ = _read_run_relative_files(
+            resolved_run_dir,
+            requested_paths,
+            expected_root_identity=root_identity,
+        )
+        artifact_bytes.update(initial_payloads)
+
+        def read_json(relative_path: str) -> dict:
+            value = json.loads(artifact_bytes[relative_path])
+            if not isinstance(value, dict):
+                raise ValueError(f"expected a JSON object: {relative_path}")
+            return value
+
+        provenance = manifest.get("parser_provenance") or {}
+        audit = read_json(fixed_paths["audit"])
+        profile = read_json(fixed_paths["profile"])
+        execution = read_json(fixed_paths["execution_plan"])
+        internal = read_json(fixed_paths["production_manifest"])
+        selected_index = read_json(fixed_paths["selected_index"])
+        document = read_json(fixed_paths["document"])
+        markdown_text = artifact_bytes[fixed_paths["markdown"]].decode("utf-8")
+
+        contract_verified = _verify_execution_contract(
+            resolved_run_dir,
+            manifest=manifest,
+            provenance=provenance,
+            expected=expected,
+            input_sha256=input_sha256,
+            audit=audit,
+            execution_plan=execution,
+            production_manifest=internal,
+            selected_index=selected_index,
+            artifact_bytes=artifact_bytes,
+        )
+        planned_routes: dict[str, int] = {}
+        planned_names = set()
+        for task in execution.get("tasks", []):
+            route = task["capability_route"]
+            planned_routes[route] = planned_routes.get(route, 0) + 1
+            planned_names.update(candidate["provider"] for candidate in task["provider_chain"])
+        summary = internal.get("summary", {})
+        attempted = summary.get("attempt_provider_counts")
+        selected = summary.get("selected_provider_counts")
+        allowed = set(expected.get("allowed_providers", []))
+        unexpected = (
+            sum(value for name, value in attempted.items() if name not in allowed)
+            if attempted is not None else None
+        )
+        markdown_written = True
+        audit_passed = audit.get("validation", {}).get("pass")
+        page_count = profile.get("page_count")
+        outcome_fields = ("accepted_task_count", "terminal_preserve_count", "pipeline_failure_count")
+        outcomes = [summary.get(key) for key in outcome_fields]
+        planned = summary.get("task_count")
+        input_matches = (
+            input_sha256 is not None and manifest.get("input", {}).get("sha256") == input_sha256
+        )
+        ready = (
+            returncode == 0 and bool(document) and markdown_written and audit_passed is True
+            and contract_verified
+            and bool(markdown_text.strip())
+            and type(page_count) is int and page_count > 0
+            and document.get("page_count") == page_count
+            and isinstance(document.get("pages"), list) and len(document["pages"]) == page_count
+            and manifest.get("run_id") == resolved_run_dir.name and input_matches
+            and manifest.get("result") == {
+                "document": str(paths.result.document_json), "markdown": str(paths.result.document_md),
+                "audit": str(paths.result.audit_json),
+            }
+            and provenance.get("schema_version") == expected.get("schema_version") == "1.0"
+            and type(planned) is int and planned == len(execution.get("tasks", []))
+            and provenance.get("planned_task_count") == planned
+            and provenance.get("provider_execution_required") is bool(planned)
+            and all(type(value) is int and value >= 0 for value in outcomes)
+            and sum(outcomes) == planned
+            and all(provenance.get(key) == summary[key] for key in outcome_fields)
+            and attempted == provenance.get("attempted_provider_counts")
+            and isinstance(selected, dict) and selected == provenance.get("selected_provider_counts")
+            and all(type(value) is int and value > 0 for value in selected.values())
+            and sum(selected.values()) == summary["accepted_task_count"]
+            and selected.keys() <= allowed
+            and provenance.get("execution_status") == "COMPLETED"
+            and provenance.get("profile_locked") is True
+            and provenance.get("preflight_status") == "PASS"
+            and provenance.get("outputs_written") is True
+            and provenance.get("audit_passed") is True
+            and provenance.get("pipeline_failure_count") == 0
+            and expected.get("status") == "PASS"
+            and all(provenance.get(key) == expected[key] for key in (
+                "profile_name", "profile_sha256", "providers_config_sha256", "effective_config_fingerprint",
+                "allowed_providers", "capability_routes", "pdffast_commit", "code_identity",
+            ))
+            and unexpected == 0 and planned_names <= allowed
+        )
+        return {
+            "acceptance": "PASS" if ready else "FAIL", "page_count": page_count,
+            "execution_contract_verified": contract_verified,
+            "input_sha256_matched": input_matches,
+            "profile_sha256": provenance.get("profile_sha256"),
+            "effective_config_fingerprint": provenance.get("effective_config_fingerprint"),
+            "execution_status": provenance.get("execution_status"),
+            "planned_task_count": summary.get("task_count"), "planned_routes": planned_routes,
+            "attempted_provider_counts": attempted, "selected_provider_counts": selected,
+            "audit_passed": audit_passed, "markdown_written": markdown_written,
+            "canonical_written": bool(document), "manifest_written": True,
+            "forbidden_attempt_count": unexpected,
+        }
+    except (
+        OSError, ValueError, KeyError, TypeError, AttributeError,
+        json.JSONDecodeError, UnicodeDecodeError,
+    ) as exc:
+        return {
+            "acceptance": "FAIL",
+            "page_count": None,
+            "execution_contract_verified": False,
+            "input_sha256_matched": False,
+            "profile_sha256": None,
+            "effective_config_fingerprint": None,
+            "execution_status": None,
+            "planned_task_count": None,
+            "planned_routes": {},
+            "attempted_provider_counts": None,
+            "selected_provider_counts": None,
+            "audit_passed": False,
+            "markdown_written": False,
+            "canonical_written": False,
+            "manifest_written": False,
+            "forbidden_attempt_count": None,
+            "verification_error": type(exc).__name__,
+        }
 
 
 def main() -> int:
