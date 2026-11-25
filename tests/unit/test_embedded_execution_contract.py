@@ -1,9 +1,14 @@
 import copy
+import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from jsonschema import Draft202012Validator, ValidationError
+
+from pdffast.application.execution_contract import build_execution_contract
+from pdffast.pipeline.artifacts import ArtifactPaths
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -173,3 +178,141 @@ def test_partial_contract_requires_positive_pipeline_failure_count() -> None:
 
     with pytest.raises(ValidationError):
         VALIDATOR.validate(contract)
+
+
+def test_execution_contract_builder_hashes_required_and_task_evidence(tmp_path) -> None:
+    run_dir = tmp_path / "run-1"
+    run_dir.mkdir()
+    paths = ArtifactPaths.for_run(run_dir)
+    payloads = {
+        paths.result.document_json: b'{"page_count": 1}',
+        paths.result.document_md: b"# Parsed document\n",
+        paths.result.audit_json: b'{"validation": {"pass": true}}',
+        paths.providers.production_manifest: b'{"summary": {"escalated_count": 1}}',
+        paths.providers.selected_index: b'{"items": []}',
+        paths.observability.execution_plan: b'{"version": "9.6.3"}',
+        paths.providers.selected_dir / "task-1.json": b'{"attempts": []}',
+    }
+    for path, payload in payloads.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+    context = SimpleNamespace(
+        run_dir=run_dir,
+        artifacts=paths,
+        input_metadata={
+            "algorithm": "sha256",
+            "sha256": SHA256,
+            "byte_size": 4096,
+            "status": "COMPLETE",
+        },
+    )
+    identity = {
+        "status": "PASS",
+        "pdffast_commit": COMMIT,
+        "code_identity": {"source_sha256": SHA256},
+        "profile_name": "production.indra-triple",
+        "profile_sha256": SHA256,
+        "providers_config_sha256": SHA256,
+        "effective_config_fingerprint": SHA256,
+        "allowed_providers": list(PROVIDERS),
+        "provider_runtime": {
+            name: {
+                "status": "READY",
+                "dependency_probe": "PASS",
+                "identity": {"revision": "test-revision"},
+            }
+            for name in PROVIDERS
+        },
+    }
+    statistics = {
+        "execution_status": "COMPLETED_WITH_PIPELINE_FAILURES",
+        "attempted_provider_counts": {"indra_local": 2, "rapidocr_ch_light": 1},
+        "selected_provider_counts": {"rapidocr_ch_light": 1},
+        "planned_task_count": 2,
+        "accepted_task_count": 1,
+        "terminal_preserve_count": 0,
+        "pipeline_failure_count": 1,
+    }
+    execution_plan = SimpleNamespace(data={"version": "9.6.3"})
+    production_manifest = {"summary": {"escalated_count": 1}}
+
+    contract = build_execution_contract(
+        context,
+        production_identity=identity,
+        statistics=statistics,
+        execution_plan=execution_plan,
+        production_manifest=production_manifest,
+    )
+
+    VALIDATOR.validate(contract)
+    assert contract["run_id"] == "run-1"
+    assert contract["execution"]["execution_status"] == "COMPLETED_WITH_PIPELINE_FAILURES"
+    assert contract["execution"]["provider_runtime"]["indra_local"]["identity"]["revision"] == "test-revision"
+    by_path = {item["path"]: item for item in contract["artifacts"]}
+    selected_path = "09_8_production_fallback/selected_predictions/task-1.json"
+    assert by_path[selected_path]["sha256"] == hashlib.sha256(payloads[paths.providers.selected_dir / "task-1.json"]).hexdigest()
+    assert contract["execution_evidence"]["production_manifest"] in by_path
+    assert "result/manifest.json" not in by_path
+
+
+def test_execution_contract_builder_rejects_artifact_symlink_escape(tmp_path) -> None:
+    run_dir = tmp_path / "run-2"
+    run_dir.mkdir()
+    paths = ArtifactPaths.for_run(run_dir)
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    paths.result.document_json.parent.mkdir(parents=True, exist_ok=True)
+    paths.result.document_json.symlink_to(outside)
+    for path in (
+        paths.result.document_md,
+        paths.result.audit_json,
+        paths.providers.production_manifest,
+        paths.providers.selected_index,
+        paths.observability.execution_plan,
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+
+    context = SimpleNamespace(
+        run_dir=run_dir,
+        artifacts=paths,
+        input_metadata={
+            "algorithm": "sha256",
+            "sha256": SHA256,
+            "byte_size": 4096,
+            "status": "COMPLETE",
+        },
+    )
+    identity = {
+        "status": "PASS",
+        "pdffast_commit": COMMIT,
+        "code_identity": {"source_sha256": SHA256},
+        "profile_name": "production.indra-triple",
+        "profile_sha256": SHA256,
+        "providers_config_sha256": SHA256,
+        "effective_config_fingerprint": SHA256,
+        "allowed_providers": list(PROVIDERS),
+        "provider_runtime": {
+            name: {"status": "READY", "identity": {}}
+            for name in PROVIDERS
+        },
+    }
+    statistics = {
+        "execution_status": "COMPLETED",
+        "attempted_provider_counts": {},
+        "selected_provider_counts": {},
+        "planned_task_count": 0,
+        "accepted_task_count": 0,
+        "terminal_preserve_count": 0,
+        "pipeline_failure_count": 0,
+    }
+
+    with pytest.raises(ValueError, match="symlink"):
+        build_execution_contract(
+            context,
+            production_identity=identity,
+            statistics=statistics,
+            execution_plan=SimpleNamespace(data={"version": "9.6.3"}),
+            production_manifest={"summary": {"escalated_count": 0}},
+        )
