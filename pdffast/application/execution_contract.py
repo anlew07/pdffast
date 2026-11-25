@@ -40,8 +40,6 @@ def _artifact(
     after_identity = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
     if before_identity != after_identity:
         raise ValueError(f"execution artifact changed while hashing: {relative}")
-    if after.st_size < 1:
-        raise ValueError(f"execution artifact is empty: {relative}")
     return {
         "name": name,
         "path": relative,
@@ -103,6 +101,40 @@ def build_execution_contract(
     if not isinstance(policy_version, str) or not policy_version:
         raise ValueError("runtime escalation policy has no version")
 
+    planned_count = statistics["planned_task_count"]
+    accepted_count = statistics["accepted_task_count"]
+    terminal_count = statistics["terminal_preserve_count"]
+    failure_count = statistics["pipeline_failure_count"]
+    escalated_count = summary["escalated_count"]
+    attempted_counts = statistics["attempted_provider_counts"]
+    selected_counts = statistics["selected_provider_counts"]
+    allowed_set = set(allowed_providers)
+    if (
+        type(planned_count) is not int
+        or type(accepted_count) is not int
+        or type(terminal_count) is not int
+        or type(failure_count) is not int
+        or type(escalated_count) is not int
+        or planned_count < 0
+        or min(accepted_count, terminal_count, failure_count, escalated_count) < 0
+        or accepted_count + terminal_count + failure_count != planned_count
+        or not isinstance(attempted_counts, dict)
+        or not isinstance(selected_counts, dict)
+        or set(attempted_counts) - allowed_set
+        or set(selected_counts) - allowed_set
+        or sum(selected_counts.values()) != accepted_count
+        or (planned_count == 0 and (attempted_counts or selected_counts or escalated_count))
+        or (planned_count > 0 and (
+            not attempted_counts
+            or sum(attempted_counts.values()) < planned_count
+            or escalated_count > planned_count
+        ))
+        or statistics["execution_status"] != (
+            "COMPLETED_WITH_PIPELINE_FAILURES" if failure_count else "COMPLETED"
+        )
+    ):
+        raise ValueError("execution statistics do not reconcile with the planned task outcomes")
+
     required = [
         _artifact(
             run_dir, name="document", path=artifacts.result.document_json,
@@ -161,7 +193,7 @@ def build_execution_contract(
         "accepted_task_count": statistics["accepted_task_count"],
         "terminal_preserve_count": statistics["terminal_preserve_count"],
         "pipeline_failure_count": statistics["pipeline_failure_count"],
-        "escalated_count": summary["escalated_count"],
+        "escalated_count": escalated_count,
         "preflight_status": production_identity["status"],
         "audit_passed": True,
         "outputs_written": True,
