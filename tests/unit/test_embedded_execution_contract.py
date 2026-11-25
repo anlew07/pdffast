@@ -519,3 +519,31 @@ def test_execution_contract_matches_real_provider_execution_evidence(tmp_path) -
     assert selected["sha256"] == hashlib.sha256(
         paths.providers.selected_prediction("provider-fallback").read_bytes()
     ).hexdigest()
+
+    from pdffast.application.parser_provenance import build_parser_provenance
+    from scripts.verify_production_governance import _verify_execution_contract
+
+    identity["profile_locked"] = True
+    identity["capability_routes"] = {"REGION_MULTIMODAL_PARSE": [first, second]}
+    provenance = build_parser_provenance(identity, statistics)
+    published_manifest = {
+        "run_id": context.run_id,
+        "input": input_metadata,
+        "result": {
+            "document": str(paths.result.document_json),
+            "markdown": str(paths.result.document_md),
+            "audit": str(paths.result.audit_json),
+        },
+        "execution_contract": contract,
+    }
+    assert _verify_execution_contract(
+        run_dir,
+        manifest=published_manifest,
+        provenance=provenance,
+        expected=identity,
+        input_sha256=input_metadata["sha256"],
+        audit=json.loads(paths.result.audit_json.read_text(encoding="utf-8")),
+        execution_plan=json.loads(paths.observability.execution_plan.read_text(encoding="utf-8")),
+        production_manifest=json.loads(paths.providers.production_manifest.read_text(encoding="utf-8")),
+        selected_index=json.loads(paths.providers.selected_index.read_text(encoding="utf-8")),
+    )
