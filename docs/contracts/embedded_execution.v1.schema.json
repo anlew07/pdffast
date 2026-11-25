@@ -304,6 +304,10 @@
         "sha256": {
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "allOf": [
@@ -324,6 +328,23 @@
                 "minimum": 1
               }
             }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "name": {
+                "const": "selected_prediction"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          },
+          "then": {
+            "required": [
+              "task_id"
+            ]
           }
         }
       ]
