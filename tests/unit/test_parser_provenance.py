@@ -109,6 +109,44 @@ raise SystemExit(int(sys.argv[2]))
         assert summarize_parse(manifest.parents[1], 0, expected, input_sha256=input_sha256)["acceptance"] == "FAIL"
 
 
+def test_input_mutation_during_parse_prevents_final_manifest(tmp_path, monkeypatch):
+    from test_native_only_provider_plan import native_pdf
+
+    from pdffast import ParseExecutionError
+    from pdffast.application import production_preflight
+    from pdffast.pipeline import runner
+
+    monkeypatch.setattr(production_preflight, "inspect_runtime", lambda snapshot, **kwargs: {
+        name: {
+            "status": "READY",
+            "dependency_probe": "NOT_RUN",
+            "identity": {
+                "python": "3.12.13",
+                "package_inventory_sha256": "a" * 64,
+                "packages": {"test-package": "1.0"},
+                "model": {"revision": "test-fixture"},
+            },
+        }
+        for name in snapshot.allowed
+    })
+    source = tmp_path / "mutable.pdf"
+    source.write_bytes(native_pdf())
+    original_run_stage10 = runner.run_stage10
+
+    def run_stage10_then_mutate(*args, **kwargs):
+        result = original_run_stage10(*args, **kwargs)
+        source.write_bytes(source.read_bytes() + b"\\nmutated-after-stage10\\n")
+        return result
+
+    monkeypatch.setattr(runner, "run_stage10", run_stage10_then_mutate)
+    parser = PDFFastParser(project_root=ROOT, provider_profile=PROFILE, output_root=tmp_path)
+
+    with pytest.raises(ParseExecutionError, match="input PDF changed"):
+        parser.parse(source, run_id="input-mutation")
+
+    assert not (tmp_path / "input-mutation" / "result" / "manifest.json").exists()
+
+
 def test_cancellation_at_final_publication_keeps_manifest_absent(tmp_path):
     from threading import Event
 
