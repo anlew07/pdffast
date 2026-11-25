@@ -54,7 +54,7 @@ from pdffast.quality.gate import (
 )
 from pdffast.render.llm_ready import build_rendered_document
 from pdffast.result import ParseResult
-from pdffast.runtime import capture_runtime_output, observe_parse, runtime_progress
+from pdffast.runtime import capture_runtime_output, current_observation, observe_parse, runtime_progress
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -340,8 +340,24 @@ def run_core_pipeline(
             diagnostics.pipeline_log.parent.mkdir(parents=True, exist_ok=True)
             with diagnostics.pipeline_log.open("a", encoding="utf-8") as stream:
                 traceback.print_exc(file=stream)
+        observation = current_observation()
+        failure_context = (
+            observation.failure_context() if observation is not None else {}
+        )
+        stage = str(failure_context.get("current_phase") or "pipeline")
+        details = {
+            key: failure_context[key]
+            for key in (
+                "provider", "task_id", "elapsed_seconds",
+                "last_progress_elapsed_seconds",
+            )
+            if key in failure_context
+        }
+        details["cause_type"] = type(exc).__name__
         raise ParseExecutionError(
             f"PDF 解析失败：{type(exc).__name__}: {exc}",
             run_dir=context.run_dir,
             log_path=diagnostics.pipeline_log,
+            stage=stage,
+            details=details,
         ) from exc
