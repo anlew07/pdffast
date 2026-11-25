@@ -65,7 +65,7 @@ def validate_execution_request(value: Any) -> dict[str, Any]:
             normalized_options[name] = number
     if "table_mode" in options:
         table_mode = options["table_mode"]
-        if table_mode not in {"off", "auto", "all"}:
+        if not isinstance(table_mode, str) or table_mode not in {"off", "auto", "all"}:
             raise ValueError("execution request options.table_mode must be off, auto, or all")
         normalized_options["table_mode"] = table_mode
 
