@@ -68,7 +68,8 @@ def smoke_pdf(root: Path, pdf: Path) -> Path:
     output_root = root / "outputs/indra_triple_smoke"
     run_id = "smoke_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + f"_{os.getpid()}"
     run_dir = output_root / run_id
-    run_dir.mkdir(parents=True, exist_ok=False)
+    output_root.mkdir(parents=True, exist_ok=True)
+    pending_log = output_root / f".{run_id}.console.log"
     log_path = run_dir / "smoke_console.log"
     command = [
         str(root / ".venv/bin/python"), str(root / "scripts/run_pipeline.py"), str(pdf),
@@ -79,10 +80,15 @@ def smoke_pdf(root: Path, pdf: Path) -> Path:
     print(f"PDF: {pdf}", flush=True)
     print(f"Run ID: {run_id}", flush=True)
     print(f"Full console log: {log_path}", flush=True)
-    with log_path.open("w", encoding="utf-8") as log:
-        completed = subprocess.run(
-            command, cwd=root, stdout=log, stderr=subprocess.STDOUT, check=False,
-        )
+    try:
+        with pending_log.open("x", encoding="utf-8") as log:
+            completed = subprocess.run(
+                command, cwd=root, stdout=log, stderr=subprocess.STDOUT, check=False,
+            )
+    finally:
+        if pending_log.is_file():
+            run_dir.mkdir(exist_ok=True)
+            pending_log.rename(log_path)
     if completed.returncode:
         print(f"FAIL: PDF smoke exited with code {completed.returncode}", file=sys.stderr)
         # Only the last few diagnostic lines belong on screen; never print huge logs.

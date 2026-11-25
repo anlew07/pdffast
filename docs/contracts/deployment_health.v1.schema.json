@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PDFFast deployment health V1",
+  "type": "object",
+  "required": ["schema_version", "state", "environment", "code_identity", "checks", "controller"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "state": {"enum": ["PASS", "BLOCKED"]},
+    "environment": {
+      "type": "object",
+      "required": [
+        "platform", "machine", "platform_release", "python", "python_executable",
+        "uid", "domain", "state_root"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "platform": {"type": "string"},
+        "machine": {"type": "string"},
+        "platform_release": {"type": "string"},
+        "python": {"type": "string"},
+        "python_executable": {"type": "string"},
+        "uid": {"type": "integer", "minimum": 0},
+        "domain": {"type": "string"},
+        "state_root": {"type": "string"}
+      }
+    },
+    "code_identity": {
+      "anyOf": [{"type": "null"}, {"$ref": "#/$defs/codeIdentity"}]
+    },
+    "checks": {
+      "type": "object",
+      "required": [
+        "state_root", "launchd", "process_observation", "controller", "recovery_probe", "code_identity"
+      ],
+      "additionalProperties": {"$ref": "#/$defs/check"},
+      "propertyNames": {
+        "enum": ["state_root", "launchd", "process_observation", "controller", "recovery_probe", "code_identity"]
+      }
+    },
+    "controller": {
+      "type": "object",
+      "required": ["last_sweep_unix_seconds", "age_seconds", "freshness_seconds"],
+      "additionalProperties": false,
+      "properties": {
+        "last_sweep_unix_seconds": {"type": ["number", "null"], "minimum": 0},
+        "age_seconds": {"type": ["number", "null"]},
+        "freshness_seconds": {"const": 60}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "PASS"}}},
+      "then": {
+        "properties": {
+          "environment": {
+            "properties": {
+              "platform": {"const": "darwin"},
+              "domain": {"pattern": "^(gui|user)/[0-9]+$"}
+            }
+          },
+          "code_identity": {"$ref": "#/$defs/codeIdentity"},
+          "checks": {
+            "additionalProperties": {"properties": {"status": {"const": "PASS"}}}
+          },
+          "controller": {
+            "properties": {
+              "last_sweep_unix_seconds": {"type": "number"},
+              "age_seconds": {"type": "number", "minimum": 0, "maximum": 60}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "check": {
+      "type": "object",
+      "required": ["status", "code"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["PASS", "BLOCKED", "NOT_CHECKED"]},
+        "code": {
+          "enum": [
+            null,
+            "UNSUPPORTED_PLATFORM", "LAUNCHD_UNAVAILABLE", "JOB_OWNERSHIP_MISMATCH",
+            "STATE_ROOT_INVALID", "STATE_ROOT_IO_ERROR", "PROCESS_OBSERVATION_UNAVAILABLE",
+            "CODE_IDENTITY_UNAVAILABLE", "BOOT_ID_UNAVAILABLE", "SWEEP_MISSING",
+            "SWEEP_IDENTITY_MISMATCH", "SWEEP_INVALID", "SWEEP_STALE", "SWEEP_NOT_SUCCESSFUL",
+            "CANARY_FAILED", "CANARY_SCOPE_INVALID", "CANARY_CODE_IDENTITY_MISMATCH",
+            "CANARY_CLEANUP_UNVERIFIED", "DEADLINE_EXCEEDED"
+          ]
+        }
+      },
+      "if": {"properties": {"status": {"const": "BLOCKED"}}},
+      "then": {"properties": {"code": {"type": "string"}}},
+      "else": {"properties": {"code": {"type": "null"}}}
+    },
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "codeIdentity": {
+      "type": "object",
+      "required": ["pdffast_commit", "source_dirty", "source_sha256", "algorithm_sha256"],
+      "properties": {
+        "pdffast_commit": {
+          "type": ["string", "null"],
+          "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "source_dirty": {"type": ["boolean", "null"]},
+        "source_sha256": {"$ref": "#/$defs/sha256"},
+        "algorithm_sha256": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    }
+  }
+}

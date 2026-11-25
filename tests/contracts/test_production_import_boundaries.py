@@ -23,6 +23,11 @@ FORBIDDEN_HTTP_ADAPTER_TYPES = {
     "UploadFile",
 }
 
+# Outbound stdlib HTTP client input is not an inbound service/request adapter.
+ALLOWED_HTTP_TYPE_IMPORTS = {
+    ("urllib.request", "Request"),
+}
+
 CORE_PACKAGES = {
     "parser", "pipeline", "native", "template", "quality", "fallback",
     "providers", "canonical", "render", "audit",
@@ -78,9 +83,12 @@ def test_core_package_does_not_import_service_frameworks_or_http_types() -> None
                         f"{source_path}:{node.lineno}:from {module}"
                     )
                 for alias in node.names:
-                    if alias.name in FORBIDDEN_HTTP_ADAPTER_TYPES:
+                    if (
+                        alias.name in FORBIDDEN_HTTP_ADAPTER_TYPES
+                        and (module, alias.name) not in ALLOWED_HTTP_TYPE_IMPORTS
+                    ):
                         violations.append(
-                            f"{source_path}:{node.lineno}:import type {alias.name}"
+                            f"{source_path}:{node.lineno}:import type {alias.name} from {module}"
                         )
 
     assert violations == []

@@ -26,6 +26,11 @@ def _default_factory(config: dict[str, Any]) -> Any:
     params = config.get("params") or {}
     if not isinstance(params, dict):
         raise ValueError("RapidOCR params must be an object")
+    if config.get("locked_onnx") is True:
+        params = {
+            **params,
+            **{f"{channel}.engine_type": module.EngineType.ONNXRUNTIME for channel in ("Det", "Cls", "Rec")},
+        }
     config_path = config.get("config_path")
     return module.RapidOCR(
         config_path=str(config_path) if config_path else None,

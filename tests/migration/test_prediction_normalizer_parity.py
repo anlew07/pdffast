@@ -17,6 +17,8 @@ PROVIDERS = (
 )
 
 
+pytestmark = pytest.mark.migration
+
 def _load_reference_normalizer(reference_root: Path):
     source = reference_root / "scripts/9_5_1_prediction_normalizer.py"
     spec = importlib.util.spec_from_file_location("pdffast_reference_normalizer", source)

@@ -1,3 +1,8 @@
+> **历史迁移计划（V2 → V3）**
+> 本文记录迁移阶段的原始计划、路径和验收约定，仅作历史审计留档，不是当前 V3 开发计划或
+> 操作手册。当前实现与运行方式以 README、ARCHITECTURE、PIPELINE 和
+> PROVIDER_RUNTIME_ENVIRONMENTS 为准。不要照抄文中的旧 checkout 路径、旧虚拟环境或旧阶段命令。
+
 # PDFFast v2 迁移方案
 
 状态：Phase 0–4 Core 迁移已完成并验证；Provider runtime 已按生产闭包落地

@@ -1,6 +1,7 @@
 """Characterize coverage using only the existing case_003 evidence artifacts."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -14,8 +15,13 @@ from pdffast.structure_reconciliation.page_relations import decide_page_relation
 from pdffast.structure_reconciliation.preview import preview_reconciled_structure
 
 
+pytestmark = pytest.mark.regression
+
 def test_case003_admitted_anchors_resolve_only_confirmed_page_intersections() -> None:
-    root = Path(__file__).resolve().parents[2] / "outputs/template_removal_review/case_003"
+    raw_root = os.environ.get("PDFFAST_REGRESSION_ARTIFACTS_ROOT")
+    if not raw_root:
+        pytest.skip("PDFFAST_REGRESSION_ARTIFACTS_ROOT is required for artifact-backed regression")
+    root = Path(raw_root).resolve() / "template_removal_review/case_003"
     native_path = root / "03_stage3/section_alignment.json"
     flow_path = root / "06_stage6/normalized_text_flow.json"
     index_path = root / "09_8_production_fallback/selected_prediction_index.json"

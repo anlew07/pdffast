@@ -35,6 +35,7 @@ def test_scoring_counts_missing_and_failed_pages():
     assert result["field_literal_presence_recall"] == 1
 
 
+@pytest.mark.provider
 def test_prepare_raster_only_pair_from_pdf(tmp_path):
     fitz = pytest.importorskip("fitz")
     src = tmp_path / "data"

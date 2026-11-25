@@ -13,7 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 
-dev = ["pytest>=8.0", "httpx2>=2.13.1"]
+dev = ["pytest>=8.0", "httpx2>=2.13.1", "jsonschema>=4.23"]
 
 service = [
     "fastapi>=0.115",
@@ -31,11 +31,12 @@ runtime-main = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra -m \"not migration and not regression and not provider\""
 markers = [
   "integration: multi-component tests without external provider cost",
   "regression: old-vs-new artifact comparison requiring local samples",
   "provider: tests requiring an optional provider environment",
+  "migration: opt-in V2-to-V3 migration parity tests",
 ]
 
 [tool.hatch.build.targets.wheel.force-include]

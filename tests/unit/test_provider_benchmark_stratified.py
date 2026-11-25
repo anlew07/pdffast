@@ -50,6 +50,7 @@ def test_fixed_nonoverlapping_strata(tmp_path):
         select_stratified(rows, images_root=tmp_path, quotas={kind: 4 for kind in kinds})
 
 
+@pytest.mark.provider
 def test_build_manifest_with_real_image(tmp_path):
     fitz = pytest.importorskip("fitz")
     annotations = tmp_path / "OmniDocBench.json"

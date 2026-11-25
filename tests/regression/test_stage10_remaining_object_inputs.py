@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -22,11 +23,16 @@ from pdffast.quality.gate import QualityReport
 ROOT = Path(__file__).resolve().parents[2]
 
 
+pytestmark = pytest.mark.regression
+
 @pytest.mark.parametrize("case", [2, 3, 4])
 def test_stage10_remaining_objects_match_file_path_without_runtime_reloads(
     case: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = ROOT / f"outputs/final_structure_regression/case_{case:03d}"
+    raw_root = os.environ.get("PDFFAST_REGRESSION_ARTIFACTS_ROOT")
+    if not raw_root:
+        pytest.skip("PDFFAST_REGRESSION_ARTIFACTS_ROOT is required for artifact-backed regression")
+    source = Path(raw_root).resolve() / f"final_structure_regression/case_{case:03d}"
     files = {
         "section_alignment": source / "03_stage3/section_alignment.json",
         "normalized_flow": source / "06_stage6/normalized_text_flow.json",

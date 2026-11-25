@@ -1,3 +1,8 @@
+> **历史审查记录（2026-10）**
+> 本文保留当时的本机路径、提交、测试数字和风险判断，不能作为当前 HEAD 的验收证据，也不是
+> 当前部署操作手册。当前配置以仓库中的 V3 源码、`configs/providers.json`、Runtime lock
+> 文件和当前 CI 结果为准。
+
 # PDFFast 重构收尾审查与稳定基线规划
 
 日期：2026-10-09。仓库 `/Users/admin/Workspace/pdffast-v3`，分支 `refactor/v3`，HEAD `dcc7af9`。本轮只读审查，只新增本报告。结论限于当前源码、已存产物、测试及明确的历史运行记录，不等同Linux或当前六Provider全量验收。
