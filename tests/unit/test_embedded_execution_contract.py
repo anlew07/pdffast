@@ -613,3 +613,24 @@ def test_contract_reader_rejects_symlinked_parent_directory(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="unsafe directory component"):
         _read_run_relative_files(run_dir, ["result/manifest.json"])
+
+
+
+def test_summarize_parse_returns_machine_readable_failure_for_symlinked_manifest_parent(
+    tmp_path,
+) -> None:
+    from scripts.verify_production_governance import summarize_parse
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "manifest.json").write_text("{}", encoding="utf-8")
+    (run_dir / "result").symlink_to(outside, target_is_directory=True)
+
+    report = summarize_parse(run_dir, 0, {}, input_sha256=None)
+
+    assert report["acceptance"] == "FAIL"
+    assert report["execution_contract_verified"] is False
+    assert report["manifest_written"] is False
+    assert report["verification_error"] == "ValueError"
