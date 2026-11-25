@@ -633,6 +633,7 @@ def pathsafe(run_dir: Path, path: Path) -> str:
 def summarize_parse(
     run_dir: Path, returncode: int, expected: dict, *, input_sha256: str | None,
 ) -> dict:
+    manifest_written = False
     try:
         requested_run_dir = Path(run_dir)
         if requested_run_dir.is_symlink():
@@ -648,6 +649,7 @@ def summarize_parse(
             resolved_run_dir, [manifest_path],
         )
         manifest = json.loads(initial_payloads[manifest_path])
+        manifest_written = True
         if not isinstance(manifest, dict):
             raise ValueError("root manifest must be a JSON object")
 
@@ -797,7 +799,7 @@ def summarize_parse(
             "audit_passed": False,
             "markdown_written": False,
             "canonical_written": False,
-            "manifest_written": False,
+            "manifest_written": manifest_written,
             "forbidden_attempt_count": None,
             "verification_error": type(exc).__name__,
         }
