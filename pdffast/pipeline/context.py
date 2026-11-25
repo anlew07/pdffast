@@ -29,6 +29,7 @@ class PipelineContext:
     capture_output: bool = True
     input_metadata: dict = field(default_factory=dict)
     defer_result_manifest: bool = False
+    execution_request: dict | None = None
 
     @classmethod
     def create(
