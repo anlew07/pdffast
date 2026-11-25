@@ -50,6 +50,8 @@ def _contract() -> dict:
             "execution_status": "COMPLETED",
             "pdffast_commit": COMMIT,
             "source_sha256": SHA256,
+            "source_dirty": False,
+            "algorithm_sha256": {"native": SHA256, "canonical": SHA256},
             "profile_name": "production.indra-triple",
             "profile_sha256": SHA256,
             "providers_config_sha256": SHA256,
@@ -233,7 +235,11 @@ def test_execution_contract_builder_hashes_required_and_task_evidence(tmp_path) 
     identity = {
         "status": "PASS",
         "pdffast_commit": COMMIT,
-        "code_identity": {"source_sha256": SHA256},
+        "code_identity": {
+            "source_sha256": SHA256,
+            "source_dirty": False,
+            "algorithm_sha256": {"native": SHA256, "canonical": SHA256},
+        },
         "profile_name": "production.indra-triple",
         "profile_sha256": SHA256,
         "providers_config_sha256": SHA256,
