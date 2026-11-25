@@ -1,28 +1,8 @@
 name: Production governance V1
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "pdffast/**"
-      - "configs/**"
-      - "scripts/**"
-      - "tests/unit/test_production_preflight.py"
-      - "tests/unit/test_parser_provenance.py"
-      - "tests/unit/test_model_asset_identity.py"
-      - "tests/unit/test_provider_lifecycle.py"
-      - "tests/unit/test_process_supervision.py"
-      - "tests/**"
-      - "pyproject.toml"
-      - "README.md"
-      - "docs/**"
-      - ".github/workflows/production-governance-v1.yml"
-  push:
-    branches:
-      - "feat/pdffast-production-governance-v1"
-      - "feat/pdffast-execution-contract-v1"
+  # Manual-only; automatic CI is intentionally disabled for this development branch.
   workflow_dispatch:
-
 permissions:
   contents: read
 
