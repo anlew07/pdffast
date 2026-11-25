@@ -166,6 +166,8 @@
 | 进程中断/强杀 | 可能没有最终 Manifest | 由 JOB_ID 回执和 OS returncode 判定，绝不推断为成功 |
 
 `COMPLETED` 只代表 PDFFast 侧完成其门禁；不等于 OCR 内容已人工确认准确，也不替代 JudgeAI 自己的身份与产物验证。
+- `COMPLETED` 也不代表每个 Provider task 都成功选中了 Provider：当任务按既定 terminal fallback 保留原始区域时，`terminal_preserve_count` 可以大于 0，而 `pipeline_failure_count` 仍为 0。这是“源内容被保留但增强未解决”，不是 OCR 成功。JudgeAI 必须读取并保留这两个计数，不得仅凭 `execution_status=COMPLETED` 推断所有内容均已解析。
+- `COMPLETED_WITH_PIPELINE_FAILURES` 表示至少存在未能通过 Provider 链且没有 terminal preservation 兜底的任务；它不能被折叠为完整解析成功。
 
 ## 5. 输入身份与产物身份
 
