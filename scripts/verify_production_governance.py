@@ -418,6 +418,18 @@ def summarize_parse(
     profile = _read(paths.native.profile)
     execution = _read(paths.observability.execution_plan)
     internal = _read(paths.providers.production_manifest)
+    selected_index = _read(paths.providers.selected_index)
+    contract_verified = _verify_execution_contract(
+        run_dir,
+        manifest=manifest,
+        provenance=provenance,
+        expected=expected,
+        input_sha256=input_sha256,
+        audit=audit,
+        execution_plan=execution,
+        production_manifest=internal,
+        selected_index=selected_index,
+    )
     planned_routes: dict[str, int] = {}
     planned_names = set()
     for task in execution.get("tasks", []):
@@ -444,6 +456,7 @@ def summarize_parse(
     )
     ready = (
         returncode == 0 and bool(document) and markdown_written and audit_passed is True
+        and contract_verified
         and bool(paths.result.document_md.read_text(encoding="utf-8").strip())
         and type(page_count) is int and page_count > 0
         and document.get("page_count") == page_count
@@ -480,6 +493,7 @@ def summarize_parse(
     )
     return {
         "acceptance": "PASS" if ready else "FAIL", "page_count": page_count,
+        "execution_contract_verified": contract_verified,
         "input_sha256_matched": input_matches,
         "profile_sha256": provenance.get("profile_sha256"),
         "effective_config_fingerprint": provenance.get("effective_config_fingerprint"),
