@@ -140,7 +140,8 @@
 - `run_id` 始终指 Core 解析执行身份。
 - 路径使用相对于本次 run 目录的 POSIX 路径；不得包含 run 目录之外的路径、符号链接逃逸或任意绝对路径。
 - 对 JudgeAI 实际接收的最终文档、Markdown、Audit，以及关键执行证据文件生成 SHA-256 和字节数。
-- 任务级 `selected_predictions/*.json` 是 fallback/attempts 的细粒度证据，应纳入可验证清单，或以有明确定义的目录树摘要覆盖；不能只留下一个无法追溯的 SUCCESS。
+- 任务级 `selected_predictions/*.json` 是 fallback/attempts 的细粒度证据，应纳入可验证清单；每个 `selected_prediction` artifact 同时携带 `task_id`，JudgeAI 应按 `task_id` 与 `selected_prediction_index.items` 关联。
+- 现有 `selected_prediction_index` 内部的 `selected_prediction` 字段是历史绝对路径。为保持旧执行产物兼容，PDFFast 本阶段不改写它；JudgeAI 不应直接信任/跟随该绝对路径，而应使用 Execution Contract 的 run-relative artifact 路径，并验证其 SHA-256、字节数和根目录边界。
 - `result/manifest.json` 是根合同文件本身，不在自己的 artifacts 列表中计算自身摘要，避免循环摘要。消费者可以在读取后独立计算该文件的 SHA-256 并持久化。
 - `provider_runtime` 应复用当次 Preflight 的实际 runtime identity（包版本、模型 revision/资产验证信息）；实际使用哪些 Provider 仍以 attempted/selected 计数为准。
 - 当前 `ParseService` 调用生产 Preflight 时使用默认 `probe=False`：因此 `status=READY` 表示严格运行时身份/资产检查通过，`dependency_probe=NOT_RUN` 表示尚未调用 Provider 自身的 `preflight()`。实际执行阶段仍会执行 Provider preflight；消费者不得把 `READY` 或 `preflight_status=PASS` 解释为已完成 OCR 推理或已证明 Provider 可成功处理任务。
