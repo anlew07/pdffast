@@ -37,7 +37,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install minimal test environment
-        run: python -m pip install -e ".[dev,service]" jsonschema
+        run: python -m pip install -e ".[dev,service]"
       - name: Compile production modules and scripts
         run: python -m compileall -q pdffast scripts/freeze_production_assets.py
       - name: Run production governance contracts
@@ -65,7 +65,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install core test environment
-        run: python -m pip install -e ".[dev,service]" jsonschema
+        run: python -m pip install -e ".[dev,service]"
       - name: Compile current runtime and scripts
         run: python -m compileall -q pdffast scripts
       - name: Run deterministic V3 default suite
