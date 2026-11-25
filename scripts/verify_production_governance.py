@@ -477,7 +477,7 @@ def _verify_execution_contract(
                 if (
                     accepted_positions or len(attempts) != len(chain)
                     or prediction.get("selected_canonical") is not None
-                    or is_terminal is bool(terminal_action)
+                    or is_terminal is not bool(terminal_action)
                     or is_failure is is_terminal
                     or prediction.get("terminal_fallback_action")
                     != (terminal_action if is_terminal else None)
