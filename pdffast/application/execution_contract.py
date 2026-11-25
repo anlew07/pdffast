@@ -1,0 +1,190 @@
+"""Build the stable Embedded execution handoff for one locked Core run."""
+
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+from typing import Any
+
+
+def _relative_path(run_dir: Path, path: Path) -> str:
+    root = Path(run_dir).resolve(strict=True)
+    source = Path(path)
+    if source.is_symlink():
+        raise ValueError(f"execution artifact cannot be a symlink: {source}")
+    resolved = source.resolve(strict=True)
+    if not resolved.is_file():
+        raise ValueError(f"execution artifact is not a regular file: {source}")
+    try:
+        return resolved.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise ValueError(f"execution artifact escapes run directory: {source}") from exc
+
+
+def _artifact(
+    run_dir: Path,
+    *,
+    name: str,
+    path: Path,
+    media_type: str,
+) -> dict[str, Any]:
+    relative = _relative_path(run_dir, path)
+    resolved = Path(run_dir).resolve(strict=True) / relative
+    before = resolved.stat()
+    digest = hashlib.sha256()
+    with resolved.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    after = resolved.stat()
+    before_identity = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+    after_identity = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+    if before_identity != after_identity:
+        raise ValueError(f"execution artifact changed while hashing: {relative}")
+    if after.st_size < 1:
+        raise ValueError(f"execution artifact is empty: {relative}")
+    return {
+        "name": name,
+        "path": relative,
+        "media_type": media_type,
+        "byte_size": after.st_size,
+        "sha256": digest.hexdigest(),
+    }
+
+
+def build_execution_contract(
+    context: Any,
+    *,
+    production_identity: dict[str, Any],
+    statistics: dict[str, Any],
+    execution_plan: Any,
+    production_manifest: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the Embedded contract from already-validated production evidence.
+
+    The root result/manifest.json is deliberately excluded from its own
+    artifact inventory to avoid a self-referential digest.
+    """
+    artifacts = context.artifacts
+    run_dir = Path(context.run_dir).resolve(strict=True)
+    input_metadata = context.input_metadata
+    if (
+        not isinstance(input_metadata, dict)
+        or input_metadata.get("algorithm") != "sha256"
+        or input_metadata.get("status") != "COMPLETE"
+        or not isinstance(input_metadata.get("sha256"), str)
+        or len(input_metadata["sha256"]) != 64
+        or type(input_metadata.get("byte_size")) is not int
+        or input_metadata["byte_size"] < 1
+    ):
+        raise ValueError("locked execution requires a complete SHA-256 input identity")
+
+    if production_identity.get("status") != "PASS":
+        raise ValueError("execution contract requires a passing production preflight")
+    provider_runtime = production_identity.get("provider_runtime")
+    allowed_providers = production_identity.get("allowed_providers")
+    if (
+        not isinstance(provider_runtime, dict)
+        or not isinstance(allowed_providers, list)
+        or not allowed_providers
+        or set(provider_runtime) != set(allowed_providers)
+        or any(
+            not isinstance(provider_runtime[name], dict)
+            or provider_runtime[name].get("status") != "READY"
+            or not isinstance(provider_runtime[name].get("identity"), dict)
+            for name in allowed_providers
+        )
+    ):
+        raise ValueError("execution contract requires runtime identity for every allowed Provider")
+
+    summary = production_manifest.get("summary")
+    if not isinstance(summary, dict):
+        raise ValueError("production execution manifest has no summary")
+    policy_version = execution_plan.data.get("version")
+    if not isinstance(policy_version, str) or not policy_version:
+        raise ValueError("runtime escalation policy has no version")
+
+    required = [
+        _artifact(
+            run_dir, name="document", path=artifacts.result.document_json,
+            media_type="application/json",
+        ),
+        _artifact(
+            run_dir, name="markdown", path=artifacts.result.document_md,
+            media_type="text/markdown",
+        ),
+        _artifact(
+            run_dir, name="audit", path=artifacts.result.audit_json,
+            media_type="application/json",
+        ),
+        _artifact(
+            run_dir, name="production_execution_manifest",
+            path=artifacts.providers.production_manifest, media_type="application/json",
+        ),
+        _artifact(
+            run_dir, name="selected_prediction_index",
+            path=artifacts.providers.selected_index, media_type="application/json",
+        ),
+        _artifact(
+            run_dir, name="runtime_escalation_policy",
+            path=artifacts.observability.execution_plan, media_type="application/json",
+        ),
+    ]
+    for path in sorted(artifacts.providers.selected_dir.glob("*.json")):
+        required.append(
+            _artifact(
+                run_dir, name="selected_prediction", path=path,
+                media_type="application/json",
+            )
+        )
+    required.sort(key=lambda item: item["path"])
+    if len({item["path"] for item in required}) != len(required):
+        raise ValueError("execution artifact paths are duplicated")
+
+    def relative(path: Path) -> str:
+        return _relative_path(run_dir, path)
+
+    code_identity = production_identity["code_identity"]
+    execution = {
+        "execution_status": statistics["execution_status"],
+        "pdffast_commit": production_identity.get("pdffast_commit"),
+        "source_sha256": code_identity["source_sha256"],
+        "profile_name": production_identity["profile_name"],
+        "profile_sha256": production_identity["profile_sha256"],
+        "providers_config_sha256": production_identity["providers_config_sha256"],
+        "effective_config_fingerprint": production_identity["effective_config_fingerprint"],
+        "policy_version": policy_version,
+        "allowed_providers": list(allowed_providers),
+        "provider_runtime": provider_runtime,
+        "attempted_provider_counts": statistics["attempted_provider_counts"],
+        "selected_provider_counts": statistics["selected_provider_counts"],
+        "planned_task_count": statistics["planned_task_count"],
+        "accepted_task_count": statistics["accepted_task_count"],
+        "terminal_preserve_count": statistics["terminal_preserve_count"],
+        "pipeline_failure_count": statistics["pipeline_failure_count"],
+        "escalated_count": summary["escalated_count"],
+        "preflight_status": production_identity["status"],
+        "audit_passed": True,
+        "outputs_written": True,
+    }
+    return {
+        "schema_version": "pdffast.execution.v1",
+        "run_id": context.run_id,
+        "input": {
+            "algorithm": "sha256",
+            "sha256": input_metadata["sha256"],
+            "byte_size": input_metadata["byte_size"],
+            "status": "COMPLETE",
+        },
+        "result": {
+            "document": relative(artifacts.result.document_json),
+            "markdown": relative(artifacts.result.document_md),
+            "audit": relative(artifacts.result.audit_json),
+        },
+        "execution": execution,
+        "execution_evidence": {
+            "production_manifest": relative(artifacts.providers.production_manifest),
+            "selected_prediction_index": relative(artifacts.providers.selected_index),
+            "runtime_policy": relative(artifacts.observability.execution_plan),
+        },
+        "artifacts": required,
+    }
