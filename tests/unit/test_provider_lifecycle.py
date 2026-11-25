@@ -917,12 +917,18 @@ def test_post_reap_group_scan_rejects_recycled_pgid(
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS ONNX Runtime shutdown policy")
 def test_mineru_disables_ort_telemetry_before_either_child_starts() -> None:
+    import base64
+    import hashlib
+
     from pdffast.providers.mineru import MinerUProvider
 
+    tools_config = b'{"models-dir":{"pipeline":"/frozen/snapshot"}}'
     provider = MinerUProvider("mineru_local", {
         "python_executable": str(sys.executable),
         "locked_runtime": True,
         "env": {"ORT_DISABLE_TELEMETRY": "0"},
+        "_pdffast_mineru_tools_config_b64": base64.b64encode(tools_config).decode("ascii"),
+        "_pdffast_mineru_tools_config_sha256": hashlib.sha256(tools_config).hexdigest(),
     })
     provider.dependency_probe_code = "import os; print(os.environ['ORT_DISABLE_TELEMETRY'])"
     provider.worker_code = """
@@ -935,8 +941,8 @@ if json.loads(sys.stdin.readline())["op"] == "close":
     print(json.dumps({"status": "BYE"}))
 """
     worker = provider._get_worker()
-    assert worker.preflight() == (True, "1")
     try:
+        assert worker.preflight() == (True, "1")
         assert worker.start() == {"status": "READY", "telemetry_disabled": "1"}
     finally:
-        worker.close()
+        provider.close()

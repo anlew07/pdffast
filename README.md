@@ -21,6 +21,7 @@ JudgeAI 通过锁定的 Git 提交部署 PDFFast；本仓库的新提交不会�
 - [Provider 插件接入](docs/PROVIDER_PLUGINS_ZH.md)
 - [输出模式](docs/OUTPUT_MODES_ZH.md)
 - [生产解析身份合同](docs/contracts/production_parser_identity_v1.md)
+- [JudgeAI Embedded 接入合同](docs/integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md)
 - [部署恢复合同](docs/contracts/deployment_control_v1.md)
 - [文档索引与历史报告说明](docs/README.md)
 

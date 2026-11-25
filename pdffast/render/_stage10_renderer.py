@@ -439,6 +439,9 @@ def machine_code_diagnostics(canonical: dict[str, Any] | None) -> dict[str, Any]
     return obj if isinstance(obj, dict) else {}
 
 
+_MACHINE_CODE_SUPPRESSION_MARKER = "【机器编码候选抑制开始"
+
+
 def render_machine_code_safety_block(
     canonical: dict[str, Any] | None,
     *,
@@ -488,7 +491,7 @@ def render_machine_code_safety_block(
         reason = "普通OCR产生多个相互冲突的长数字候选，无法可靠确定具体编码值"
     count_text = f"；OCR候选数={candidate_count}" if candidate_count else ""
     return (
-        f"【机器编码候选抑制开始｜第{page}页{region_meta}｜类型={kind_label}｜未可靠解码{suffix}】\n"
+        f"{_MACHINE_CODE_SUPPRESSION_MARKER}｜第{page}页{region_meta}｜类型={kind_label}｜未可靠解码{suffix}】\n"
         f"{reason}{count_text}。为避免向下游模型提供看似真实但未经验证的编号，具体OCR候选未写入LLM正文。\n"
         "原始OCR候选、坐标与置信度仍保留在结构化解析证据中。\n"
         "【机器编码候选抑制结束】"
@@ -1112,6 +1115,13 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     record_dispositions: dict[str, dict[str, Any]] = {}
     rendered_section_count = 0
     rendered_record_count = 0
+    content_record_count = 0
+
+    def has_wrapped_content(rendered: str) -> bool:
+        # The wrapped content contains a body, except when only a machine-code
+        # suppression explanation was emitted.
+        return "\n" in rendered and not rendered.startswith(_MACHINE_CODE_SUPPRESSION_MARKER)
+
     page_fallback_rendered = 0
     page_ocr_fallback_rendered = 0
     page_layout_fallback_rendered = 0
@@ -1141,6 +1151,7 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
 
     def emit_detached_regions_for_page(page_number: int, section_id: str) -> None:
         nonlocal region_text_rendered, region_unresolved_rendered, detached_region_rendered_count
+        nonlocal content_record_count
         for ov in detached_regions_by_page.get(page_number, []):
             tid = str(ov.get("task_id") or "")
             if tid and tid in detached_region_rendered_task_ids:
@@ -1148,6 +1159,10 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             rendered, mode = render_detached_region_overlay(ov)
             if rendered:
                 append_block(chunks, rendered)
+                # Rendered region content has a body between the boundary lines.
+                # An unresolved or empty region is rendered as a single marker.
+                if mode == MODE_REGION_TEXT and has_wrapped_content(rendered):
+                    content_record_count += 1
             detached_region_rendered_count += 1
             if mode == MODE_REGION_UNRESOLVED:
                 region_unresolved_rendered += 1
@@ -1347,6 +1362,11 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
                     continue
 
             if rendered:
+                if disposition in {"RENDERED_NATIVE_PARAGRAPH", "RENDERED_OTHER_TEXT_RECORD"} or (
+                    (rtype == "table_ref" or mode in {MODE_PAGE_FALLBACK, MODE_PAGE_LAYOUT_FALLBACK, MODE_REGION_TEXT})
+                    and has_wrapped_content(rendered)
+                ):
+                    content_record_count += 1
                 positions: defaultdict[int, list[dict[str, Any]]] = defaultdict(list)
                 for unit in anchor_units_by_record.get(rid, []):
                     first_part = str(unit["anchor"]["title_parts"][0])
@@ -1492,6 +1512,10 @@ def build_rendered_document(doc: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             "canonical_record_count": len(records),
             "record_disposition_count": len(record_dispositions),
             "rendered_record_count": rendered_record_count,
+            "has_usable_content": bool(
+                rendered_section_count or content_record_count
+                or inline_replacement_count or inline_partial_supplement_count
+            ),
             "paragraph_rendered_count": paragraph_rendered,
             "table_rendered_count": table_rendered,
             "page_fallback_rendered_count": page_fallback_rendered,

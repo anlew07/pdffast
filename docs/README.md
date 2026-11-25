@@ -11,6 +11,7 @@
 - [Provider 插件接入](PROVIDER_PLUGINS_ZH.md)：Adapter、Normalizer、Registry 和显式启用。
 - [输出模式](OUTPUT_MODES_ZH.md)：minimal / diagnostic / full。
 - [生产解析身份合同](contracts/production_parser_identity_v1.md)：V1 身份与指纹合同。
+- [JudgeAI Embedded 接入合同](integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md)：请求、退出码、产物验签与升级步骤。
 - [Parser Provenance 合同](contracts/parser_provenance_v1.md)：执行来源与统计证明。
 - [部署恢复合同](contracts/deployment_control_v1.md)：进程监管与部署健康。
 

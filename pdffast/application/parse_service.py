@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
+from typing import Any
 
+from pdffast.application.execution_contract import validate_execution_request
 from pdffast.application.input_fingerprint import fingerprint_input as _fingerprint
 from pdffast.application.production_preflight import preflight_snapshot
 from pdffast.application.production_profile import (
@@ -16,8 +19,13 @@ from pdffast.application.production_profile import (
 from pdffast.config import ParserConfig
 from pdffast.errors import (
     ConfigurationError,
+    InputIdentityMismatchError,
+    InputUnavailableError,
+    PDFFastError,
+    ParseCancelledError,
     ParseExecutionError,
     ProductionPreflightError,
+    RunReservationError,
 )
 from pdffast.pipeline.artifacts import ArtifactPaths
 from pdffast.pipeline.context import PipelineContext
@@ -25,7 +33,7 @@ from pdffast.pipeline.runner import run_core_pipeline
 from pdffast.providers.registry import ProviderRegistry
 from pdffast.providers.runtime_normalization import normalize_runtime_result
 from pdffast.result import ParseResult
-from pdffast.runtime import observe_parse
+from pdffast.runtime import check_parse_cancelled, observe_parse
 
 
 def _validate_run_id(run_id: str) -> None:
@@ -50,9 +58,14 @@ class ParseService:
 
     def parse(self, pdf_path: Path, *, run_id: str = "parse", case_id: str | None = None) -> ParseResult:
         _validate_run_id(run_id)
-        if self.config.provider_profile is not None:
-            return self._parse_locked(pdf_path, run_id=run_id, case_id=case_id)
+        # Resolve output_root once and pass this exact path through reservation
+        # and PipelineContext construction. In particular, Path.resolve() alone
+        # does not expand a leading "~".
         output_root = Path(self.config.output_root).expanduser().resolve()
+        if self.config.provider_profile is not None:
+            return self._parse_locked(
+                pdf_path, run_id=run_id, case_id=case_id, output_root=output_root,
+            )
         run_path = output_root / run_id
         if run_path.is_symlink():
             raise ConfigurationError(f"run directory cannot be a symlink: {run_id}")
@@ -74,38 +87,105 @@ class ParseService:
                 json.dumps({"run_id": run_id, "input": metadata}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            return self._parse(pdf_path, run_id=run_id, case_id=case_id, input_metadata=metadata)
+            return self._parse(
+                pdf_path, run_id=run_id, case_id=case_id, input_metadata=metadata,
+                output_root=output_root,
+            )
 
-    def _parse_locked(self, pdf_path: Path, *, run_id: str, case_id: str | None) -> ParseResult:
-        snapshot = load_production_profile(self.config)
-        run_dir = Path(self.config.output_root).expanduser().resolve() / run_id
+    def parse_request(
+        self, pdf_path: Path, request: Mapping[str, Any], *, case_id: str | None = None,
+    ) -> ParseResult:
+        run_id = request.get("run_id") if isinstance(request, Mapping) else None
+        try:
+            normalized = validate_execution_request(request)
+            if self.config.provider_profile is None:
+                raise ConfigurationError("versioned execution requests require a locked Production Profile")
+            check_parse_cancelled()
+            try:
+                output_root = Path(self.config.output_root).expanduser().resolve()
+            except (OSError, RuntimeError) as exc:
+                raise RunReservationError("cannot resolve the run output root") from exc
+            return self._parse_locked(
+                pdf_path,
+                run_id=normalized["run_id"],
+                case_id=case_id,
+                output_root=output_root,
+                execution_request=normalized,
+            )
+        except (PDFFastError, ParseCancelledError) as exc:
+            exc.run_id = run_id
+            raise
+
+    def _parse_locked(
+        self,
+        pdf_path: Path,
+        *,
+        run_id: str,
+        case_id: str | None,
+        output_root: Path,
+        execution_request: dict[str, Any] | None = None,
+    ) -> ParseResult:
+        metadata = None
+        if execution_request is not None:
+            source = Path(pdf_path)
+            try:
+                is_file = source.is_file()
+            except OSError:
+                is_file = False
+            if not is_file:
+                raise InputUnavailableError({"fingerprint_status": "FAILED", "byte_size": None})
+            metadata = _fingerprint(source)
+            if metadata["status"] != "COMPLETE" or not metadata.get("byte_size"):
+                raise InputUnavailableError({
+                    "fingerprint_status": metadata["status"],
+                    "byte_size": metadata.get("byte_size"),
+                })
+            expected = execution_request["input"]["sha256"]
+            if metadata["sha256"] != expected:
+                raise InputIdentityMismatchError(expected, metadata["sha256"])
+
+        try:
+            snapshot = load_production_profile(self.config)
+        except ConfigurationError as exc:
+            exc.stage = "production_preflight"
+            raise
+        run_dir = output_root / run_id
         if run_dir.exists() or run_dir.is_symlink():
-            raise ConfigurationError(f"locked run directory already exists: {run_id}")
+            raise RunReservationError(f"locked run directory already exists: {run_id}")
         report = preflight_snapshot(snapshot, self.config)
         if report["status"] != "PASS":
             raise ProductionPreflightError(report)
-        run_dir.parent.mkdir(parents=True, exist_ok=True)
+        check_parse_cancelled()
         marker = _locked_run_marker(run_dir)
         try:
+            run_dir.parent.mkdir(parents=True, exist_ok=True)
             marker.touch(exist_ok=False)
         except FileExistsError as exc:
-            raise ConfigurationError(f"locked run directory already reserved: {run_id}") from exc
+            raise RunReservationError(f"locked run directory already reserved: {run_id}") from exc
+        except OSError as exc:
+            raise RunReservationError(f"cannot reserve locked run directory: {run_id}") from exc
         try:
             run_dir.mkdir(exist_ok=False)
         except OSError as exc:
-            marker.unlink()
-            raise ConfigurationError(f"cannot reserve locked run directory: {run_id}") from exc
-        metadata = _fingerprint(Path(pdf_path))
-        if metadata["status"] != "COMPLETE":
-            raise ParseExecutionError("Unable to fingerprint locked parse input", run_dir=run_dir)
+            try:
+                marker.unlink(missing_ok=True)
+            except OSError as cleanup:
+                exc.add_note(f"Reservation marker cleanup failed: {type(cleanup).__name__}")
+            raise RunReservationError(f"cannot reserve locked run directory: {run_id}") from exc
+        if metadata is None:
+            metadata = _fingerprint(Path(pdf_path))
+            if metadata["status"] != "COMPLETE":
+                raise ParseExecutionError("Unable to fingerprint locked parse input", run_dir=run_dir)
         return self._parse(
             pdf_path, run_id=run_id, case_id=case_id, input_metadata=metadata,
-            locked=snapshot, production_identity=report,
+            output_root=output_root, locked=snapshot, production_identity=report,
+            execution_request=execution_request,
         )
 
     def _parse(
         self, pdf_path: Path, *, run_id: str, case_id: str | None, input_metadata: dict,
-        locked: ProductionProfile | None = None, production_identity: dict | None = None,
+        output_root: Path, locked: ProductionProfile | None = None,
+        production_identity: dict | None = None, execution_request: dict[str, Any] | None = None,
     ) -> ParseResult:
         config = self.config
         if config.provider_profile is not None and locked is None:
@@ -153,7 +233,7 @@ class ParseService:
         context = PipelineContext.create(
             project_root=config.project_root or project_root,
             pdf=Path(pdf_path),
-            output_root=config.output_root,
+            output_root=output_root,
             run_id=run_id,
             case_id=case_id,
             page_dpi=config.page_dpi,
@@ -179,7 +259,12 @@ class ParseService:
                 )
             ),
         )
-        context = replace(context, input_metadata=input_metadata, defer_result_manifest=locked is not None)
+        context = replace(
+            context,
+            input_metadata=input_metadata,
+            defer_result_manifest=locked is not None,
+            execution_request=execution_request,
+        )
         return run_core_pipeline(
             context,
             provider_configs=provider_configs,

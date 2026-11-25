@@ -69,10 +69,10 @@ python -B scripts/freeze_production_assets.py --root "$PWD"
 ```
 
 脚本只读取本地模型和配置，不下载、不修改模型文件；它为 Indra / MinerU 生成 SHA-256
-及文件身份清单。清单是本地部署产物，不要把个人模型缓存或 GB 级模型文件提交到仓库。
+及文件身份清单。清单含本机文件身份，属于目标机器的部署产物。换机器、替换模型或重建运行时后，在目标 checkout 重新冻结。
 
 发布前应使用正式 Profile 做完整预检，确认 Profile、Provider 配置、模型资产清单、解释器
-和运行环境身份一致。预检失败必须阻止正式解析。
+和运行环境身份一致。预检失败必须阻止正式解析。JudgeAI 的调用与校验流程见 [Embedded 接入合同](integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md)。
 
 ## 4. Marker Worker HOME 隔离
 
