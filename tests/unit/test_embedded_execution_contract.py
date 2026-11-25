@@ -62,6 +62,7 @@ def _contract() -> dict:
                     "dependency_probe": "PASS",
                     "identity": {
                         "python": "3.12.13",
+                        "package_inventory_sha256": SHA256,
                         "packages": {"example": "1.2.3"},
                         "model": {"revision": "test-revision"},
                     },
@@ -226,7 +227,12 @@ def test_execution_contract_builder_hashes_required_and_task_evidence(tmp_path) 
             name: {
                 "status": "READY",
                 "dependency_probe": "PASS",
-                "identity": {"revision": "test-revision"},
+                "identity": {
+                    "python": "3.12.13",
+                    "package_inventory_sha256": SHA256,
+                    "packages": {"example": "1.2.3"},
+                    "model": {"revision": "test-revision"},
+                },
             }
             for name in PROVIDERS
         },
@@ -417,7 +423,12 @@ def test_execution_contract_matches_real_provider_execution_evidence(tmp_path) -
             name: {
                 "status": "READY",
                 "dependency_probe": "NOT_RUN",
-                "identity": {"python": "3.12.13", "revision": "fixture"},
+                "identity": {
+                    "python": "3.12.13",
+                    "package_inventory_sha256": SHA256,
+                    "packages": {"example": "1.2.3"},
+                    "model": {"revision": "fixture"},
+                },
             }
             for name in (first, second)
         },
