@@ -99,7 +99,7 @@ raise SystemExit(int(sys.argv[2]))
     # The verifier independently re-hashes every declared artifact.
     document_path = result.artifacts["result_document"]
     document_bytes = document_path.read_bytes()
-    document_path.write_bytes(document_bytes + b"tampered")
+    document_path.write_bytes(document_bytes + b" ")
     tampered_report = summarize_parse(
         manifest.parents[1], 0, expected, input_sha256=input_sha256,
     )
