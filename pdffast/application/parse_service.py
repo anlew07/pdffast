@@ -50,9 +50,14 @@ class ParseService:
 
     def parse(self, pdf_path: Path, *, run_id: str = "parse", case_id: str | None = None) -> ParseResult:
         _validate_run_id(run_id)
-        if self.config.provider_profile is not None:
-            return self._parse_locked(pdf_path, run_id=run_id, case_id=case_id)
+        # Resolve output_root once and pass this exact path through reservation
+        # and PipelineContext construction. In particular, Path.resolve() alone
+        # does not expand a leading "~".
         output_root = Path(self.config.output_root).expanduser().resolve()
+        if self.config.provider_profile is not None:
+            return self._parse_locked(
+                pdf_path, run_id=run_id, case_id=case_id, output_root=output_root,
+            )
         run_path = output_root / run_id
         if run_path.is_symlink():
             raise ConfigurationError(f"run directory cannot be a symlink: {run_id}")
@@ -74,11 +79,16 @@ class ParseService:
                 json.dumps({"run_id": run_id, "input": metadata}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            return self._parse(pdf_path, run_id=run_id, case_id=case_id, input_metadata=metadata)
+            return self._parse(
+                pdf_path, run_id=run_id, case_id=case_id, input_metadata=metadata,
+                output_root=output_root,
+            )
 
-    def _parse_locked(self, pdf_path: Path, *, run_id: str, case_id: str | None) -> ParseResult:
+    def _parse_locked(
+        self, pdf_path: Path, *, run_id: str, case_id: str | None, output_root: Path,
+    ) -> ParseResult:
         snapshot = load_production_profile(self.config)
-        run_dir = Path(self.config.output_root).expanduser().resolve() / run_id
+        run_dir = output_root / run_id
         if run_dir.exists() or run_dir.is_symlink():
             raise ConfigurationError(f"locked run directory already exists: {run_id}")
         report = preflight_snapshot(snapshot, self.config)
@@ -100,12 +110,13 @@ class ParseService:
             raise ParseExecutionError("Unable to fingerprint locked parse input", run_dir=run_dir)
         return self._parse(
             pdf_path, run_id=run_id, case_id=case_id, input_metadata=metadata,
-            locked=snapshot, production_identity=report,
+            output_root=output_root, locked=snapshot, production_identity=report,
         )
 
     def _parse(
         self, pdf_path: Path, *, run_id: str, case_id: str | None, input_metadata: dict,
-        locked: ProductionProfile | None = None, production_identity: dict | None = None,
+        output_root: Path, locked: ProductionProfile | None = None,
+        production_identity: dict | None = None,
     ) -> ParseResult:
         config = self.config
         if config.provider_profile is not None and locked is None:
@@ -153,7 +164,7 @@ class ParseService:
         context = PipelineContext.create(
             project_root=config.project_root or project_root,
             pdf=Path(pdf_path),
-            output_root=config.output_root,
+            output_root=output_root,
             run_id=run_id,
             case_id=case_id,
             page_dpi=config.page_dpi,
