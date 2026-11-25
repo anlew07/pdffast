@@ -72,3 +72,80 @@ def test_context_rejects_invalid_runtime_parameters(
 
     with pytest.raises(ValueError, match=message):
         PipelineContext.create(**kwargs)
+
+
+@pytest.mark.parametrize("locked", [False, True])
+def test_parse_service_uses_one_expanded_output_root_for_reservation_and_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    locked: bool,
+) -> None:
+    """The reserved run directory and Core context must resolve ~/ identically."""
+    from types import SimpleNamespace
+
+    from pdffast.application import parse_service as parse_service_module
+    from pdffast.application.parse_service import ParseService
+    from pdffast.config import ParserConfig
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    pdf = tmp_path / "input.pdf"
+    pdf.write_bytes(b"test-pdf")
+    monkeypatch.setattr(
+        parse_service_module,
+        "_fingerprint",
+        lambda _path: {
+            "algorithm": "sha256",
+            "sha256": "a" * 64,
+            "byte_size": 8,
+            "status": "COMPLETE",
+        },
+    )
+
+    captured: dict[str, object] = {}
+    sentinel = object()
+
+    def fake_run_core_pipeline(context, **_kwargs):
+        captured["context"] = context
+        return sentinel
+
+    monkeypatch.setattr(
+        parse_service_module, "run_core_pipeline", fake_run_core_pipeline,
+    )
+
+    provider_profile = Path("configs/profiles/production.indra-triple.json") if locked else None
+    config = ParserConfig(
+        output_root=Path("~/pdffast-output"),
+        provider_profile=provider_profile,
+    )
+
+    if locked:
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        registry = SimpleNamespace(plugin_normalizers={})
+        snapshot = SimpleNamespace(
+            root=project_root,
+            configs={},
+            registry=registry,
+            chains={},
+        )
+        monkeypatch.setattr(
+            parse_service_module, "load_production_profile", lambda _config: snapshot,
+        )
+        monkeypatch.setattr(
+            parse_service_module, "preflight_snapshot",
+            lambda _snapshot, _config: {"status": "PASS"},
+        )
+
+    result = ParseService(config).parse(pdf, run_id="tilde-output-root")
+
+    expected_root = (home / "pdffast-output").resolve()
+    context = captured["context"]
+    assert result is sentinel
+    assert context.output_root == expected_root
+    assert context.run_dir == expected_root / "tilde-output-root"
+    assert context.run_dir.is_dir()
+    if not locked:
+        assert context.artifacts.result.manifest_json.is_file()
