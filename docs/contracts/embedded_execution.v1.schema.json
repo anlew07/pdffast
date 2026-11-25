@@ -241,6 +241,15 @@
             }
           }
         }
+      },
+      "else": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "attempted_provider_counts": {"minProperties": 1}
+            }
+          }
+        }
       }
     },
     {
