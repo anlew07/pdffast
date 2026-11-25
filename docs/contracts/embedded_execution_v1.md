@@ -213,7 +213,7 @@ review_task_id
 2. **Execution Contract Builder：已初步完成。** 新增 `pdffast/application/execution_contract.py`，复用当次 Preflight runtime identity、Production Profile 身份、实际策略版本、执行统计和既有 Manifest。
 3. **最终 Manifest：已初步接入。** 锁定生产模式在 `result/manifest.json` 中增加 `execution_contract`；不改变非锁定默认模式。
 4. **ParseResult：已初步接入。** 增加 `execution_contract` 属性和关键执行证据路径；保留既有 mapping 键。
-5. **独立生产验收：已初步接入。** `scripts/verify_production_governance.py` 会独立核对 Execution Contract 与 root Manifest / Provenance / Provider Manifest / runtime policy 的身份和统计一致性，并逐项重算 artifact SHA-256、字节数、run-relative 路径及 selected prediction task_id；文件篡改和路径逃逸会导致验收 FAIL。
+5. **独立生产验收：已初步接入。** `scripts/verify_production_governance.py` 会独立核对 Execution Contract 与 root Manifest / Provenance / Provider Manifest / runtime policy 的身份和统计一致性，逐项重算 artifact SHA-256 与字节数，并验证 run-relative 路径、selected prediction task_id、任务 attempts 与冻结 Provider chain、batch_history 的一致性；文件篡改和路径逃逸会导致验收 FAIL。
 6. **失败/中断边界：仍需补充。** typed error、进程退出码和 JOB_ID 回执仍是异常路径的依据；不承诺强杀后一定存在最终 Manifest。
 7. **HTTP：不实施。** 本阶段不修改 HTTP Adapter。
 8. **真实样本：待 Mac 验收。** 使用五份真实 PDF 在目标 macOS Embedded/Core 子进程环境回归，并由 JudgeAI 后续独立复核输入与产物摘要。
