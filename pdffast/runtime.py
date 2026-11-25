@@ -22,6 +22,24 @@ from pdffast.runtime_format import ChineseRuntimeFormatter, CompactRuntimeFormat
 class ParseCancelledError(BaseException):
     """Explicitly aborted work, never a recoverable Provider result."""
 
+    def to_contract(self, *, run_id: str | None = None) -> dict[str, Any]:
+        """Represent cooperative cancellation without claiming a final result."""
+        return {
+            "schema_version": "pdffast.execution.error.v1",
+            "run_id": run_id,
+            "status": "CANCELLED",
+            "error": {
+                "code": "PARSE_CANCELLED",
+                "type": type(self).__name__,
+                "message": str(self) or "parse cancelled",
+                "stage": "runtime_cancellation",
+                "retryable": False,
+                "details": {},
+            },
+            "warnings": [],
+            "risk_flags": ["PARSE_CANCELLED"],
+        }
+
 
 _cancellation: ContextVar[threading.Event | None] = ContextVar("pdffast_cancellation", default=None)
 
@@ -257,6 +275,10 @@ class ParseObservation:
         self.progress("provider_execution_finished", "provider_execution")
         with self._lock:
             self._provider = self._task_id = self._task_started = None
+
+    def failure_context(self) -> dict[str, Any]:
+        """Expose the current stage/provider identity for a typed failure response."""
+        return self._snapshot()
 
     def diagnostic(self, event: str, **fields: Any) -> None:
         """Emit observational data without resetting actual progress time."""
