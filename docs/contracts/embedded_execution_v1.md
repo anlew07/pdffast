@@ -165,8 +165,9 @@
 ## 5. 输入身份与产物身份
 
 - PDFFast 记录解析开始时观察到的 PDF SHA-256 和字节数。
-- 当前 `fingerprint_input()` 明确不是输入文件快照；调用方必须保证输入在整个解析期间不可变。
-- JudgeAI 应在解析完成后重新计算原始 PDF SHA-256，与执行 Manifest 的输入 SHA 比较；不一致即拒收。
+- 在构建最终 Execution Contract、发布 `result/manifest.json` 之前，PDFFast 会重新读取输入 PDF 并比较 SHA-256 与字节数；不一致或文件不可读时拒绝发布成功 Manifest。
+- 这仍不是不可变文件快照：如果外部进程在解析期间修改文件、随后又恢复成原字节，首尾指纹无法证明每个 Stage 读取的是同一份字节。因此调用方仍必须保证输入在整个解析期间不可变。
+- JudgeAI 仍应在解析完成后重新计算原始 PDF SHA-256，与执行 Manifest 的输入 SHA 比较；不一致即拒收。
 - JudgeAI 对每个交付产物重新计算 SHA-256 和字节数，与 PDFFast Manifest 比较。
 - JudgeAI 还应验证所有产物路径均位于该 `run_id` 的输出根目录内。
 - 不能仅凭文件存在、HTTP/进程退出码为 0、或 deployment state 为 `COMPLETED` 就接受解析结果。
@@ -201,7 +202,7 @@ review_task_id
 
 ## 8. 实施顺序与当前进度
 
-1. **Schema 与合同测试：已初步完成。** 新增 `embedded_execution.v1.schema.json` 和 `test_embedded_execution_contract.py`，覆盖 Native-only、部分失败、无效身份、路径逃逸和产物摘要。
+1. **Schema 与合同测试：已初步完成。** 新增 `embedded_execution.v1.schema.json` 和 `test_embedded_execution_contract.py`，覆盖 Native-only、部分失败、无效身份、路径逃逸、产物摘要和输入 PDF 首尾指纹不一致。
 2. **Execution Contract Builder：已初步完成。** 新增 `pdffast/application/execution_contract.py`，复用当次 Preflight runtime identity、Production Profile 身份、实际策略版本、执行统计和既有 Manifest。
 3. **最终 Manifest：已初步接入。** 锁定生产模式在 `result/manifest.json` 中增加 `execution_contract`；不改变非锁定默认模式。
 4. **ParseResult：已初步接入。** 增加 `execution_contract` 属性和关键执行证据路径；保留既有 mapping 键。
