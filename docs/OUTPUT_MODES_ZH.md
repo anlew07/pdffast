@@ -8,7 +8,7 @@ Provider escalation 顺序或 Frozen route。无论选择哪种模式，稳定�
 
 | 模式 | 适用场景 | `result.artifacts` 公开内容 |
 |---|---|---|
-| `minimal` | 日常业务调用、批处理、服务接入 | 仅 `result/` 下的稳定结果 |
+| `minimal` | 日常业务调用、批处理、服务接入 | `result/` 下的稳定结果，锁定解析另公开执行证据 |
 | `diagnostic` | 联调、偶发失败定位、Provider 排查 | 稳定结果及 `pipeline_log` |
 | `full` | 迁移回归、算法调试、完整证据审查 | 稳定结果、日志和全部旧 Stage 路径 |
 
@@ -25,6 +25,8 @@ result_manifest
 `diagnostic` 额外公开 `pipeline_log`。`full` 还会公开 `profile`、`quality_gate`、
 `runtime_policy`、`production_manifest` 等内部路径；这些字段用于诊断，不属于长期业务契约。
 
+锁定 Profile 发布 Execution Contract 时，三种模式都额外公开 `production_execution_manifest`、`selected_prediction_index`、`runtime_escalation_policy` 和 `selected_predictions_dir`。跨进程调用方使用 [Embedded 合同](contracts/embedded_execution_v1.md)中的 run-relative 路径和摘要来读取证据。
+
 ## 目录结构
 
 ```text
@@ -40,8 +42,7 @@ result_manifest
   01_stage1/ ... 10_2_1/       # 内部兼容产物
 ```
 
-第一版在所有模式下都保留内部 Stage 文件。`minimal` 的含义是“不向公共结果 mapping 暴露”，
-不是删除文件；这保证历史回归、失败复盘和 Provider 证据链仍可使用。
+各模式保留内部产物供诊断和回放。`minimal` 收窄普通解析的公开路径范围；锁定解析仍交付合同所需的证据。
 
 ## 使用方式
 

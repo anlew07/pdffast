@@ -5,19 +5,19 @@
 - Python 3.12+；
 - 从仓库根目录运行；
 - 使用仓库 `uv.lock` 管理主环境依赖；
-- 已准备本次 Profile 允许使用的 Provider Runtime 和模型资产；
+- 需要 Provider 增强或锁定生产 Profile 时，准备相应 Runtime 和模型资产；
 - 输入 PDF 是调用进程可读取的本地文件。
 
 开发与服务依赖：
 
 ```bash
-uv sync --extra dev --extra service
+uv sync --locked --extra dev --extra service
 ```
 
 若主环境要运行 RapidOCR / PaddleOCR：
 
 ```bash
-uv sync --extra runtime-main
+uv sync --locked --extra dev --extra service --extra runtime-main
 ```
 
 Docling、MinerU、Marker Worker 环境由 `runtimes/<provider>/pyproject.toml` 和各自
@@ -93,6 +93,34 @@ uv run python scripts/run_pipeline.py ./合同.pdf \
 
 Profile 与自定义 Provider 配置不能同时指定。Profile、Provider 配置、模型资产身份和预检
 失败时应停止执行，不要通过默认配置或旧运行产物绕过。
+
+## Embedded JSON 回执
+
+先按 [Provider Runtime 环境说明](PROVIDER_RUNTIME_ENVIRONMENTS.md)冻结已批准的模型资产并通过预检。以下示例从本地文件计算期望摘要，创建新的私有输出目录并传入唯一 run ID。
+
+```bash
+pdf=./合同.pdf
+output_root=$(mktemp -d)
+run_id=$(.venv/bin/python -c 'from uuid import uuid4; print(uuid4().hex)')
+expected_sha256=$(.venv/bin/python - "$pdf" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+with Path(sys.argv[1]).open("rb") as stream:
+    print(hashlib.file_digest(stream, "sha256").hexdigest())
+PY
+)
+
+.venv/bin/python -m scripts.run_pipeline "$pdf" \
+  --project-root "$PWD" \
+  --provider-profile "$PWD/configs/profiles/production.indra-triple.json" \
+  --output-root "$output_root" \
+  --run-id "$run_id" \
+  --expected-input-sha256 "$expected_sha256"
+```
+
+CLI 的 stdout 为版本化 JSON 回执。Python 调用使用锁定 Profile 和 `parse_request()`。JudgeAI 要求完整成功并通过独立验签后才送交评审。字段和退出码见 [JudgeAI Embedded 接入合同](integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md)。
 
 ## 输出模式
 

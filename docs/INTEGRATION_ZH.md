@@ -1,19 +1,14 @@
 # Python 系统接入
 
-## 推荐依赖方向
+## 选择入口
 
-PDFFast Core 接受本地 PDF 路径和普通 Python 参数，返回 `ParseResult`。业务系统、HTTP 层或
-任务队列只能依赖这个公共边界，不应让 Core 反向依赖框架类型。
+| 场景 | 入口 | 返回值 |
+| --- | --- | --- |
+| 普通本地 Python | `PDFFastParser.parse(pdf_path, run_id=...)` | `ParseResult` |
+| 锁定生产解析和 JudgeAI | `PDFFastParser.parse_request(pdf_path, request)` 或 Embedded CLI | `ParseResult.execution_contract` 或版本化 JSON 回执 |
+| 独立 HTTP 服务 | `python -m pdffast.service` 后调用 `POST /parse`，multipart 字段为 `file` | HTTP Schema `1.0`，含 `run_id`、`markdown`、`canonical` 和 `audit` |
 
-```text
-业务编排 / HTTP adapter / 队列 consumer
-  -> PDFFastParser.parse(Path)
-  -> ParseResult
-```
-
-Core 不接收 FastAPI `UploadFile`、HTTP request/response 或 Celery task。未来接入 HTTP 时，
-adapter 应先把上传内容保存为受控的本地临时文件，再调用 Parser，最后把 `ParseResult` 映射为
-响应。解析 Pipeline 不需要知道传输协议。
+HTTP 适配器接收上传文件并转换为本地受控文件，再调用普通 Parser。Core 使用本地路径和 Python 参数，业务调用方通过事先约定的接口消费结果。JudgeAI 的版本化请求、状态与产物验签见 [Embedded 接入合同](integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md)。
 
 ## 建议封装
 
@@ -73,10 +68,10 @@ except PDFFastError:
 ## 并发与生命周期
 
 - 每个调用必须使用独立 `run_id`，避免输出相互覆盖；
-- 输入文件在 `parse()` 返回前必须保持可读；
-- MinerU、Marker、Docling 由 Core 通过隔离 subprocess worker 调用；
-- worker 由 executor 在 `finally` 中关闭，业务层不要直接管理 Provider 进程；
-- 模型缓存是用户级共享资源，Python 虚拟环境属于当前 V2 工程。
+- 输入文件在执行完成前保持可读且内容不变；
+- Indra、MinerU、Marker、Docling 使用 checkout 下的隔离 Worker；
+- Executor 负责关闭其创建的 Provider。受管 Job 的取消和恢复见 [部署恢复合同](contracts/deployment_control_v1.md)；
+- 模型可使用用户级缓存，解释器由当前 checkout 的 Provider 配置解析。
 
 ## 输出契约
 

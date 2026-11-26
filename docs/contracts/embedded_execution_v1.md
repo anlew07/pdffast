@@ -1,23 +1,10 @@
 # PDFFast Embedded Execution Contract V1
 
-> 已完成本地 Embedded 合同验收。[真实 PDF 验收](../../B06-A5_REAL_PDF_ACCEPTANCE.md) 和 [JudgeAI 交付文档](../integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md) 提供实测与接入说明。
-> 基线：`feat/pdffast-production-governance-v1@0d497ebe3ca416d865a3cd16994d444bdde1e00f`。
-> 范围：仅覆盖 JudgeAI 当前计划使用的本地 Embedded/Core 子进程集成；HTTP 暂缓。
+> Embedded V1 已发布到 `main`。本规范覆盖本地 Python 和 Embedded CLI。[JudgeAI 接入合同](../integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md)提供调用和验签操作，[真实 PDF 验收](../../B06-A5_REAL_PDF_ACCEPTANCE.md)记录发布前的实测证据。
 
-## 1. 目标与非目标
+## 1. 合同范围
 
-目标是把 PDFFast 已有的生产身份、Provider 执行证据、解析结果和部署进程回执，组合成一个稳定、可验证的 Embedded 执行合同，供 JudgeAI 消费。
-
-本任务不重新设计 PDFFast 解析路由，不重写已有内部合同，也不要求 JudgeAI 指定 Provider。
-
-明确不做：
-
-- 不修改 Native Analysis、Quality Gate、Fallback Planning、Capability Routing、Provider Registry、Frozen Runtime Policy、Provider Execution 或 Canonical Merge 的策略语义。
-- 不改变 Indra、RapidOCR、MinerU 的候选顺序、能力路由或回退规则。
-- 不实现 HTTP 合同、HTTP 查询、HTTP 幂等或 HTTP 与 Embedded 一致性验收。
-- 不新增重复的 `execution_id`。
-- 不实现从 Stage 中间状态断点续解析。
-- 不把部署进程成功等同于解析成功。
+Embedded V1 汇集输入身份、生产身份、Provider 执行证据和可验证的产物。调用方负责提供 PDF 与预期摘要、保存执行结果并完成验证。PDFFast 根据锁定 Profile、质量门禁和候选链决定如何解析。进程任务状态由 [Deployment Control V1](deployment_control_v1.md)管理。现有 HTTP 服务有独立的请求与响应结构。
 
 ## 2. 请求和执行入口
 
@@ -68,11 +55,11 @@ Provider、Profile、质量阈值、回退链、路径和模型参数由部署�
 - Core 的 `run_id` 是一次解析执行的身份；锁定模式要求单段安全名称，并拒绝重复使用已保留的 run 目录。
 - `deployment_recovery.prepare()` 生成独立的 32 位 `JOB_ID`，代表受管 OS 进程任务，不是 Core run_id。
 - `deployment_control_v1.md` 已要求调用方持久化 `JOB_ID` 与 Core `run_id` 的对应关系。
-- Worker/Manager 恢复时应使用原 `JOB_ID` 执行 `reconcile`，而不是再次启动同一 Core 解析。
+- Worker/Manager 恢复时应使用原 `JOB_ID` 执行 `reconcile`，并由原任务继续协调。
 - 用户主动重新解析时创建新的 Core `run_id` 和新的 `JOB_ID`。
 - 当前恢复机制是进程任务恢复和回执协调，不是解析 Pipeline 的断点续跑。
 
-**兼容性提醒：** deployment control V1 的 JSON 回执字段名 `run_id` 历史上承载的是 `JOB_ID`。它不能被解释为 Core 解析 `run_id`。本阶段不擅自改写已存在的 V1 回执字段；新合同和 JudgeAI 持久化字段必须明确使用 `job_id` 与 `core_run_id` 两个名字。
+**兼容性提醒：** deployment control V1 的 JSON 回执字段名 `run_id` 历史上承载的是 `JOB_ID`。它不能被解释为 Core 解析 `run_id`。JudgeAI 持久化字段应分别命名为 `job_id` 与 `core_run_id` 两个名字。
 
 ## 3. 结果入口与失败边界
 
@@ -213,49 +200,14 @@ review_task_id
 - 用户主动重新解析：创建新的 `core_run_id` 和 `job_id`，保留旧运行证据。
 - 不要求 PDFFast 根据 run_id 自动重放或从中间 Stage 恢复。
 
-## 7. ParseResult 的兼容扩展（本分支已初步实现）
+## 7. Python 对象与 CLI 的兼容性
 
-本分支已在现有 `ParseResult` 上增加 `execution_contract` 访问入口，并在锁定生产模式的 minimal 输出中公开关键执行证据路径。
+`ParseResult` 继续提供 `canonical`、`markdown`、`audit`、`artifacts`、`production_manifest` 和 `parser_provenance`。锁定 Profile 交付结果时增加 `execution_contract`，`minimal` 也会公开相关证据路径。普通非锁定解析的 `execution_contract` 为 `None`。旧锁定入口 `parse()` 省略回执中的 `request`，版本化入口则回显该字段。
 
-要求：
+版本化 CLI 的 stdout 承载与根 Manifest 内嵌合同相同的结果回执，或符合错误 Schema 的失败回执。调用和部署验收步骤见 [JudgeAI Embedded 接入合同](../integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md)。
 
-- 保留现有 `canonical`、`markdown`、`audit`、`artifacts`、`production_manifest`、`parser_provenance` 属性及旧 mapping 访问。
-- 锁定生产模式提供 `pdffast.execution.v1`；非锁定默认模式不冒充生产合同。
-- Embedded runner 从稳定对象/最终 Manifest 消费合同，不解析终端人类可读日志。
-- 当前 JudgeAI 生产路径使用 JudgeAI 自己的 Embedded Runner；本任务不把 PDFFast 的 standalone `scripts/run_pipeline.py` 误当作 JudgeAI 唯一入口，该脚本同时提供可独立调用的 Embedded JSON 模式。
+## 8. 合同验证
 
-## 8. 实施顺序与当前进度
+`scripts/verify_production_governance.py` 独立核对 Schema、根 Manifest、Provenance、Provider Manifest 和实际策略，重新计算产物 SHA-256 及字节数，并校验 run-relative 路径、任务 ID、尝试顺序和 batch history。完整交付要求输入和产物身份一致、Audit 通过、状态为 `SUCCESS`。
 
-1. **Schema 与合同测试：已初步完成。** 新增 `embedded_execution.v1.schema.json` 和 `test_embedded_execution_contract.py`，覆盖 Native-only、部分失败、无效身份、路径逃逸、产物摘要和输入 PDF 首尾指纹不一致。
-2. **Execution Contract Builder：已初步完成。** 新增 `pdffast/application/execution_contract.py`，复用当次 Preflight runtime identity、Production Profile 身份、实际策略版本、执行统计和既有 Manifest。
-3. **最终 Manifest：已初步接入。** 锁定生产模式在 `result/manifest.json` 中增加 `execution_contract`；不改变非锁定默认模式。
-4. **ParseResult：已初步接入。** 增加 `execution_contract` 属性和关键执行证据路径；保留既有 mapping 键。
-5. **独立生产验收：已初步接入。** `scripts/verify_production_governance.py` 会独立核对 Execution Contract 与 root Manifest / Provenance / Provider Manifest / runtime policy 的身份和统计一致性，逐项重算 artifact SHA-256 与字节数，并验证 run-relative 路径、selected prediction task_id、任务 attempts 与冻结 Provider chain、batch_history 的一致性；文件篡改和路径逃逸会导致验收 FAIL。
-6. **失败与中断边界：已接通。** CLI 与 Python 异常使用相同错误 Schema，父进程负责协调无回执的中断。
-7. **HTTP：不实施。** 本阶段不修改 HTTP Adapter。
-8. **真实样本：A5 已验收。** 五份 PDF 通过输入与请求校验，代表 PDF 完成一次真实 Embedded 执行和逐产物验签。
-
-## 9. 验收门禁
-
-- [ ] 生产路由、候选顺序和 Provider 执行策略没有变化。
-- [ ] `pdffast.execution.v1` Schema 可验证。
-- [ ] Native-only（0 Provider tasks）仍能生成合法合同。
-- [ ] 实际 Provider、运行时身份、策略版本和 effective fingerprint 可追溯。
-- [ ] fallback attempts、batch history、任务级结果均可定位并校验。
-- [ ] `COMPLETED_WITH_PIPELINE_FAILURES` 不会被映射为 `COMPLETED`。
-- [ ] 所有交付产物具有可验证 SHA-256、字节数和 run-relative 路径。
-- [ ] 生产验收脚本独立重算产物摘要，并拒绝篡改、路径逃逸或任务证据不一致。
-- [ ] 输入 PDF 身份可与调用方原始文件复核。
-- [ ] run_id 与 JOB_ID 语义清晰且关联可持久化；同一 Job 恢复不会重复启动解析。
-- [ ] 现有 V1 身份、Provenance、Deployment Control 合同及旧 ParseResult 访问保持兼容。
-- [ ] 五份真实 PDF 核对输入身份，代表样本在 macOS 完成真实 Embedded/Core 端到端回归。
-- [ ] HTTP 未被纳入本阶段范围。
-
-## 10. 当前审查结论
-
-- A01 内部自主路由：已有实现，保持不动。
-- A02 执行身份/恢复：现有 run_id + JOB_ID + reconcile 能力可复用；主要补充消费方关联和语义清晰度，不新增 execution_id。
-- A03 Manifest：已有多层证据，但缺少统一外部结果入口、Provider runtime 可读身份和产物摘要清单。
-- A04 HTTP：本阶段明确 DEFERRED，不作为验收项。
-
-PDFFast 侧已通过本地合同和真实 PDF 交付验收。JudgeAI 端按交付合同进行 Embedded 联调。
+当前实现的合同、产物篡改、异常和受管恢复边界由本地测试覆盖。[B06-A5](../../B06-A5_REAL_PDF_ACCEPTANCE.md)记录五份文件的输入核验及一份代表样本的真实 Embedded 解析。部署时仍需对目标机器、锁定提交与业务适配器验收。
