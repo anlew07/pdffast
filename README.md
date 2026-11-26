@@ -9,8 +9,7 @@ Fallback 和 Canonical 等计算结果。JSON、Provider 文件和结构化事�
 旧版文件串联架构。
 
 当前 V3 主线为 [main](https://github.com/anlew07/pdffast/tree/main)。
-JudgeAI 通过锁定的 Git 提交部署 PDFFast；本仓库的新提交不会自动改变已部署版本。
-升级需由 JudgeAI 明确更新锁定版本并重新进行解析与接口回归验收。
+JudgeAI 使用主线发布的 Embedded Execution V1。部署时固定 PDFFast Git 提交，升级时更新部署锁，并在目标环境重新验证身份、运行时和真实调用。
 
 ## 文档入口
 
@@ -19,6 +18,8 @@ JudgeAI 通过锁定的 Git 提交部署 PDFFast；本仓库的新提交不会�
 - [V3 Pipeline](docs/PIPELINE.md)
 - [Provider Runtime 环境与安装](docs/PROVIDER_RUNTIME_ENVIRONMENTS.md)
 - [Provider 插件接入](docs/PROVIDER_PLUGINS_ZH.md)
+- [Python 与 HTTP 接入](docs/INTEGRATION_ZH.md)
+- [排查常见问题](docs/TROUBLESHOOTING_ZH.md)
 - [输出模式](docs/OUTPUT_MODES_ZH.md)
 - [生产解析身份合同](docs/contracts/production_parser_identity_v1.md)
 - [JudgeAI Embedded 接入合同](docs/integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md)
@@ -30,13 +31,13 @@ JudgeAI 通过锁定的 Git 提交部署 PDFFast；本仓库的新提交不会�
 Python 3.12+，使用仓库锁文件管理依赖。开发与服务依赖：
 
 ```bash
-uv sync --extra dev --extra service
+uv sync --locked --extra dev --extra service
 ```
 
 若当前主环境需要执行 RapidOCR / PaddleOCR Provider，再安装主环境 OCR 依赖：
 
 ```bash
-uv sync --extra runtime-main
+uv sync --locked --extra dev --extra service --extra runtime-main
 ```
 
 Docling、MinerU、Marker 使用仓库内独立 Worker Runtime：
@@ -98,6 +99,12 @@ outputs/<run_id>/result/
 Manifest 保存输入 PDF 的 SHA-256、字节数及采集状态。Manifest 存在不代表解析完成；
 应以最终状态、结果文件和 Audit 为准。
 
+## JudgeAI Embedded 接入
+
+锁定 Production Profile 后，Python 使用 `PDFFastParser.parse_request(pdf_path, request)`，CLI 通过 `--expected-input-sha256` 启用 Embedded JSON 模式。调用方提供每次执行的 `run_id` 和预期 PDF SHA-256，再核对回执、Audit 与产物摘要。成功或部分完成时，结果位于 `ParseResult.execution_contract` 和根 Manifest。
+
+具体请求、部署预检、退出码与验签步骤见 [JudgeAI Embedded 接入合同](docs/integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md)。
+
 ## HTTP 服务
 
 安装 service extra 后可运行：
@@ -109,7 +116,7 @@ PDFFAST_HOST=127.0.0.1 PDFFAST_PORT=8020 PDFFAST_LOG_MODE=normal \
 
 - `GET /health`：服务健康检查，不表示所有模型均已实际推理验收。
 - `POST /parse`：multipart 上传字段 `file`。
-- 响应包含 HTTP 合同版本、`run_id`、`markdown`、`canonical` 和 `audit`。
+- 响应包含 `schema_version: "1.0"`、`run_id`、`markdown`、`canonical` 和 `audit`。该服务使用独立的 HTTP 合同。
 
 ## 测试
 
@@ -145,8 +152,7 @@ PDFFAST_SAMPLE_PDF=/path/to/case_002.pdf \
 历史迁移测试需要只读旧工程和对应样本；它们不是 V3 运行时依赖，也不作为当前默认 CI 的
 通过依据。缺少真实样本、模型或历史数据时，相关专项不运行；SKIP 不代表端到端或内容质量验收通过。
 
-CI 对应提交的结果是当前代码测试状态的唯一依据。历史报告中的测试数量、机器路径和环境
-版本只代表报告日期，不应当作当前 HEAD 的验证证据。
+以本次验证的 Git 提交、环境和测试命令记录结果。历史报告中的测试数量、机器路径和环境版本只代表对应的验收运行。
 
 ## 质量边界
 

@@ -107,4 +107,4 @@ HTTP `/parse` 继续通过默认 Core 构造器解析上传件。其请求无 Pr
 }
 ```
 
-当前工作树的完整成功样例为本地验收目录 `outputs/governance_v1_20261120/reviewed/preflight_verified.json`。它使用 `--probe`，三个依赖探测均为 `PASS`。其中 `fingerprint_input` 可直接用于上面的重算示例。
+成功回执的 `fingerprint_input` 可用于上面的重算示例。应从部署所用机器、解释器和锁定提交获得该次回执。仓库中的 [Provider 环境说明](../PROVIDER_RUNTIME_ENVIRONMENTS.md)列出当前预检命令。

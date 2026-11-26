@@ -30,13 +30,13 @@ checkout 根目录和 Provider 配置解析。
 开发和 HTTP 服务：
 
 ```bash
-uv sync --extra dev --extra service
+uv sync --locked --extra dev --extra service
 ```
 
 主进程 OCR Provider：
 
 ```bash
-uv sync --extra runtime-main
+uv sync --locked --extra dev --extra service --extra runtime-main
 ```
 
 隔离 Worker：
@@ -53,8 +53,7 @@ Indra：
 bash scripts/install_indra_runtime.sh
 ```
 
-上述命令安装 Python 依赖。不要把它们理解为模型已下载、模型身份已冻结或 Provider 已通过
-真实 PDF 验收。
+主环境和隔离 Worker 的 `uv sync` 安装 Python 依赖。Indra 安装脚本还会获取配置的模型 revision；离线目标机应预先准备批准的资产。安装后仍需冻结资产、预检和运行验收。
 
 ## 3. 模型资产与缓存
 
@@ -65,7 +64,7 @@ bash scripts/install_indra_runtime.sh
 Indra 和 MinerU 还声明 `model_asset_manifest`。在批准的模型版本安装完成后，使用：
 
 ```bash
-python -B scripts/freeze_production_assets.py --root "$PWD"
+.venv/bin/python -B scripts/freeze_production_assets.py --root "$PWD"
 ```
 
 脚本只读取本地模型和配置，不下载、不修改模型文件；它为 Indra / MinerU 生成 SHA-256
@@ -73,6 +72,15 @@ python -B scripts/freeze_production_assets.py --root "$PWD"
 
 发布前应使用正式 Profile 做完整预检，确认 Profile、Provider 配置、模型资产清单、解释器
 和运行环境身份一致。预检失败必须阻止正式解析。JudgeAI 的调用与校验流程见 [Embedded 接入合同](integration/JUDGEAI_EMBEDDED_EXECUTION_CONTRACT_V1.md)。
+
+```bash
+.venv/bin/python -m pdffast.preflight \
+  --project-root "$PWD" \
+  --provider-profile "$PWD/configs/profiles/production.indra-triple.json" \
+  --json
+```
+
+常规预检验证身份与资产状态。正式发布验收使用 `--verify-assets` 重算冻结模型的摘要；`--probe` 额外调用 Provider 的依赖探测。真实推理验收另用代表性 PDF。
 
 ## 4. Marker Worker HOME 隔离
 

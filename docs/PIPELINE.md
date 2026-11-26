@@ -20,4 +20,6 @@
 
 ## 成功语义
 
+普通解析使用 `ParseResult` 的 Markdown、Canonical 与 Audit。锁定 Profile 的版本化解析还会发布带输入身份、配置指纹和产物摘要的 [Embedded V1 回执](contracts/embedded_execution_v1.md)。完整结果外层状态为 `SUCCESS`；Audit 通过且有可用内容、同时存在终态保留时为 `PARTIAL_SUCCESS`。未解决的 Provider 任务失败、渲染校验失败或没有可用正文会阻止发布可用结果。
+
 Provider 的 `SUCCESS`、执行器接受结果和 Audit PASS 均不等于 OCR 内容逐字正确。Audit 核验的是结构、来源与渲染合同；业务准确率需要通过带 Ground Truth 的 PDF Benchmark 单独量化。

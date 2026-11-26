@@ -1,6 +1,6 @@
 # JudgeAI Embedded Execution Contract V1
 
-本文件定义 JudgeAI 调用本地 PDFFast、接收回执和验证交付物的接口。环境验收结果见 [B06-A5](../../B06-A5_REAL_PDF_ACCEPTANCE.md)。
+本文件定义 JudgeAI 调用本地 PDFFast、接收回执和验证交付物的接口。Embedded V1 自 [PR #9 合并提交](https://github.com/anlew07/pdffast/commit/1bc1b9149718d23497845a61ade914f9a333da2e) 起可在 PDFFast `main` 使用。发布前的实测记录见 [B06-A5](../../B06-A5_REAL_PDF_ACCEPTANCE.md)。
 
 ## 部署前置条件
 
@@ -15,7 +15,7 @@
   --json
 ```
 
-预检通过后，使用相同 checkout、Profile 和 Python 环境启动 Embedded CLI。JudgeAI 更新提交锁后应重新核验部署身份，并用自身适配器完成一次真实项目联调。
+预检通过后，使用相同 checkout、Profile 和 Python 环境启动 Embedded CLI。JudgeAI 升级时要重新核对部署身份并完成真实项目联调。采用 macOS 受管模式时，还需运行 [部署 Health](../contracts/deployment_control_v1.md) 并验收 Worker 调用、恢复和取消。
 
 ## 调用
 
@@ -94,8 +94,8 @@ JudgeAI 重新读取原始 PDF 的 SHA-256
 | `CANCELLED` | 5 | 保存协作取消状态，停止评审 |
 | `INTERRUPTED` | 由父进程判定 | 异常退出且缺少可确认的最终回执时，结合 OS 退出信息及受管任务回执协调 |
 
-普通 Python 执行错误返回 `FAILED`。只有父进程能在无可靠终态时判定 `INTERRUPTED`。同一次进程任务恢复使用原 `JOB_ID`，主动重跑使用新 run_id。
+普通 Python 执行错误返回 `FAILED`。只有父进程能在无可靠终态时判定 `INTERRUPTED`。受管调用持久化 `core_run_id` 与 `job_id` 的关联。同一次执行用原 `JOB_ID` 恢复。主动重跑分配新的 run ID 和 Job ID。部署回执中的历史 `run_id` 字段承载 Job ID。
 
 ## 责任边界
 
-PDFFast 管理 Indra、RapidOCR 和 MinerU 的选择条件、优先级、回退链及 Quality Gate。JudgeAI 负责提交 PDF、提供身份、保存和检验结果，并在门禁通过后提交 Markdown。未来 HTTP 接口可复用这三份 Schema。
+PDFFast 管理 Indra、RapidOCR 和 MinerU 的选择条件、优先级、回退链及 Quality Gate。JudgeAI 负责提交 PDF、提供身份、保存和检验结果，并在门禁通过后提交 Markdown。当前独立 HTTP 服务使用自己的响应合同。
